@@ -151,29 +151,44 @@ def save_loop_metadata(
     """
 
     file_path = str(path)
+    tags: APEv2 | None = None
+    existing = False
+
     try:
-        tags = APEv2(file_path)
+        audio = MutagenFile(file_path)
+    except Exception:  # pylint: disable=broad-except
+        audio = None
+
+    if audio is not None and isinstance(getattr(audio, "tags", None), APEv2):
+        tags = audio.tags  # type: ignore[assignment]
         existing = True
-    except APEv2Error:
-        tags = APEv2()
-        existing = False
+
+    if tags is None:
+        try:
+            tags = APEv2(file_path)
+            existing = True
+        except APEv2Error:
+            tags = APEv2()
+            existing_items = _read_ape_tags(path)
+            for key, value in existing_items.items():
+                if key in (LOOP_START_TAG, LOOP_END_TAG, LOOP_ENABLED_TAG):
+                    continue
+                tags[key] = value
+
+    if tags is None:
+        logger.warning("Unable to initialise APE tags for %s", path)
+        return False
 
     try:
         if start is None or end is None:
             removed = False
-            for key in (LOOP_START_TAG, LOOP_END_TAG):
+            for key in (LOOP_START_TAG, LOOP_END_TAG, LOOP_ENABLED_TAG):
                 if key in tags:
                     removed = True
                     try:
                         tags.pop(key)
                     except KeyError:
                         pass
-            if LOOP_ENABLED_TAG in tags:
-                removed = True
-                try:
-                    tags.pop(LOOP_ENABLED_TAG)
-                except KeyError:
-                    pass
             if removed or existing:
                 tags.save(file_path)
             return True
