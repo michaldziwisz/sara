@@ -223,7 +223,7 @@ class OptionsDialog(wx.Dialog):
         entries.extend((device.id, device.name) for device in devices)
         self._pfl_entries = entries
         self._pfl_choice.Clear()
-        for _, label in entries:
+        for _device_id, label in entries:
             self._pfl_choice.Append(label)
 
         current = self._settings.get_pfl_device()
