@@ -22,7 +22,7 @@ SARA is a wxPython-based automation suite for radio stations. It provides multip
    - Set a marker with `Enter` and toggle marker mode (`Ctrl+Shift+Enter`) so global `Space` starts from it.
    - Playlist controls: `F1` play, `F2` pause, `F3` stop, `F4` fade out, `Ctrl+Shift+L` toggle loop, `Ctrl+Shift+M` auto-mix.
    - Loop dialog (`Shift+F10 → Loop…`): fine-tune start/end, capture preview (`Ctrl+P` / `Ctrl+Shift+P`). Loop ranges are saved in APEv2 tags (`SARA_LOOP_*`).
-   - Use `Ctrl+Alt+L` to toggle looping per track; `Ctrl+Alt+Shift+L` announces loop info.
+   - Use `Ctrl+Shift+L` to toggle looping per track; `Ctrl+Alt+Shift+L` announces loop info.
    - Options (`Tools → Options…`) let you adjust fade out, PFL device, startup playlists, alternate play mode and auto removal of played tracks.
    - Edit menu provides standard clipboard actions, move items with `Alt+↑/↓`.
 
@@ -85,7 +85,7 @@ Wersja rozwojowa – odtwarzanie, wielokrotne sloty odtwarzaczy i narzędzia pę
    - Ustaw znacznik klawiszem `Enter`, a tryb od znacznika (`Ctrl+Shift+Enter`) sprawi, że Spacja startuje od niego.
    - Sterowanie playlistą: `F1` – start, `F2` – pauza, `F3` – stop, `F4` – fade out, `Ctrl+Shift+L` – pętla, `Ctrl+Shift+M` – auto mix.
    - Dialog pętli (`Shift+F10 → Zapętl…`): precyzyjne start/koniec, odsłuch PFL (`Ctrl+P` / `Ctrl+Shift+P`). Pętle zapisują się w tagach APEv2.
-   - Przełączanie zapętlenia utworu (`Ctrl+Alt+L`) i informacja o pętli (`Ctrl+Alt+Shift+L`).
+   - Przełączanie zapętlenia utworu (`Ctrl+Shift+L`) i informacja o pętli (`Ctrl+Alt+Shift+L`).
    - `Narzędzia → Opcje…` udostępniają sterowanie fade, urządzeniem PFL, playlistami startowymi, językiem, trybem naprzemiennym i auto-usuwaniem.
    - Menu `Edycja` udostępnia operacje schowka, `Alt+↑/↓` przenosi pozycje.
 

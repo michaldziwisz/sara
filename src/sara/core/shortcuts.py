@@ -64,7 +64,7 @@ def _register_defaults() -> None:
         "global",
         "loop_playback_toggle",
         label="Toggle track looping",
-        default="CTRL+ALT+L",
+        default="CTRL+SHIFT+L",
     )
     register_shortcut(
         "global",
@@ -77,13 +77,6 @@ def _register_defaults() -> None:
     register_shortcut("playlist", "pause", label="Playlist: pause", default="F2")
     register_shortcut("playlist", "stop", label="Playlist: stop", default="F3")
     register_shortcut("playlist", "fade", label="Playlist: fade out", default="F4")
-    register_shortcut(
-        "playlist",
-        "loop_disable",
-        label="Playlist: disable loop",
-        default="CTRL+SHIFT+L",
-    )
-
     register_shortcut("playlist_menu", "new", label="Playlist menu: new playlist", default="CTRL+N")
     register_shortcut(
         "playlist_menu",

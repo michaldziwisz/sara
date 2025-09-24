@@ -1132,30 +1132,6 @@ class MainFrame(wx.Frame):
                 panel.mark_item_status(item.id, item.status)
                 panel.refresh()
             self._announce(_("Playlist %s finished track with fade out") % playlist.name)
-        elif action == "loop_disable":
-            key_context = self._get_playback_context(playlist.id)
-            if key_context is None:
-                self._announce(_("No active loop"))
-                return
-            key, active_context = key_context
-            active_item = next((track for track in playlist.items if track.id == key[1]), None)
-            if active_item and active_item.has_loop():
-                active_item.loop_enabled = False
-                try:
-                    active_context.player.set_loop(None, None)
-                except Exception:  # pylint: disable=broad-except
-                    pass
-                save_loop_metadata(
-                    active_item.path,
-                    active_item.loop_start_seconds,
-                    active_item.loop_end_seconds,
-                    active_item.loop_enabled,
-                )
-                panel.refresh()
-                self._announce(_("Track looping disabled"))
-            else:
-                self._announce(_("Loop not active"))
-
     def _get_current_playlist_panel(self) -> PlaylistPanel | None:
         if self._current_panel_id and self._current_panel_id in self._playlists:
             return self._playlists[self._current_panel_id]

@@ -2,12 +2,12 @@ shortcuts:
   global:
     play_next: SPACE
     auto_mix_toggle: CTRL+SHIFT+M
+    loop_playback_toggle: CTRL+SHIFT+L
   playlist:
     play: F1
     pause: F2
     stop: F3
     fade: F4
-    loop_disable: CTRL+SHIFT+L
 playback:
   fade_out_seconds: 1.5
 devices:

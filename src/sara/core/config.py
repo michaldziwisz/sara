@@ -20,7 +20,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "play_next": "SPACE",
             "auto_mix_toggle": "CTRL+SHIFT+M",
             "marker_mode_toggle": "CTRL+SHIFT+ENTER",
-            "loop_playback_toggle": "CTRL+ALT+L",
+            "loop_playback_toggle": "CTRL+SHIFT+L",
             "loop_info": "CTRL+ALT+SHIFT+L",
         },
         "playlist_menu": {
@@ -36,7 +36,6 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "pause": "F2",
             "stop": "F3",
             "fade": "F4",
-            "loop_disable": "CTRL+SHIFT+L",
         },
         "edit": {
             "undo": "CTRL+Z",
