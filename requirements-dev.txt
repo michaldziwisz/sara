@@ -1,0 +1,11 @@
+wxPython>=4.2.1
+sounddevice>=0.4.6
+soundfile>=0.12.1
+pycaw>=20181226
+pythonnet>=3.0.3
+pyyaml>=6.0.1
+mutagen>=1.47.0
+numpy>=1.23.0
+black>=24.3.0
+ruff>=0.3.5
+pytest>=8.1.1

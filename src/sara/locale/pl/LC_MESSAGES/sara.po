@@ -1,0 +1,548 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: SARA\n"
+"Language: pl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 and n%10<=4 and (n%100<10 or n%100>=20) ? 1 : 2);\n"
+
+msgid " (default)"
+msgstr " (domyślne)"
+
+msgid " (loop)"
+msgstr " (pętla)"
+
+msgid " [marker]"
+msgstr " [znacznik]"
+
+msgid "&Copy"
+msgstr "&Kopiuj"
+
+msgid "&Delete"
+msgstr "&Usuń"
+
+msgid "&Edit"
+msgstr "&Edycja"
+
+msgid "&Export playlist…"
+msgstr "&Eksportuj playlistę…"
+
+msgid "&Import playlist"
+msgstr "&Importuj playlistę"
+
+msgid "&Loop…"
+msgstr "&Zapętl…"
+
+msgid "&Loop… (set)"
+msgstr "&Zapętl… (ustawione)"
+
+msgid "&Marker mode"
+msgstr "Tryb od &znacznika"
+
+msgid "&New playlist"
+msgstr "&Nowa playlista"
+
+msgid "&Options…"
+msgstr "&Opcje…"
+
+msgid "&Paste"
+msgstr "Wk&lej"
+
+msgid "&Playlist"
+msgstr "&Playlista"
+
+msgid "&Set marker"
+msgstr "&Ustaw znacznik"
+
+msgid "&Tools"
+msgstr "&Narzędzia"
+
+msgid "&Undo"
+msgstr "&Cofnij"
+
+msgid "(none)"
+msgstr "(brak)"
+
+msgid "Action"
+msgstr "Akcja"
+
+msgid "Add &tracks…"
+msgstr "Dodaj &utwory…"
+
+msgid "Added %d tracks to playlist %s"
+msgstr "Dodano %d utworów do playlisty %s"
+
+msgid "Add…"
+msgstr "Dodaj…"
+
+msgid "Alternate playlists with Space key"
+msgstr "Naprzemiennie odtwarzaj playlisty klawiszem Spacja"
+
+msgid "Assign &audio device…"
+msgstr "Przypisz urządzenie &audio…"
+
+msgid "Audio files (*.mp3;*.wav;*.flac;*.ogg)|*.mp3;*.wav;*.flac;*.ogg|All files|*.*"
+msgstr "Pliki audio (*.mp3;*.wav;*.flac;*.ogg)|*.mp3;*.wav;*.flac;*.ogg|Wszystkie pliki|*.*"
+
+msgid "Auto mix %s"
+msgstr "Miks automatyczny %s"
+
+msgid "Automatically remove played tracks"
+msgstr "Usuwaj automatycznie odegrane utwory"
+
+msgid "Cannot move further %s"
+msgstr "Nie można przenieść dalej w %s"
+
+msgid "Change…"
+msgstr "Zmień…"
+
+msgid "Choose how many players to use and assign audio devices."
+msgstr "Wybierz liczbę odtwarzaczy oraz przypisz każde urządzenie audio."
+
+msgid "Clipboard is empty"
+msgstr "Schowek jest pusty"
+
+msgid "Configure a PFL device in Options"
+msgstr "Skonfiguruj urządzenie PFL w opcjach aplikacji"
+
+msgid "Configure players…"
+msgstr "Konfiguruj odtwarzacze…"
+
+msgid "Copied %d %s from playlist %s"
+msgstr "Skopiowano %d %s z playlisty %s"
+
+msgid "Cu&t"
+msgstr "Wy&tnij"
+
+msgid "Cut %d %s"
+msgstr "Wycięto %d %s"
+
+msgid "Default fade out (s):"
+msgstr "Domyślny czas fade out (s):"
+
+msgid "Deleted %d %s"
+msgstr "Usunięto %d %s"
+
+msgid "Duration"
+msgstr "Czas trwania"
+
+msgid "E&xit"
+msgstr "Z&akończ"
+
+msgid "Edit &shortcuts…"
+msgstr "Edytuj &skróty…"
+
+msgid "Edit…"
+msgstr "Edytuj…"
+
+msgid "Enable loop for this track"
+msgstr "Włącz pętlę dla tego utworu"
+
+msgid "End (s):"
+msgstr "Koniec (s):"
+
+msgid "English"
+msgstr "Angielski"
+
+msgid "Enter a playlist name."
+msgstr "Podaj nazwę playlisty."
+
+msgid "Error"
+msgstr "Błąd"
+
+msgid "Failed to import playlist: %s"
+msgstr "Nie udało się wczytać playlisty: %s"
+
+msgid "Failed to prepare PFL preview: %s"
+msgstr "Nie udało się przygotować podsłuchu PFL: %s"
+
+msgid "Failed to read playlist file: %s"
+msgstr "Nie udało się odczytać pliku: %s"
+
+msgid "Failed to save playlist: %s"
+msgstr "Nie udało się zapisać playlisty: %s"
+
+msgid "Failed to update loop metadata"
+msgstr "Nie udało się zaktualizować metadanych pętli"
+
+msgid "File %s does not exist"
+msgstr "Plik %s nie istnieje"
+
+msgid "Finished %s"
+msgstr "Zakończono %s"
+
+msgid "Imported %d items from %s"
+msgstr "Zaimportowano %d pozycji z %s"
+
+msgid "Interface language:"
+msgstr "Język interfejsu:"
+
+msgid "Keyboard shortcuts"
+msgstr "Skróty klawiszowe"
+
+msgid "Keyboard shortcuts saved"
+msgstr "Zapisano skróty klawiszowe"
+
+msgid "Loop &information"
+msgstr "Informacja o &pętli"
+
+msgid "Loop configuration"
+msgstr "Zapętlenie"
+
+msgid "Loop end exceeds track length."
+msgstr "Koniec pętli przekracza długość utworu."
+
+msgid "Loop end must be greater than start"
+msgstr "Koniec pętli musi być większy od początku"
+
+msgid "Loop end must be greater than start."
+msgstr "Koniec pętli musi być większy niż początek."
+
+msgid "Loop from %.2f to %.2f seconds, looping %s"
+msgstr "Pętla od %.2f do %.2f sekundy, zapętlenie %s"
+
+msgid "Loop not active"
+msgstr "Pętla nieaktywna"
+
+msgid "Loop playing"
+msgstr "Pętla gra"
+
+msgid "Loop removed"
+msgstr "Pętla usunięta"
+
+msgid "Loop removed from %s"
+msgstr "Usunięto pętlę z utworu %s"
+
+msgid "M3U playlists (*.m3u)|*.m3u|All files|*.*"
+msgstr "Playlisty M3U (*.m3u)|*.m3u|Wszystkie pliki|*.*"
+
+msgid "Marked track is not available"
+msgstr "Oznaczony utwór nie jest dostępny"
+
+msgid "Marker mode disabled"
+msgstr "Tryb od znacznika wyłączony"
+
+msgid "Marker mode enabled"
+msgstr "Tryb od znacznika włączony"
+
+msgid "Marker mode enabled, no marked track available"
+msgstr "Tryb od znacznika włączony, brak oznaczonego utworu"
+
+msgid "Marker mode enabled. Track %s in playlist %s."
+msgstr "Tryb od znacznika włączony. Utwór %s w playliście %s."
+
+msgid "Marker removed"
+msgstr "Znacznik usunięty"
+
+msgid "Marker set on %s in playlist %s"
+msgstr "Ustawiono znacznik na utworze %s w playliście %s"
+
+msgid "Move &down"
+msgstr "Przenieś w &dół"
+
+msgid "Move &up"
+msgstr "Przenieś w &górę"
+
+msgid "Moved %d %s"
+msgstr "Przeniesiono %d %s"
+
+msgid "Moved %s"
+msgstr "Przeniesiono %s"
+
+msgid "Name"
+msgstr "Nazwa"
+
+msgid "New playlist"
+msgstr "Nowa playlista"
+
+msgid "New shortcut"
+msgstr "Nowy skrót"
+
+msgid "No active loop"
+msgstr "Brak aktywnej pętli"
+
+msgid "No active playback for this playlist"
+msgstr "Brak aktywnego odtwarzania dla tej playlisty"
+
+msgid "No audio devices available"
+msgstr "Brak dostępnych urządzeń audio"
+
+msgid "No configured player for playlist %s is available"
+msgstr "Żaden skonfigurowany odtwarzacz playlisty %s nie jest dostępny"
+
+msgid "No players configured"
+msgstr "Brak skonfigurowanych odtwarzaczy"
+
+msgid "No playlists available"
+msgstr "Brak playlist do odtwarzania"
+
+msgid "No playlists available. Use %s to add a new playlist."
+msgstr "Brak playlist. Użyj %s aby dodać nową playlistę."
+
+msgid "No playlists available. Use the Playlist menu to add one."
+msgstr "Brak playlist. Użyj menu Playlista aby dodać nową playlistę."
+
+msgid "No scheduled tracks available"
+msgstr "Brak zaplanowanych utworów"
+
+msgid "No scheduled tracks in playlist %s"
+msgstr "Brak zaplanowanych utworów w playliście %s"
+
+msgid "No track selected"
+msgstr "Brak zaznaczonego utworu"
+
+msgid "No tracks selected"
+msgstr "Brak wybranych utworów"
+
+msgid "No tracks were added"
+msgstr "Nie dodano żadnych utworów"
+
+msgid "Nothing to redo"
+msgstr "Brak operacji do ponowienia"
+
+msgid "Nothing to undo"
+msgstr "Brak operacji do cofnięcia"
+
+msgid "Number of players:"
+msgstr "Liczba odtwarzaczy:"
+
+msgid "PFL device is currently in use"
+msgstr "Urządzenie PFL jest aktualnie zajęte przez odtwarzanie"
+
+msgid "PFL device:"
+msgstr "Urządzenie PFL:"
+
+msgid "Pasted %d %s"
+msgstr "Wklejono %d %s"
+
+msgid "Pause error: %s"
+msgstr "Błąd pauzy: %s"
+
+msgid "Pick loop start and end times in seconds. Preview plays on the PFL output."
+msgstr "Wybierz początek i koniec pętli (w sekundach). Podsłuch odtwarzany jest na wyjściu PFL."
+
+msgid "Playback"
+msgstr "Odtwarzanie"
+
+msgid "Playback error: %s"
+msgstr "Błąd odtwarzania: %s"
+
+msgid "Player %d"
+msgstr "Odtwarzacz %d"
+
+msgid "Player stop error: %s"
+msgstr "Błąd zatrzymania playera: %s"
+
+msgid "Players"
+msgstr "Odtwarzacze"
+
+msgid "Players: %s"
+msgstr "Odtwarzacze: %s"
+
+msgid "Playing %s from playlist %s"
+msgstr "Odtwarzanie %s z playlisty %s"
+
+msgid "Playlist %s added"
+msgstr "Dodano playlistę %s"
+
+msgid "Playlist %s finished track with fade out"
+msgstr "Playlista %s zakończyła utwór fade out"
+
+msgid "Playlist file is empty"
+msgstr "Plik playlisty jest pusty"
+
+msgid "Playlist is empty"
+msgstr "Playlista jest pusta"
+
+msgid "Playlist name cannot be empty."
+msgstr "Nazwa playlisty nie może być pusta."
+
+msgid "Playlist name:"
+msgstr "Nazwa playlisty:"
+
+msgid "Playlist player configuration"
+msgstr "Konfiguracja odtwarzaczy playlisty"
+
+msgid "Playlist saved to %s"
+msgstr "Zapisano playlistę do pliku %s"
+
+msgid "Polish"
+msgstr "Polski"
+
+msgid "Pre-fader listen (PFL)"
+msgstr "Podsłuch (PFL)"
+
+msgid "Press the desired key combination. Press Esc to cancel."
+msgstr "Naciśnij żądaną kombinację klawiszy. Użyj Esc, aby anulować."
+
+msgid "Preview"
+msgstr "Podsłuch"
+
+msgid "Preview error: %s"
+msgstr "Błąd podsłuchu: %s"
+
+msgid "Progress"
+msgstr "Postęp"
+
+msgid "Re&do"
+msgstr "P&onów"
+
+msgid "Ready"
+msgstr "Gotowy do emisji"
+
+msgid "Redo delete"
+msgstr "Ponowiono usunięcie"
+
+msgid "Redo move"
+msgstr "Ponowiono przeniesienie"
+
+msgid "Redo operation"
+msgstr "Ponowiono operację"
+
+msgid "Redo paste"
+msgstr "Ponowiono wklejenie"
+
+msgid "Remove"
+msgstr "Usuń"
+
+msgid "Remove &marker"
+msgstr "Usuń &znacznik"
+
+msgid "Remove loop"
+msgstr "Usuń pętlę"
+
+msgid "Remove the saved loop and disable looping"
+msgstr "Usuwa zapisaną pętlę i wyłącza zapętlenie"
+
+msgid "Removed device assignments for playlist %s"
+msgstr "Usunięto przypisania dla playlisty %s"
+
+msgid "Removed played track %s"
+msgstr "Usunięto odtworzony utwór %s"
+
+msgid "Restore default"
+msgstr "Przywróć domyślny"
+
+msgid "Save playlist"
+msgstr "Zapisz playlistę"
+
+msgid "Scope"
+msgstr "Zakres"
+
+msgid "Select a playlist first"
+msgstr "Najpierw wybierz playlistę"
+
+msgid "Select audio files"
+msgstr "Wybierz utwory"
+
+msgid "Select playlist"
+msgstr "Wybierz playlistę"
+
+msgid "Selected PFL device is not available"
+msgstr "Wybrane urządzenie PFL nie jest dostępne"
+
+msgid "Shortcut"
+msgstr "Skrót"
+
+msgid "Start (s):"
+msgstr "Początek (s)"
+
+msgid "Start preview (Ctrl+P)"
+msgstr "Rozpoczyna podsłuch (Ctrl+P)"
+
+msgid "Startup playlist"
+msgstr "Playlista startowa"
+
+msgid "Startup playlists"
+msgstr "Playlisty startowe"
+
+msgid "Status"
+msgstr "Status"
+
+msgid "Stop preview"
+msgstr "Zatrzymaj podsłuch"
+
+msgid "Stop preview (Ctrl+Shift+P)"
+msgstr "Zatrzymuje podsłuch (Ctrl+Shift+P)"
+
+msgid "This shortcut is already assigned to another action."
+msgstr "Taki skrót jest już przypisany do innej akcji."
+
+msgid "Title"
+msgstr "Tytuł"
+
+msgid "Toggle track &loop"
+msgstr "Przełącz zapętlenie &utworu"
+
+msgid "Track has no loop defined"
+msgstr "Utwór nie ma zdefiniowanej pętli"
+
+msgid "Track looping %s"
+msgstr "Zapętlenie utworu %s"
+
+msgid "Track looping disabled"
+msgstr "Zapętlenie utworu wyłączone"
+
+msgid "Unable to redo last operation"
+msgstr "Nie udało się ponowić operacji"
+
+msgid "Unable to undo last operation"
+msgstr "Nie udało się cofnąć operacji"
+
+msgid "Unavailable devices for playlist %s: %s"
+msgstr "Urządzenia niedostępne dla playlisty %s: %s"
+
+msgid "Undo delete"
+msgstr "Cofnięto usunięcie"
+
+msgid "Undo move"
+msgstr "Cofnięto przeniesienie"
+
+msgid "Undo operation"
+msgstr "Cofnięto operację"
+
+msgid "Undo paste"
+msgstr "Cofnięto wklejenie"
+
+msgid "active"
+msgstr "aktywne"
+
+msgid "disabled"
+msgstr "wyłączone"
+
+msgid "down"
+msgstr "w dół"
+
+msgid "e.g. Morning"
+msgstr "Np. Poranek"
+
+msgid "enabled"
+msgstr "włączony"
+
+msgid "track"
+msgstr "utwór"
+
+msgid "tracks"
+msgstr "utwory"
+
+msgid "up"
+msgstr "w górę"
+
+msgid "Language change will apply after restarting the application."
+msgstr "Zmiana języka zostanie zastosowana po ponownym uruchomieniu aplikacji."
+
+msgid "Information"
+msgstr "Informacja"
+
+msgid "Scheduled"
+msgstr "Planowany"
+
+msgid "Playing"
+msgstr "Odtwarzanie"
+
+msgid "Paused"
+msgstr "Pauza"
+
+msgid "Played"
+msgstr "Odegrany"
