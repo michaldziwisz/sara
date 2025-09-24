@@ -74,6 +74,11 @@ class _BassLibrary:
         search_paths.append(base_dir / "vendor")
         platform_dir = base_dir / "vendor" / ("windows" if sys.platform.startswith("win") else "linux")
         search_paths.append(platform_dir)
+        if getattr(sys, "frozen", False):  # pragma: no cover - tylko w buildach
+            try:
+                search_paths.append(Path(sys.executable).resolve().parent)
+            except Exception:  # pragma: no cover - fallback
+                pass
         for directory in search_paths:
             for name in names:
                 candidate = directory / name

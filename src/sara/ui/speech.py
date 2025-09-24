@@ -111,6 +111,13 @@ class _NvdaClient:
             if candidate.exists():
                 yield candidate
 
+        exe_dir = _executable_dir()
+        if exe_dir:
+            for name in names:
+                candidate = exe_dir / name
+                if candidate.exists():
+                    yield candidate
+
         program_files_keys = ("ProgramW6432", "ProgramFiles", "ProgramFiles(x86)")
         for env_key in program_files_keys:
             base = os.environ.get(env_key)
@@ -145,3 +152,12 @@ def speak_text(message: str) -> bool:
 
 
 __all__ = ["speak_text"]
+def _executable_dir() -> Optional[Path]:
+    """Return directory of frozen executable when running from PyInstaller."""
+
+    if getattr(sys, "frozen", False):  # type: ignore[attr-defined]
+        try:
+            return Path(sys.executable).resolve().parent
+        except Exception:  # pragma: no cover - fallback only
+            return None
+    return None
