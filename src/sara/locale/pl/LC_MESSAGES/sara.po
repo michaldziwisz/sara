@@ -46,6 +46,9 @@ msgstr "&Nowa playlista"
 msgid "&Options…"
 msgstr "&Opcje…"
 
+msgid "Options"
+msgstr "Opcje"
+
 msgid "&Paste"
 msgstr "Wk&lej"
 

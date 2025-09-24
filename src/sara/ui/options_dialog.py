@@ -74,7 +74,7 @@ class OptionsDialog(wx.Dialog):
     """Main application settings window."""
 
     def __init__(self, parent: wx.Window, *, settings: SettingsManager, audio_engine: AudioEngine) -> None:
-        super().__init__(parent, title="Opcje", style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        super().__init__(parent, title=_("Options"), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._settings = settings
         self._audio_engine = audio_engine
 
