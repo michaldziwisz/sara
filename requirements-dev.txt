@@ -2,7 +2,6 @@ wxPython>=4.2.1
 sounddevice>=0.4.6
 soundfile>=0.12.1
 pycaw>=20181226
-pythonnet>=3.0.3
 pyyaml>=6.0.1
 mutagen>=1.47.0
 numpy>=1.23.0
