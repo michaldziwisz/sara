@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import gettext
+import gettext as _gettext
 from pathlib import Path
 
 
@@ -12,13 +12,13 @@ _DOMAIN = "sara"
 
 class _I18n:
     def __init__(self) -> None:
-        self._translation = gettext.NullTranslations()
+        self._translation = _gettext.NullTranslations()
 
     def set_language(self, language: str | None) -> None:
         languages = None
         if language:
             languages = [language]
-        self._translation = gettext.translation(
+        self._translation = _gettext.translation(
             _DOMAIN,
             localedir=_LOCALE_DIR,
             languages=languages,
@@ -45,4 +45,3 @@ def gettext(message: str) -> str:
 
 
 __all__ = ["set_language", "gettext"]
-
