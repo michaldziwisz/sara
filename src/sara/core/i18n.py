@@ -3,11 +3,28 @@
 from __future__ import annotations
 
 import gettext as _gettext
+import sys
 from pathlib import Path
 
 
-_LOCALE_DIR = Path(__file__).resolve().parent.parent / "locale"
 _DOMAIN = "sara"
+
+
+def _default_locale_dir() -> Path:
+    """Return directory containing locale files, handling frozen builds."""
+
+    package_dir = Path(__file__).resolve().parent.parent / "locale"
+    if getattr(sys, "frozen", False):  # pragma: no cover - only in packaged app
+        candidates = []
+        exe_dir = Path(sys.executable).resolve().parent
+        candidates.append(exe_dir / "locale")
+        meipass = Path(getattr(sys, "_MEIPASS", exe_dir))
+        candidates.append(meipass / "sara" / "locale")
+        candidates.append(meipass / "locale")
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+    return package_dir
 
 
 class _I18n:
@@ -20,7 +37,7 @@ class _I18n:
             languages = [language]
         self._translation = _gettext.translation(
             _DOMAIN,
-            localedir=_LOCALE_DIR,
+            localedir=_default_locale_dir(),
             languages=languages,
             fallback=True,
         )

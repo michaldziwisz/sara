@@ -29,7 +29,7 @@ jobs:
           pip install pyinstaller pyinstaller-hooks-contrib
 
       - name: Build executable
-        run: pyinstaller --noconfirm --noconsole --name SARA --collect-data sara --collect-binaries sara --add-data "config;config" --paths src src\sara\app.py
+        run: pyinstaller --noconfirm --noconsole --name SARA --collect-data sara --collect-binaries sara --add-data "config;config" --add-data "src/sara/locale;sara/locale" --paths src src\sara\app.py
 
       - name: Copy NVDA and BASS DLLs
         run: |
