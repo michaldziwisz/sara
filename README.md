@@ -52,6 +52,7 @@ PYTHONPATH=src python -m pytest
 - Ensure locale and vendor binaries are included (`MANIFEST.in`, `pyproject.toml`).
 - Build distributables with `python -m build`; the `sara` console entry starts the GUI.
 - GitHub Actions provides a **Windows Build** workflow that publishes a downloadable `.zip` (containing `dist/SARA`) on every push to `main` and on tagged releases.
+- The CI bundle includes NVDA controller DLLs and the Windows `bass.dll` so speech and optional BASS playback work out of the box.
 - For frozen Windows builds, bundle NVDA controller DLLs and optional BASS binaries alongside the executable.
 
 ### Roadmap highlights
@@ -115,6 +116,7 @@ PYTHONPATH=src python -m pytest
 - Zbuduj paczki poleceniem `python -m build`; po instalacji dostępny jest skrypt `sara` uruchamiający GUI.
 - Tworząc wersję Windows (np. PyInstaller), dołącz biblioteki NVDA oraz ewentualne biblioteki BASS obok pliku wykonywalnego.
 - GitHub Actions udostępnia workflow **Windows Build**, który na każdym pushu do `main` (oraz przy wydaniu) buduje paczkę `.zip` z katalogiem `dist/SARA` gotowym do pobrania.
+- Pakiet z CI zawiera biblioteki NVDA oraz `bass.dll` dla Windows, więc mowa i opcjonalne odtwarzanie BASS działają od razu.
 
 ### Plany
 - Rozbudowa komunikatów dostępności.

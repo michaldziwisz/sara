@@ -30,7 +30,13 @@ jobs:
 
       - name: Build executable
         run: |
-          pyinstaller --noconfirm --noconsole --name SARA --collect-data sara --collect-binaries sara --add-data "config;config" --paths src src\sara\app.py
+          pyinstaller --noconfirm --noconsole --name SARA \
+            --collect-data sara --collect-binaries sara \
+            --add-data "config;config" \
+            --add-binary "src/sara/ui/nvdaControllerClient.dll;." \
+            --add-binary "src/sara/ui/nvdaControllerClient64.dll;." \
+            --add-binary "src/sara/audio/vendor/windows/bass.dll;." \
+            --paths src src\sara\app.py
 
       - name: Prepare artifact bundle
         run: |
