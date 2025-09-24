@@ -50,6 +50,7 @@ PYTHONPATH=src python -m pytest
 ### Packaging & release
 - Ensure locale and vendor binaries are included (`MANIFEST.in`, `pyproject.toml`).
 - Build distributables with `python -m build`; the `sara` console entry starts the GUI.
+- GitHub Actions provides a **Windows Build** workflow that publishes a downloadable `.zip` (containing `dist/SARA`) on every push to `main` and on tagged releases.
 - For frozen Windows builds, bundle NVDA controller DLLs and optional BASS binaries alongside the executable.
 
 ### Roadmap highlights
@@ -111,6 +112,7 @@ PYTHONPATH=src python -m pytest
 - Dopilnuj, by pliki lokalizacyjne i binaria NVDA/BASS trafiały do pakietu (zob. `MANIFEST.in`, `pyproject.toml`).
 - Zbuduj paczki poleceniem `python -m build`; po instalacji dostępny jest skrypt `sara` uruchamiający GUI.
 - Tworząc wersję Windows (np. PyInstaller), dołącz biblioteki NVDA oraz ewentualne biblioteki BASS obok pliku wykonywalnego.
+- GitHub Actions udostępnia workflow **Windows Build**, który na każdym pushu do `main` (oraz przy wydaniu) buduje paczkę `.zip` z katalogiem `dist/SARA` gotowym do pobrania.
 
 ### Plany
 - Rozbudowa komunikatów dostępności.

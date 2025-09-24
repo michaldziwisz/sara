@@ -1,0 +1,56 @@
+name: Windows Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install pyinstaller pyinstaller-hooks-contrib
+
+      - name: Build executable
+        run: |
+          pyinstaller --noconfirm --noconsole --name SARA --collect-data sara --collect-binaries sara --add-data "config;config" --paths src src\sara\app.py
+
+      - name: Prepare artifact bundle
+        run: |
+          $artifact = "SARA-windows"
+          New-Item -ItemType Directory -Path dist\$artifact | Out-Null
+          Copy-Item -Recurse -Path dist\SARA\* -Destination dist\$artifact\
+          Copy-Item README.md dist\$artifact\
+          Copy-Item LICENSE dist\$artifact\
+          Compress-Archive -Path dist\$artifact\* -DestinationPath dist\$artifact.zip
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SARA-windows
+          path: dist/SARA-windows.zip
+
+      - name: Attach asset to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/SARA-windows.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
