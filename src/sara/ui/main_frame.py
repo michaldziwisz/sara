@@ -123,6 +123,7 @@ class MainFrame(wx.Frame):
 
         self.CreateStatusBar()
         self.SetStatusText(_("Ready"))
+        wx.ToolTip.Enable(False)
         self._fade_duration = max(self._settings.get_playback_fade_seconds(), 0.0)
         self._create_menu_bar()
         self._create_ui()
@@ -1363,12 +1364,10 @@ class MainFrame(wx.Frame):
                         return
         for index, track in enumerate(panel.model.items):
             if track.id == item_id:
-                cancel_speech()
+                self._silence_screen_reader()
                 panel.select_index(index)
                 self._focus_lock[playlist_id] = False
-                wx.CallLater(0, cancel_speech)
-                wx.CallLater(40, cancel_speech)
-                wx.CallLater(120, cancel_speech)
+                self._silence_screen_reader()
                 break
 
     def _compute_intro_remaining(self, item: PlaylistItem, absolute_seconds: float | None = None) -> float | None:
@@ -1937,6 +1936,11 @@ class MainFrame(wx.Frame):
             if spoken_message == "":
                 return
             speak_text(spoken_message if spoken_message is not None else message)
+
+    def _silence_screen_reader(self) -> None:
+        cancel_speech()
+        for delay in (0, 30, 70, 150, 260):
+            wx.CallLater(delay, cancel_speech)
 
     def _announce(self, message: str) -> None:
         self._announce_event("general", message)
