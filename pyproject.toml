@@ -37,4 +37,5 @@ where = ["src"]
   "audio/vendor/**/*.dll",
   "audio/vendor/**/*.so",
   "audio/vendor/**/*.txt",
+  "audio/media/**/*.wav",
 ]

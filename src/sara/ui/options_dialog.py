@@ -112,6 +112,15 @@ class OptionsDialog(wx.Dialog):
         self._focus_playing_checkbox.SetValue(self._settings.get_focus_playing_track())
         playback_box.Add(self._focus_playing_checkbox, 0, wx.ALL, 5)
 
+        intro_row = wx.BoxSizer(wx.HORIZONTAL)
+        intro_label = wx.StaticText(self, label=_("Intro alert (s):"))
+        self._intro_alert_ctrl = wx.SpinCtrlDouble(self, min=0.0, max=60.0, inc=0.5)
+        self._intro_alert_ctrl.SetDigits(1)
+        self._intro_alert_ctrl.SetValue(self._settings.get_intro_alert_seconds())
+        intro_row.Add(intro_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        intro_row.Add(self._intro_alert_ctrl, 0, wx.ALIGN_CENTER_VERTICAL)
+        playback_box.Add(intro_row, 0, wx.ALL, 5)
+
         language_row = wx.BoxSizer(wx.HORIZONTAL)
         language_label = wx.StaticText(self, label=_("Interface language:"))
         self._language_codes = ["en", "pl"]
@@ -220,6 +229,7 @@ class OptionsDialog(wx.Dialog):
         self._settings.set_alternate_play_next(self._alternate_checkbox.GetValue())
         self._settings.set_auto_remove_played(self._auto_remove_checkbox.GetValue())
         self._settings.set_focus_playing_track(self._focus_playing_checkbox.GetValue())
+        self._settings.set_intro_alert_seconds(self._intro_alert_ctrl.GetValue())
         self._settings.set_startup_playlists(self._playlists)
         self._settings.set_pfl_device(self._selected_pfl_device())
         self._settings.set_language(self._language_codes[self._language_choice.GetSelection()])

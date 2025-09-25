@@ -22,6 +22,7 @@ class AudioMetadata:
     cue_in_seconds: Optional[float] = None
     segue_seconds: Optional[float] = None
     overlap_seconds: Optional[float] = None
+    intro_seconds: Optional[float] = None
     loop_start_seconds: Optional[float] = None
     loop_end_seconds: Optional[float] = None
     loop_enabled: bool = False
@@ -276,6 +277,7 @@ def extract_metadata(path: Path) -> AudioMetadata:
     cue = None
     segue = None
     overlap = None
+    intro = None
 
     def _parse_numeric_tokens(values, assume_ms=True):
         for value in values:
@@ -304,7 +306,7 @@ def extract_metadata(path: Path) -> AudioMetadata:
             txxx_list = []
         if txxx_list:
             lookup = {getattr(tag, "desc", "").lower(): tag for tag in txxx_list if getattr(tag, "desc", None)}
-            for key, target in (("cue", "cue"), ("cue in", "cue"), ("segue", "segue"), ("overlap", "overlap")):
+            for key, target in (("cue", "cue"), ("cue in", "cue"), ("segue", "segue"), ("overlap", "overlap"), ("intro", "intro")):
                 tag = lookup.get(key)
                 if tag:
                     value = _parse_numeric_tokens(tag.text)
@@ -315,6 +317,8 @@ def extract_metadata(path: Path) -> AudioMetadata:
                             segue = value
                         elif key == "overlap":
                             overlap = value
+                        elif key == "intro":
+                            intro = value
 
     if cue is None:
         for candidate in ("Cue", "CueDB", "CueIn"):
@@ -337,6 +341,13 @@ def extract_metadata(path: Path) -> AudioMetadata:
                 overlap = _parse_numeric_tokens([text])
                 if overlap is not None:
                     break
+    if intro is None:
+        for candidate in ("Intro", "IntroDB"):
+            text = _scan_ape_value(path, candidate)
+            if text:
+                intro = _parse_numeric_tokens([text])
+                if intro is not None:
+                    break
 
     loop_start, loop_end, loop_enabled = _scan_loop_values(path)
     if loop_start is None or loop_end is None:
@@ -349,6 +360,7 @@ def extract_metadata(path: Path) -> AudioMetadata:
         cue_in_seconds=cue,
         segue_seconds=segue,
         overlap_seconds=overlap,
+        intro_seconds=intro,
         loop_start_seconds=loop_start,
         loop_end_seconds=loop_end,
         loop_enabled=loop_enabled,

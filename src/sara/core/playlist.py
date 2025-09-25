@@ -27,6 +27,7 @@ class PlaylistItem:
     cue_in_seconds: Optional[float] = None
     segue_seconds: Optional[float] = None
     overlap_seconds: Optional[float] = None
+    intro_seconds: Optional[float] = None
     loop_start_seconds: Optional[float] = None
     loop_end_seconds: Optional[float] = None
     loop_enabled: bool = False

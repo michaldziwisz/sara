@@ -53,6 +53,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "alternate_play_next": False,
         "auto_remove_played": False,
         "focus_playing_track": True,
+        "intro_alert_seconds": 5.0,
     },
     "startup": {
         "playlists": [],
@@ -172,6 +173,18 @@ class SettingsManager:
     def set_focus_playing_track(self, enabled: bool) -> None:
         playback = self._data.setdefault("playback", {})
         playback["focus_playing_track"] = bool(enabled)
+
+    def get_intro_alert_seconds(self) -> float:
+        playback = self._data.get("playback", {})
+        value = playback.get("intro_alert_seconds", DEFAULT_CONFIG["playback"]["intro_alert_seconds"])
+        try:
+            return max(0.0, float(value))
+        except (TypeError, ValueError):
+            return DEFAULT_CONFIG["playback"]["intro_alert_seconds"]
+
+    def set_intro_alert_seconds(self, seconds: float) -> None:
+        playback = self._data.setdefault("playback", {})
+        playback["intro_alert_seconds"] = max(0.0, float(seconds))
 
     def get_language(self) -> str:
         general = self._data.get("general", {})

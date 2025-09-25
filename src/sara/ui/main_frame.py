@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from importlib.resources import as_file, files
 import logging
+import tempfile
 from pathlib import Path
 from threading import Event
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import wx
 
@@ -38,6 +40,8 @@ class PlaybackContext:
     path: Path
     device_id: str
     slot_index: int
+    intro_seconds: float | None = None
+    intro_alert_triggered: bool = False
 
 
 @dataclass
@@ -109,11 +113,13 @@ class MainFrame(wx.Frame):
         self._alternate_play_next: bool = self._settings.get_alternate_play_next()
         self._auto_remove_played: bool = self._settings.get_auto_remove_played()
         self._focus_playing_track: bool = self._settings.get_focus_playing_track()
+        self._intro_alert_seconds: float = self._settings.get_intro_alert_seconds()
         self._pfl_device_id: str | None = self._settings.get_pfl_device()
         self._clipboard_items: List[Dict[str, Any]] = []
         self._undo_stack: list[UndoAction] = []
         self._redo_stack: list[UndoAction] = []
         self._focus_lock: Dict[str, bool] = {}
+        self._intro_alert_players: list[Tuple[Player, Path]] = []
 
         self.CreateStatusBar()
         self.SetStatusText(_("Ready"))
@@ -495,6 +501,7 @@ class MainFrame(wx.Frame):
                 cue_in_seconds=metadata.cue_in_seconds,
                 segue_seconds=metadata.segue_seconds,
                 overlap_seconds=metadata.overlap_seconds,
+                intro_seconds=metadata.intro_seconds,
                 loop_start_seconds=metadata.loop_start_seconds,
                 loop_end_seconds=metadata.loop_end_seconds,
             )
@@ -582,6 +589,7 @@ class MainFrame(wx.Frame):
                 cue_in_seconds=metadata.cue_in_seconds,
                 segue_seconds=metadata.segue_seconds,
                 overlap_seconds=metadata.overlap_seconds,
+                intro_seconds=metadata.intro_seconds,
                 loop_start_seconds=metadata.loop_start_seconds,
                 loop_end_seconds=metadata.loop_end_seconds,
                 loop_enabled=metadata.loop_enabled,
@@ -680,6 +688,7 @@ class MainFrame(wx.Frame):
             self._alternate_play_next = self._settings.get_alternate_play_next()
             self._auto_remove_played = self._settings.get_auto_remove_played()
             self._focus_playing_track = self._settings.get_focus_playing_track()
+            self._intro_alert_seconds = self._settings.get_intro_alert_seconds()
             new_language = self._settings.get_language()
             if new_language != current_language:
                 set_language(new_language)
@@ -767,6 +776,10 @@ class MainFrame(wx.Frame):
 
         state = _("enabled") if item.loop_enabled else _("disabled")
         self._announce(_("Track looping %s") % state)
+        if not item.loop_enabled:
+            remaining = self._compute_intro_remaining(item)
+            if remaining is not None:
+                self._announce_intro_remaining(remaining)
         panel.refresh()
 
     def _on_loop_info(self, _event: wx.CommandEvent) -> None:
@@ -779,13 +792,24 @@ class MainFrame(wx.Frame):
             self._announce(_("No track selected"))
             return
         item = model.items[index]
+        messages: list[str] = []
         if item.has_loop():
             start = item.loop_start_seconds or 0.0
             end = item.loop_end_seconds or 0.0
             state = _("active") if item.loop_enabled else _("disabled")
-            self._announce(_("Loop from %.2f to %.2f seconds, looping %s") % (start, end, state))
+            messages.append(_("Loop from %.2f to %.2f seconds, looping %s") % (start, end, state))
         else:
-            self._announce(_("Track has no loop defined"))
+            messages.append(_("Track has no loop defined"))
+
+        intro = item.intro_seconds
+        if intro is not None:
+            cue = item.cue_in_seconds or 0.0
+            intro_length = max(0.0, intro - cue)
+            messages.append(_("Intro length: {seconds:.1f} seconds").format(seconds=intro_length))
+        else:
+            messages.append(_("Intro not defined"))
+
+        self._announce(". ".join(messages))
 
     def _apply_loop_setting_to_playback(self, *, playlist_id: str | None = None, item_id: str | None = None) -> None:
         for (pl_id, item_id_key), context in list(self._playback_contexts.items()):
@@ -962,6 +986,7 @@ class MainFrame(wx.Frame):
             path=item.path,
             device_id=device_id,
             slot_index=slot_index,
+            intro_seconds=item.intro_seconds,
         )
         self._auto_mix_state.pop(key, None)
         panel.mark_item_status(item.id, item.status)
@@ -1098,6 +1123,7 @@ class MainFrame(wx.Frame):
         item.update_progress(seconds)
         panel.update_progress(item_id)
         self._maybe_focus_playing_item(panel, item_id)
+        self._consider_intro_alert(panel, item, context_entry, seconds)
 
         if self._auto_mix_enabled:
             key = (playlist_id, item_id)
@@ -1251,6 +1277,7 @@ class MainFrame(wx.Frame):
                     "cue_in": item.cue_in_seconds,
                     "segue": item.segue_seconds,
                     "overlap": item.overlap_seconds,
+                    "intro": item.intro_seconds,
                     "loop_start": item.loop_start_seconds,
                     "loop_end": item.loop_end_seconds,
                     "loop_enabled": item.loop_enabled,
@@ -1268,6 +1295,7 @@ class MainFrame(wx.Frame):
             cue_in_seconds=data.get("cue_in"),
             segue_seconds=data.get("segue"),
             overlap_seconds=data.get("overlap"),
+            intro_seconds=data.get("intro"),
             loop_start_seconds=data.get("loop_start"),
             loop_end_seconds=data.get("loop_end"),
             loop_enabled=bool(data.get("loop_enabled")),
@@ -1309,6 +1337,116 @@ class MainFrame(wx.Frame):
                 panel.select_index(index)
                 self._focus_lock[playlist_id] = False
                 break
+
+    def _compute_intro_remaining(self, item: PlaylistItem, absolute_seconds: float | None = None) -> float | None:
+        intro = item.intro_seconds
+        if intro is None:
+            return None
+        if absolute_seconds is None:
+            absolute = (item.cue_in_seconds or 0.0) + item.current_position
+        else:
+            absolute = absolute_seconds
+        remaining = intro - absolute
+        if remaining <= 0:
+            return 0.0
+        return remaining
+
+    def _announce_intro_remaining(self, remaining: float) -> None:
+        message = _("Intro remaining: {seconds:.0f} seconds").format(seconds=max(0.0, remaining))
+        self._announce(message)
+
+    def _cleanup_intro_alert_player(self, player: Player) -> None:
+        for idx, (stored_player, temp_path) in enumerate(list(self._intro_alert_players)):
+            if stored_player is player:
+                try:
+                    stored_player.stop()
+                except Exception:  # pylint: disable=broad-except
+                    pass
+                try:
+                    temp_path.unlink(missing_ok=True)
+                except Exception:  # pylint: disable=broad-except
+                    pass
+                self._intro_alert_players.pop(idx)
+                break
+
+    def _play_intro_alert(self) -> bool:
+        if self._intro_alert_seconds <= 0:
+            return False
+        pfl_device_id = self._pfl_device_id or self._settings.get_pfl_device()
+        if not pfl_device_id:
+            return False
+        if self._preview_context:
+            return False
+        known_devices = {device.id for device in self._audio_engine.get_devices()}
+        if pfl_device_id not in known_devices:
+            self._audio_engine.refresh_devices()
+            known_devices = {device.id for device in self._audio_engine.get_devices()}
+        if pfl_device_id not in known_devices:
+            return False
+        try:
+            player = self._audio_engine.create_player(pfl_device_id)
+        except Exception:  # pylint: disable=broad-except
+            return False
+
+        try:
+            resource = files("sara.audio.media").joinpath("beep.wav")
+            with resource.open("rb") as source:
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+                tmp.write(source.read())
+                tmp_path = Path(tmp.name)
+        except Exception:  # pylint: disable=broad-except
+            try:
+                player.stop()
+            except Exception:  # pylint: disable=broad-except
+                pass
+            if 'tmp' in locals():
+                tmp.close()
+            return False
+        else:
+            tmp.close()
+
+        try:
+            player.set_finished_callback(lambda _item_id: wx.CallAfter(self._cleanup_intro_alert_player, player))
+            player.set_progress_callback(None)
+            player.play("intro-alert", str(tmp_path))
+        except Exception:  # pylint: disable=broad-except
+            try:
+                player.stop()
+            except Exception:  # pylint: disable=broad-except
+                pass
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:  # pylint: disable=broad-except
+                pass
+            return False
+
+        self._intro_alert_players.append((player, tmp_path))
+        return True
+
+    def _consider_intro_alert(
+        self,
+        panel: PlaylistPanel,
+        item: PlaylistItem,
+        context: PlaybackContext,
+        absolute_seconds: float,
+    ) -> None:
+        intro_end = context.intro_seconds if context.intro_seconds is not None else item.intro_seconds
+        if intro_end is None:
+            return
+        if context.intro_alert_triggered:
+            return
+        threshold = self._intro_alert_seconds
+        if threshold <= 0:
+            return
+        remaining = intro_end - absolute_seconds
+        if remaining <= 0:
+            context.intro_alert_triggered = True
+            return
+        if remaining <= threshold:
+            played = self._play_intro_alert()
+            if not played:
+                self._announce_intro_remaining(remaining)
+            context.intro_alert_triggered = True
 
     def _sync_marker_reference(self, model: PlaylistModel) -> None:
         marker_item = next((item for item in model.items if item.is_marker), None)
