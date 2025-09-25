@@ -1941,10 +1941,8 @@ class MainFrame(wx.Frame):
 
     def _silence_screen_reader(self) -> None:
         cancel_speech()
-        speak_text(" ")
         for delay in (0, 40, 90, 180, 320, 520, 800, 1200, 1600, 2200):
             wx.CallLater(delay, cancel_speech)
-            wx.CallLater(delay + 10, speak_text, " ")
 
     def _announce(self, message: str) -> None:
         self._announce_event("general", message)
