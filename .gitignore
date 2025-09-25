@@ -27,3 +27,15 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Media samples
+*.mp3
+*.wav
+*.flac
+*.ogg
+*.aac
+*.m4a
+*.wma
+*.aif
+*.aiff
+*.opus
