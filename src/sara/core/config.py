@@ -53,7 +53,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "fade_out_seconds": 0.0,
         "alternate_play_next": False,
         "auto_remove_played": False,
-        "focus_playing_track": True,
+        "focus_playing_track": False,
         "intro_alert_seconds": 5.0,
     },
     "startup": {
@@ -65,6 +65,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     },
     "accessibility": {
         "announcements": {},
+        "follow_playing_selection": False,
     },
 }
 
@@ -175,12 +176,25 @@ class SettingsManager:
         playback["auto_remove_played"] = bool(enabled)
 
     def get_focus_playing_track(self) -> bool:
+        accessibility = self._data.get("accessibility", {})
+        if "follow_playing_selection" in accessibility:
+            return bool(accessibility.get("follow_playing_selection", False))
+
+        # Backward compatibility: older builds stored the flag under playback.
         playback = self._data.get("playback", {})
-        return bool(playback.get("focus_playing_track", DEFAULT_CONFIG["playback"]["focus_playing_track"]))
+        value = playback.get("focus_playing_track")
+        if value is None:
+            return DEFAULT_CONFIG["accessibility"]["follow_playing_selection"]
+        if value is False:
+            return False
+        return DEFAULT_CONFIG["accessibility"]["follow_playing_selection"]
 
     def set_focus_playing_track(self, enabled: bool) -> None:
+        accessibility = self._data.setdefault("accessibility", {})
+        accessibility["follow_playing_selection"] = bool(enabled)
+        # Remove legacy location to keep saved config clean.
         playback = self._data.setdefault("playback", {})
-        playback["focus_playing_track"] = bool(enabled)
+        playback.pop("focus_playing_track", None)
 
     def get_intro_alert_seconds(self) -> float:
         playback = self._data.get("playback", {})

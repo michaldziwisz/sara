@@ -113,13 +113,6 @@ class OptionsDialog(wx.Dialog):
         self._auto_remove_checkbox.SetValue(self._settings.get_auto_remove_played())
         playback_box.Add(self._auto_remove_checkbox, 0, wx.ALL, 5)
 
-        self._focus_playing_checkbox = wx.CheckBox(
-            general_panel,
-            label=_("Keep selection on currently playing track"),
-        )
-        self._focus_playing_checkbox.SetValue(self._settings.get_focus_playing_track())
-        playback_box.Add(self._focus_playing_checkbox, 0, wx.ALL, 5)
-
         intro_row = wx.BoxSizer(wx.HORIZONTAL)
         intro_label = wx.StaticText(general_panel, label=_("Intro alert (s):"))
         self._intro_alert_ctrl = wx.SpinCtrlDouble(general_panel, min=0.0, max=60.0, inc=0.5)
@@ -190,6 +183,13 @@ class OptionsDialog(wx.Dialog):
             checkbox.SetValue(announcements.get(category.id, category.default_enabled))
             accessibility_box.Add(checkbox, 0, wx.ALL, 4)
             self._announcement_checkboxes[category.id] = checkbox
+
+        self._focus_playing_checkbox = wx.CheckBox(
+            accessibility_panel,
+            label=_("Keep selection on currently playing track"),
+        )
+        self._focus_playing_checkbox.SetValue(self._settings.get_focus_playing_track())
+        accessibility_box.Add(self._focus_playing_checkbox, 0, wx.ALL, 4)
 
         accessibility_sizer.Add(accessibility_box, 0, wx.EXPAND | wx.ALL, 10)
         accessibility_panel.SetSizer(accessibility_sizer)
