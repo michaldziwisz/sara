@@ -1366,7 +1366,7 @@ class MainFrame(wx.Frame):
         for index, track in enumerate(panel.model.items):
             if track.id == item_id:
                 self._silence_screen_reader()
-                panel.select_index(index, focus=False)
+                panel.select_index(index)
                 self._focus_lock[playlist_id] = False
                 self._silence_screen_reader()
                 break
@@ -1941,7 +1941,7 @@ class MainFrame(wx.Frame):
 
     def _silence_screen_reader(self) -> None:
         cancel_speech()
-        for delay in (0, 25, 60, 140, 280, 520):
+        for delay in (0, 40, 90, 180, 320, 520, 800, 1200, 1600):
             wx.CallLater(delay, cancel_speech)
 
     def _announce(self, message: str) -> None:
