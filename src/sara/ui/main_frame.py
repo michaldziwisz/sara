@@ -1036,9 +1036,11 @@ class MainFrame(wx.Frame):
                 playlist.set_marker(None)
                 self._marker_reference = None
                 self._refresh_marker_display(playlist.id)
+            status_message = _("Playing %s from playlist %s") % (item.title, playlist.name)
             self._announce_event(
                 "playback_events",
-                _("Playing %s from playlist %s") % (item.title, playlist.name),
+                status_message,
+                spoken_message=_("Playback started"),
             )
             return True
         return False
@@ -1918,11 +1920,17 @@ class MainFrame(wx.Frame):
             )
         return None
 
-    def _announce_event(self, category: str, message: str) -> None:
-        """Announce `message` if the category is enabled in settings."""
+    def _announce_event(
+        self,
+        category: str,
+        message: str,
+        *,
+        spoken_message: str | None = None,
+    ) -> None:
+        """Announce `message` and optionally override spoken content."""
         self.SetStatusText(message)
         if self._settings.get_announcement_enabled(category):
-            speak_text(message)
+            speak_text(spoken_message if spoken_message is not None else message)
 
     def _announce(self, message: str) -> None:
         self._announce_event("general", message)

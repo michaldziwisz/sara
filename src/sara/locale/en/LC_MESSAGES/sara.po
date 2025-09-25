@@ -34,6 +34,9 @@ msgstr "Import and export messages"
 msgid "Playback events"
 msgstr "Playback events"
 
+msgid "Playback started"
+msgstr "Playback started"
+
 msgid "Playback errors"
 msgstr "Playback errors"
 

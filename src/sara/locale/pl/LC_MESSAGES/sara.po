@@ -151,6 +151,9 @@ msgstr "Komunikaty importu i eksportu"
 msgid "Playback events"
 msgstr "Zdarzenia odtwarzania"
 
+msgid "Playback started"
+msgstr "Odtwarzanie rozpoczęte"
+
 msgid "Playback errors"
 msgstr "Błędy odtwarzania"
 
