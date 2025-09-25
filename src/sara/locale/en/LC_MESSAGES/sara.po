@@ -6,3 +6,51 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Choose how many players to use and assign audio devices."
+msgstr "Choose how many players to use and assign audio devices."
+
+msgid "Choose which announcements should be spoken by the screen reader."
+msgstr "Choose which announcements should be spoken by the screen reader."
+
+msgid "General status messages"
+msgstr "General status messages"
+
+msgid "Playlist management updates"
+msgstr "Playlist management updates"
+
+msgid "Import and export messages"
+msgstr "Import and export messages"
+
+msgid "Playback events"
+msgstr "Playback events"
+
+msgid "Playback errors"
+msgstr "Playback errors"
+
+msgid "Loop and intro notifications"
+msgstr "Loop and intro notifications"
+
+msgid "Marker notifications"
+msgstr "Marker notifications"
+
+msgid "Auto-mix announcements"
+msgstr "Auto-mix announcements"
+
+msgid "Shortcut editor notifications"
+msgstr "Shortcut editor notifications"
+
+msgid "Clipboard and move operations"
+msgstr "Clipboard and move operations"
+
+msgid "Undo/redo notifications"
+msgstr "Undo/redo notifications"
+
+msgid "PFL and preview warnings"
+msgstr "PFL and preview warnings"
+
+msgid "Device availability warnings"
+msgstr "Device availability warnings"
+
+msgid "Intro alert notifications"
+msgstr "Intro alert notifications"

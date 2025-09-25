@@ -107,10 +107,6 @@ class PlaylistModel:
                     if marker.current_position <= 0.0:
                         marker.current_position = 0.0
                     return marker
-                if marker.status is PlaylistItemStatus.PLAYED:
-                    marker.current_position = 0.0
-                    marker.status = PlaylistItemStatus.PLAYING
-                    return marker
                 if marker.status is PlaylistItemStatus.PLAYING:
                     return marker
 

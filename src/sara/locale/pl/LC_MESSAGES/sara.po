@@ -118,6 +118,9 @@ msgstr "Zmień…"
 msgid "Choose how many players to use and assign audio devices."
 msgstr "Wybierz liczbę odtwarzaczy oraz przypisz każde urządzenie audio."
 
+msgid "Choose which announcements should be spoken by the screen reader."
+msgstr "Wybierz, które komunikaty mają być wypowiadane przez czytnik ekranu."
+
 msgid "Clipboard is empty"
 msgstr "Schowek jest pusty"
 
@@ -126,6 +129,48 @@ msgstr "Skonfiguruj urządzenie PFL w opcjach aplikacji"
 
 msgid "Configure players…"
 msgstr "Konfiguruj odtwarzacze…"
+
+msgid "General status messages"
+msgstr "Ogólne komunikaty statusu"
+
+msgid "Playlist management updates"
+msgstr "Aktualizacje zarządzania playlistą"
+
+msgid "Import and export messages"
+msgstr "Komunikaty importu i eksportu"
+
+msgid "Playback events"
+msgstr "Zdarzenia odtwarzania"
+
+msgid "Playback errors"
+msgstr "Błędy odtwarzania"
+
+msgid "Loop and intro notifications"
+msgstr "Powiadomienia o pętli i intrze"
+
+msgid "Marker notifications"
+msgstr "Powiadomienia o znacznikach"
+
+msgid "Auto-mix announcements"
+msgstr "Komunikaty auto-miksu"
+
+msgid "Shortcut editor notifications"
+msgstr "Powiadomienia edytora skrótów"
+
+msgid "Clipboard and move operations"
+msgstr "Operacje schowka i przenoszenia"
+
+msgid "Undo/redo notifications"
+msgstr "Powiadomienia cofnij/ponów"
+
+msgid "PFL and preview warnings"
+msgstr "Ostrzeżenia PFL i podglądu"
+
+msgid "Device availability warnings"
+msgstr "Ostrzeżenia o dostępności urządzeń"
+
+msgid "Intro alert notifications"
+msgstr "Powiadomienia alertu intra"
 
 msgid "Copied %d %s from playlist %s"
 msgstr "Skopiowano %d %s z playlisty %s"

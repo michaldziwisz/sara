@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional
 import yaml
 
 from sara.core.shortcuts import ensure_defaults
+from sara.core.announcement_registry import ANNOUNCEMENT_CATEGORIES
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "general": {
@@ -62,6 +63,13 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "playlists": {},
         "pfl": None,
     },
+    "accessibility": {
+        "announcements": {},
+    },
+}
+
+DEFAULT_ANNOUNCEMENTS = {
+    category.id: category.default_enabled for category in ANNOUNCEMENT_CATEGORIES
 }
 
 ensure_defaults(DEFAULT_CONFIG["shortcuts"])
@@ -185,6 +193,27 @@ class SettingsManager:
     def set_intro_alert_seconds(self, seconds: float) -> None:
         playback = self._data.setdefault("playback", {})
         playback["intro_alert_seconds"] = max(0.0, float(seconds))
+
+    def _announcement_settings(self) -> dict[str, bool]:
+        accessibility = self._data.setdefault("accessibility", {})
+        announcements = accessibility.setdefault("announcements", {})
+        return announcements  # type: ignore[return-value]
+
+    def get_announcement_enabled(self, category: str) -> bool:
+        announcements = self._announcement_settings()
+        if category in announcements:
+            return bool(announcements[category])
+        return DEFAULT_ANNOUNCEMENTS.get(category, True)
+
+    def set_announcement_enabled(self, category: str, enabled: bool) -> None:
+        announcements = self._announcement_settings()
+        announcements[category] = bool(enabled)
+
+    def get_all_announcement_settings(self) -> dict[str, bool]:
+        return {
+            category.id: self.get_announcement_enabled(category.id)
+            for category in ANNOUNCEMENT_CATEGORIES
+        }
 
     def get_language(self) -> str:
         general = self._data.get("general", {})

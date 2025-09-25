@@ -8,6 +8,7 @@ import wx
 
 from sara.audio.engine import AudioDevice, AudioEngine
 from sara.core.config import SettingsManager
+from sara.core.announcement_registry import ANNOUNCEMENT_CATEGORIES
 from sara.core.i18n import gettext as _
 from sara.ui.playlist_devices_dialog import PlaylistDevicesDialog
 
@@ -80,6 +81,7 @@ class OptionsDialog(wx.Dialog):
 
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         self._pfl_entries: list[tuple[Optional[str], str]] = []
+        self._announcement_checkboxes: dict[str, wx.CheckBox] = {}
 
         playback_box = wx.StaticBoxSizer(wx.StaticBox(self, label=_("Playback")), wx.VERTICAL)
         fade_label = wx.StaticText(self, label=_("Default fade out (s):"))
@@ -145,6 +147,23 @@ class OptionsDialog(wx.Dialog):
         pfl_row.Add(self._pfl_choice, 1, wx.ALIGN_CENTER_VERTICAL)
         pfl_box.Add(pfl_row, 0, wx.EXPAND | wx.ALL, 5)
         main_sizer.Add(pfl_box, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+
+        accessibility_box = wx.StaticBoxSizer(wx.StaticBox(self, label=_("Accessibility")), wx.VERTICAL)
+        announcements = self._settings.get_all_announcement_settings()
+        info_label = wx.StaticText(
+            self,
+            label=_("Choose which announcements should be spoken by the screen reader."),
+        )
+        info_label.Wrap(440)
+        accessibility_box.Add(info_label, 0, wx.ALL, 5)
+
+        for category in ANNOUNCEMENT_CATEGORIES:
+            checkbox = wx.CheckBox(self, label=_(category.label))
+            checkbox.SetValue(announcements.get(category.id, category.default_enabled))
+            accessibility_box.Add(checkbox, 0, wx.ALL, 4)
+            self._announcement_checkboxes[category.id] = checkbox
+
+        main_sizer.Add(accessibility_box, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
 
         startup_box = wx.StaticBoxSizer(wx.StaticBox(self, label=_("Startup playlists")), wx.VERTICAL)
         self._playlists_list = wx.ListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
@@ -233,6 +252,8 @@ class OptionsDialog(wx.Dialog):
         self._settings.set_startup_playlists(self._playlists)
         self._settings.set_pfl_device(self._selected_pfl_device())
         self._settings.set_language(self._language_codes[self._language_choice.GetSelection()])
+        for category_id, checkbox in self._announcement_checkboxes.items():
+            self._settings.set_announcement_enabled(category_id, checkbox.GetValue())
         self.EndModal(wx.ID_OK)
 
     def _populate_pfl_choice(self) -> None:

@@ -283,9 +283,15 @@ class MainFrame(wx.Frame):
                     if descriptor:
                         shortcut_label = format_shortcut_display(descriptor.default)
                 if shortcut_label:
-                    self._announce(_("No playlists available. Use %s to add a new playlist.") % shortcut_label)
+                    self._announce_event(
+                        "playlist",
+                        _("No playlists available. Use %s to add a new playlist.") % shortcut_label,
+                    )
                 else:
-                    self._announce(_("No playlists available. Use the Playlist menu to add one."))
+                    self._announce_event(
+                        "playlist",
+                        _("No playlists available. Use the Playlist menu to add one."),
+                    )
         for playlist in existing_playlists:
             self.add_playlist(playlist)
 
@@ -440,7 +446,7 @@ class MainFrame(wx.Frame):
         if model.id not in self._state.playlists:
             self._state.add_playlist(model)
         self._update_active_playlist_styles()
-        self._announce(_("Playlist %s added") % model.name)
+        self._announce_event("playlist", _("Playlist %s added") % model.name)
 
     def _get_playlist_model(self, playlist_id: str) -> PlaylistModel | None:
         return self._state.playlists.get(playlist_id)
@@ -477,7 +483,7 @@ class MainFrame(wx.Frame):
     def _on_add_tracks(self, event: wx.CommandEvent) -> None:
         panel = self._get_current_playlist_panel()
         if panel is None:
-            self._announce(_("Select a playlist first"))
+            self._announce_event("playlist", _("Select a playlist first"))
             return
 
         style = wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE
@@ -508,21 +514,24 @@ class MainFrame(wx.Frame):
             new_items.append(item)
 
         if not new_items:
-            self._announce(_("No tracks were added"))
+            self._announce_event("playlist", _("No tracks were added"))
             return
 
         panel.append_items(new_items)
-        self._announce(_("Added %d tracks to playlist %s") % (len(new_items), panel.model.name))
+        self._announce_event(
+            "playlist",
+            _("Added %d tracks to playlist %s") % (len(new_items), panel.model.name),
+        )
 
     def _on_assign_device(self, event: wx.CommandEvent) -> None:
         panel = self._get_current_playlist_panel()
         if panel is None:
-            self._announce(_("Select a playlist first"))
+            self._announce_event("playlist", _("Select a playlist first"))
             return
 
         devices = self._audio_engine.get_devices()
         if not devices:
-            self._announce(_("No audio devices available"))
+            self._announce_event("device", _("No audio devices available"))
             return
 
         dialog = PlaylistDevicesDialog(self, devices=devices, slots=panel.model.get_configured_slots())
@@ -539,17 +548,21 @@ class MainFrame(wx.Frame):
                 if device_id and device_id in device_map
             ]
             if assigned_names:
-                self._announce(
-                    f"Playlista {panel.model.name} przypisana do odtwarzaczy: {', '.join(assigned_names)}"
+                self._announce_event(
+                    "playlist",
+                    f"Playlista {panel.model.name} przypisana do odtwarzaczy: {', '.join(assigned_names)}",
                 )
             else:
-                self._announce(_("Removed device assignments for playlist %s") % panel.model.name)
+                self._announce_event(
+                    "playlist",
+                    _("Removed device assignments for playlist %s") % panel.model.name,
+                )
         dialog.Destroy()
 
     def _on_import_playlist(self, event: wx.CommandEvent) -> None:
         panel = self._get_current_playlist_panel()
         if panel is None:
-            self._announce(_("Select a playlist first"))
+            self._announce_event("playlist", _("Select a playlist first"))
             return
 
         dialog = wx.FileDialog(
@@ -568,11 +581,11 @@ class MainFrame(wx.Frame):
         try:
             entries = self._parse_m3u(path)
         except Exception as exc:  # pylint: disable=broad-except
-            self._announce(_("Failed to import playlist: %s") % exc)
+            self._announce_event("import_export", _("Failed to import playlist: %s") % exc)
             return
 
         if not entries:
-            self._announce(_("Playlist file is empty"))
+            self._announce_event("import_export", _("Playlist file is empty"))
             return
 
         new_items: list[PlaylistItem] = []
@@ -598,7 +611,10 @@ class MainFrame(wx.Frame):
 
         panel.model.add_items(new_items)
         panel.refresh()
-        self._announce(_("Imported %d items from %s") % (len(new_items), path.name))
+        self._announce_event(
+            "import_export",
+            _("Imported %d items from %s") % (len(new_items), path.name),
+        )
 
     def _parse_m3u(self, path: Path) -> list[dict[str, Any]]:
         entries: list[dict[str, Any]] = []
@@ -643,7 +659,7 @@ class MainFrame(wx.Frame):
     def _on_export_playlist(self, _event: wx.CommandEvent) -> None:
         panel = self._get_current_playlist_panel()
         if panel is None:
-            self._announce(_("Select a playlist first"))
+            self._announce_event("playlist", _("Select a playlist first"))
             return
 
         dialog = wx.FileDialog(
@@ -667,10 +683,10 @@ class MainFrame(wx.Frame):
                 lines.append(str(item.path.resolve()))
             path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         except Exception as exc:  # pylint: disable=broad-except
-            self._announce(_("Failed to save playlist: %s") % exc)
+            self._announce_event("import_export", _("Failed to save playlist: %s") % exc)
             return
 
-        self._announce(_("Playlist saved to %s") % path.name)
+        self._announce_event("import_export", _("Playlist saved to %s") % path.name)
 
     def _on_exit(self, event: wx.CommandEvent) -> None:
         try:
@@ -712,7 +728,7 @@ class MainFrame(wx.Frame):
             self._refresh_playlist_hotkeys()
             self._update_shortcut_menu_labels()
             self._configure_accelerators()
-            self._announce(_("Keyboard shortcuts saved"))
+            self._announce_event("hotkeys", _("Keyboard shortcuts saved"))
         dialog.Destroy()
 
     def _on_toggle_auto_mix(self, event: wx.CommandEvent) -> None:
@@ -720,7 +736,7 @@ class MainFrame(wx.Frame):
         if not self._auto_mix_enabled:
             self._auto_mix_state.clear()
         status = _("enabled") if self._auto_mix_enabled else _("disabled")
-        self._announce(_("Auto mix %s") % status)
+        self._announce_event("auto_mix", _("Auto mix %s") % status)
 
     def _on_toggle_marker_mode(self, event: wx.CommandEvent) -> None:
         if self._marker_mode_menu_item:
@@ -748,9 +764,9 @@ class MainFrame(wx.Frame):
                     marker_message = _("Marker mode enabled, no marked track available")
             else:
                 marker_message = _("Marker mode enabled, no marked track available")
-            self._announce(marker_message)
+            self._announce_event("marker", marker_message)
         else:
-            self._announce(_("Marker mode disabled"))
+            self._announce_event("marker", _("Marker mode disabled"))
 
     def _on_toggle_loop_playback(self, _event: wx.CommandEvent) -> None:
         context = self._get_selected_context()
@@ -759,23 +775,23 @@ class MainFrame(wx.Frame):
         panel, model, indices = context
         index = indices[0]
         if not (0 <= index < len(model.items)):
-            self._announce(_("No track selected"))
+            self._announce_event("playlist", _("No track selected"))
             return
 
         item = model.items[index]
         if not item.has_loop():
-            self._announce(_("Track has no loop defined"))
+            self._announce_event("loop", _("Track has no loop defined"))
             return
 
         item.loop_enabled = not item.loop_enabled
 
         if not save_loop_metadata(item.path, item.loop_start_seconds, item.loop_end_seconds, item.loop_enabled):
-            self._announce(_("Failed to update loop metadata"))
+            self._announce_event("loop", _("Failed to update loop metadata"))
 
         self._apply_loop_setting_to_playback(playlist_id=model.id, item_id=item.id)
 
         state = _("enabled") if item.loop_enabled else _("disabled")
-        self._announce(_("Track looping %s") % state)
+        self._announce_event("loop", _("Track looping %s") % state)
         if not item.loop_enabled:
             remaining = self._compute_intro_remaining(item)
             if remaining is not None:
@@ -789,7 +805,7 @@ class MainFrame(wx.Frame):
         _panel, model, indices = context
         index = indices[0]
         if not (0 <= index < len(model.items)):
-            self._announce(_("No track selected"))
+            self._announce_event("playlist", _("No track selected"))
             return
         item = model.items[index]
         messages: list[str] = []
@@ -809,7 +825,7 @@ class MainFrame(wx.Frame):
         else:
             messages.append(_("Intro not defined"))
 
-        self._announce(". ".join(messages))
+        self._announce_event("loop", ". ".join(messages))
 
     def _apply_loop_setting_to_playback(self, *, playlist_id: str | None = None, item_id: str | None = None) -> None:
         for (pl_id, item_id_key), context in list(self._playback_contexts.items()):
@@ -842,7 +858,7 @@ class MainFrame(wx.Frame):
             playlist.set_marker(None)
             self._marker_reference = None
             self._refresh_marker_display(playlist_id)
-            self._announce(_("Marker removed"))
+            self._announce_event("marker", _("Marker removed"))
             return
 
         marker_item = playlist.get_item(item_id)
@@ -860,7 +876,10 @@ class MainFrame(wx.Frame):
         playlist.set_marker(item_id)
         self._marker_reference = (playlist_id, item_id)
         self._refresh_marker_display(playlist_id)
-        self._announce(_("Marker set on %s in playlist %s") % (marker_item.title, playlist.name))
+        self._announce_event(
+            "marker",
+            _("Marker set on %s in playlist %s") % (marker_item.title, playlist.name),
+        )
 
     def _on_loop_configure(self, playlist_id: str, item_id: str) -> None:
         panel = self._playlists.get(playlist_id)
@@ -886,22 +905,22 @@ class MainFrame(wx.Frame):
                 if dialog.was_cleared():
                     item.clear_loop()
                     if not save_loop_metadata(item.path, None, None):
-                        self._announce(_("Failed to update loop metadata"))
+                        self._announce_event("loop", _("Failed to update loop metadata"))
                     self._apply_loop_setting_to_playback(playlist_id=playlist_id, item_id=item.id)
                     panel.refresh()
-                    self._announce(_("Loop removed from %s") % item.title)
+                    self._announce_event("loop", _("Loop removed from %s") % item.title)
                 else:
                     enabled, start, end = dialog.get_result()
                     try:
                         item.set_loop(start, end)
                     except ValueError as exc:
-                        self._announce(str(exc))
+                        self._announce_event("loop", str(exc))
                         return
 
                     item.loop_enabled = bool(enabled)
 
                     if not save_loop_metadata(item.path, start, end, item.loop_enabled):
-                        self._announce(_("Failed to update loop metadata"))
+                        self._announce_event("loop", _("Failed to update loop metadata"))
 
                     self._apply_loop_setting_to_playback(playlist_id=playlist_id, item_id=item.id)
                     panel.refresh()
@@ -920,7 +939,7 @@ class MainFrame(wx.Frame):
             item.status = PlaylistItemStatus.PENDING
             panel.mark_item_status(item.id, item.status)
             panel.refresh()
-            self._announce(_("File %s does not exist") % item.path)
+            self._announce_event("playback_errors", _("File %s does not exist") % item.path)
             return False
 
         context = self._playback_contexts.get(key)
@@ -942,7 +961,7 @@ class MainFrame(wx.Frame):
                 item.status = PlaylistItemStatus.PENDING
                 panel.mark_item_status(item.id, item.status)
                 panel.refresh()
-                self._announce(_("No audio devices available"))
+                self._announce_event("device", _("No audio devices available"))
                 return False
             player, device_id, slot_index = acquired
 
@@ -965,7 +984,7 @@ class MainFrame(wx.Frame):
             item.status = PlaylistItemStatus.PENDING
             panel.mark_item_status(item.id, item.status)
             panel.refresh()
-            self._announce(_("Playback error: %s") % exc)
+            self._announce_event("playback_errors", _("Playback error: %s") % exc)
             return False
 
         try:
@@ -994,7 +1013,7 @@ class MainFrame(wx.Frame):
         self._focus_lock[playlist.id] = False
         self._maybe_focus_playing_item(panel, item.id)
         if item.has_loop() and item.loop_enabled:
-            self._announce(_("Loop playing"))
+            self._announce_event("loop", _("Loop playing"))
         return True
 
     def _start_next_from_playlist(self, panel: PlaylistPanel) -> bool:
@@ -1005,19 +1024,22 @@ class MainFrame(wx.Frame):
             if not playlist.get_item(marker_item_id):
                 self._marker_reference = None
                 marker_item_id = None
-                self._announce(_("Marked track is not available"))
+                self._announce_event("marker", _("Marked track is not available"))
             else:
                 playlist.reset_from(marker_item_id)
         item = playlist.begin_next_item(marker_item_id)
         if not item:
-            self._announce(_("No scheduled tracks in playlist %s") % playlist.name)
+            self._announce_event("playback_events", _("No scheduled tracks in playlist %s") % playlist.name)
             return False
         if self._start_playback(panel, item):
             if self._marker_reference and self._marker_reference == (playlist.id, item.id):
                 playlist.set_marker(None)
                 self._marker_reference = None
                 self._refresh_marker_display(playlist.id)
-            self._announce(_("Playing %s from playlist %s") % (item.title, playlist.name))
+            self._announce_event(
+                "playback_events",
+                _("Playing %s from playlist %s") % (item.title, playlist.name),
+            )
             return True
         return False
 
@@ -1037,9 +1059,9 @@ class MainFrame(wx.Frame):
                 candidate_ids = [marker_playlist_id] + [pid for pid in candidate_ids if pid != marker_playlist_id]
             elif marker_playlist_id:
                 self._marker_reference = None
-                self._announce(_("Marked track is not available"))
+                self._announce_event("marker", _("Marked track is not available"))
             else:
-                self._announce(_("Marker mode enabled, no marked track available"))
+                self._announce_event("marker", _("Marker mode enabled, no marked track available"))
 
         for playlist_id in candidate_ids:
             panel = self._playlists.get(playlist_id)
@@ -1053,28 +1075,28 @@ class MainFrame(wx.Frame):
                 self._current_index = (index + 1) % page_count
                 self._current_panel_id = playlist_id
                 self._update_active_playlist_styles()
-                self._announce(f"Aktywna playlista {panel.model.name}")
+                self._announce_event("playlist", f"Aktywna playlista {panel.model.name}")
                 return True
 
         return False
 
     def _on_global_play_next(self, event: wx.CommandEvent) -> None:
         if not self._playlists:
-            self._announce(_("No playlists available"))
+            self._announce_event("playlist", _("No playlists available"))
             return
 
         if self._alternate_play_next:
             if not self._play_next_alternate():
-                self._announce(_("No scheduled tracks available"))
+                self._announce_event("playback_events", _("No scheduled tracks available"))
             return
 
         panel = self._get_current_playlist_panel()
         if panel is None:
-            self._announce(_("Select a playlist first"))
+            self._announce_event("playlist", _("Select a playlist first"))
             return
 
         if not self._start_next_from_playlist(panel):
-            self._announce(_("No scheduled tracks available"))
+            self._announce_event("playback_events", _("No scheduled tracks available"))
 
     def _handle_playback_finished(self, playlist_id: str, item_id: str) -> None:
         self._auto_mix_state.pop((playlist_id, item_id), None)
@@ -1097,7 +1119,7 @@ class MainFrame(wx.Frame):
         removed = False
         if self._auto_remove_played:
             removed_item = self._remove_item_from_playlist(panel, model, item_index, refocus=True)
-            self._announce(_("Removed played track %s") % removed_item.title)
+            self._announce_event("playback_events", _("Removed played track %s") % removed_item.title)
             removed = True
         else:
             model.mark_played(item_id)
@@ -1108,9 +1130,9 @@ class MainFrame(wx.Frame):
             try:
                 context.player.stop()
             except Exception as exc:  # pylint: disable=broad-except
-                self._announce(_("Player stop error: %s") % exc)
+                self._announce_event("playback_errors", _("Player stop error: %s") % exc)
         if not removed:
-            self._announce(_("Finished %s") % item.title)
+            self._announce_event("playback_events", _("Finished %s") % item.title)
 
     def _handle_playback_progress(self, playlist_id: str, item_id: str, seconds: float) -> None:
         context_entry = self._playback_contexts.get((playlist_id, item_id))
@@ -1156,7 +1178,7 @@ class MainFrame(wx.Frame):
 
         panel = self._get_current_playlist_panel()
         if panel is None:
-            self._announce(_("Select a playlist first"))
+            self._announce_event("playlist", _("Select a playlist first"))
             return
 
         playlist = panel.model
@@ -1166,7 +1188,7 @@ class MainFrame(wx.Frame):
 
         context_entry = self._get_playback_context(playlist.id)
         if context_entry is None:
-            self._announce(_("No active playback for this playlist"))
+            self._announce_event("playback_events", _("No active playback for this playlist"))
             return
 
         key, context = context_entry
@@ -1176,23 +1198,26 @@ class MainFrame(wx.Frame):
             try:
                 context.player.pause()
             except Exception as exc:  # pylint: disable=broad-except
-                self._announce(_("Pause error: %s") % exc)
+                self._announce_event("playback_errors", _("Pause error: %s") % exc)
                 return
             if item:
                 item.status = PlaylistItemStatus.PAUSED
                 panel.mark_item_status(item.id, item.status)
                 panel.refresh()
             self._playback_contexts[key] = context
-            self._announce(f"Playlista {playlist.name} wstrzymana")
+            self._announce_event("playback_events", f"Playlista {playlist.name} wstrzymana")
         elif action == "stop":
             self._stop_playlist_playback(playlist.id, mark_played=False, fade_duration=0.0)
-            self._announce(f"Playlista {playlist.name} zatrzymana")
+            self._announce_event("playback_events", f"Playlista {playlist.name} zatrzymana")
         elif action == "fade":
             self._stop_playlist_playback(playlist.id, mark_played=True, fade_duration=self._fade_duration)
             if item:
                 panel.mark_item_status(item.id, item.status)
                 panel.refresh()
-            self._announce(_("Playlist %s finished track with fade out") % playlist.name)
+            self._announce_event(
+                "playback_events",
+                _("Playlist %s finished track with fade out") % playlist.name,
+            )
     def _get_current_playlist_panel(self) -> PlaylistPanel | None:
         if self._current_panel_id and self._current_panel_id in self._playlists:
             return self._playlists[self._current_panel_id]
@@ -1206,7 +1231,7 @@ class MainFrame(wx.Frame):
                 except ValueError:
                     pass
                 self._update_active_playlist_styles()
-                self._announce(panel.model.name)
+                self._announce_event("playlist", panel.model.name)
                 return panel
         return None
 
@@ -1236,12 +1261,12 @@ class MainFrame(wx.Frame):
         self._update_active_playlist_styles()
         panel = self._playlists.get(playlist_id)
         if panel:
-            self._announce(panel.model.name)
+            self._announce_event("playlist", panel.model.name)
 
     def _get_selected_context(self) -> tuple[PlaylistPanel, PlaylistModel, list[int]] | None:
         panel = self._get_current_playlist_panel()
         if panel is None:
-            self._announce(_("Select a playlist first"))
+            self._announce_event("playlist", _("Select a playlist first"))
             return None
         indices = panel.get_selected_indices()
         if not indices:
@@ -1249,7 +1274,7 @@ class MainFrame(wx.Frame):
                 indices = [0]
                 panel.set_selection(indices)
             else:
-                self._announce(_("Playlist is empty"))
+                self._announce_event("playlist", _("Playlist is empty"))
                 return None
         return panel, panel.model, sorted(indices)
 
@@ -1263,7 +1288,7 @@ class MainFrame(wx.Frame):
             if 0 <= index < len(model.items):
                 selected.append((index, model.items[index]))
         if not selected:
-            self._announce(_("No tracks selected"))
+            self._announce_event("playlist", _("No tracks selected"))
             return None
         return panel, model, selected
 
@@ -1355,7 +1380,7 @@ class MainFrame(wx.Frame):
 
     def _announce_intro_remaining(self, remaining: float) -> None:
         message = _("Intro remaining: {seconds:.0f} seconds").format(seconds=max(0.0, remaining))
-        self._announce(message)
+        self._announce_event("intro_alert", message)
 
     def _cleanup_intro_alert_player(self, player: Player) -> None:
         for idx, (stored_player, temp_path) in enumerate(list(self._intro_alert_players)):
@@ -1373,6 +1398,8 @@ class MainFrame(wx.Frame):
 
     def _play_intro_alert(self) -> bool:
         if self._intro_alert_seconds <= 0:
+            return False
+        if not self._settings.get_announcement_enabled("intro_alert"):
             return False
         pfl_device_id = self._pfl_device_id or self._settings.get_pfl_device()
         if not pfl_device_id:
@@ -1522,7 +1549,7 @@ class MainFrame(wx.Frame):
             message = _("Undo move") if undo else _("Redo move")
         else:
             message = _("Undo operation") if undo else _("Redo operation")
-        self._announce(message)
+        self._announce_event("undo_redo", message)
 
     def _on_copy_selection(self, _event: wx.CommandEvent) -> None:
         context = self._get_selected_items()
@@ -1533,7 +1560,10 @@ class MainFrame(wx.Frame):
         self._clipboard_items = self._serialize_items(items)
         count = len(items)
         noun = _("track") if count == 1 else _("tracks")
-        self._announce(_("Copied %d %s from playlist %s") % (count, noun, model.name))
+        self._announce_event(
+            "clipboard",
+            _("Copied %d %s from playlist %s") % (count, noun, model.name),
+        )
         panel.focus_list()
 
     def _on_cut_selection(self, _event: wx.CommandEvent) -> None:
@@ -1547,14 +1577,14 @@ class MainFrame(wx.Frame):
         removed_items = self._remove_items(panel, model, indices)
         count = len(items)
         noun = _("track") if count == 1 else _("tracks")
-        self._announce(_("Cut %d %s") % (count, noun))
+        self._announce_event("clipboard", _("Cut %d %s") % (count, noun))
         if removed_items:
             operation = RemoveOperation(indices=list(indices), items=list(removed_items))
             self._push_undo_action(model, operation)
 
     def _on_paste_selection(self, _event: wx.CommandEvent) -> None:
         if not self._clipboard_items:
-            self._announce(_("Clipboard is empty"))
+            self._announce_event("clipboard", _("Clipboard is empty"))
             return
         context = self._get_selected_context()
         panel: PlaylistPanel
@@ -1579,7 +1609,7 @@ class MainFrame(wx.Frame):
         if new_items:
             count = len(new_items)
             noun = _("track") if count == 1 else _("tracks")
-            self._announce(_("Pasted %d %s") % (count, noun))
+            self._announce_event("clipboard", _("Pasted %d %s") % (count, noun))
             operation = InsertOperation(indices=list(insert_indices), items=list(new_items))
             self._push_undo_action(model, operation)
         else:
@@ -1595,7 +1625,7 @@ class MainFrame(wx.Frame):
         removed_items = self._remove_items(panel, model, indices)
         count = len(items)
         noun = _("track") if count == 1 else _("tracks")
-        self._announce(_("Deleted %d %s") % (count, noun))
+        self._announce_event("clipboard", _("Deleted %d %s") % (count, noun))
         if removed_items:
             operation = RemoveOperation(indices=list(indices), items=list(removed_items))
             self._push_undo_action(model, operation)
@@ -1611,17 +1641,17 @@ class MainFrame(wx.Frame):
             new_indices = operation.apply(model)
         except ValueError:
             direction = _("up") if delta < 0 else _("down")
-            self._announce(_("Cannot move further %s") % direction)
+            self._announce_event("clipboard", _("Cannot move further %s") % direction)
             return
 
         self._refresh_playlist_view(panel, new_indices)
         self._push_undo_action(model, operation)
         count = len(selected)
         if count == 1:
-            self._announce(_("Moved %s") % selected[0][1].title)
+            self._announce_event("clipboard", _("Moved %s") % selected[0][1].title)
         else:
             noun = _("track") if count == 1 else _("tracks")
-            self._announce(_("Moved %d %s") % (count, noun))
+            self._announce_event("clipboard", _("Moved %d %s") % (count, noun))
 
     def _on_move_selection_up(self, _event: wx.CommandEvent) -> None:
         self._move_selection(-1)
@@ -1631,22 +1661,22 @@ class MainFrame(wx.Frame):
 
     def _on_undo(self, _event: wx.CommandEvent) -> None:
         if not self._undo_stack:
-            self._announce(_("Nothing to undo"))
+            self._announce_event("undo_redo", _("Nothing to undo"))
             return
         action = self._undo_stack.pop()
         if not self._apply_undo_action(action, reverse=True):
-            self._announce(_("Unable to undo last operation"))
+            self._announce_event("undo_redo", _("Unable to undo last operation"))
             return
         self._redo_stack.append(action)
         self._announce_operation(action.operation, undo=True)
 
     def _on_redo(self, _event: wx.CommandEvent) -> None:
         if not self._redo_stack:
-            self._announce(_("Nothing to redo"))
+            self._announce_event("undo_redo", _("Nothing to redo"))
             return
         action = self._redo_stack.pop()
         if not self._apply_undo_action(action, reverse=False):
-            self._announce(_("Unable to redo last operation"))
+            self._announce_event("undo_redo", _("Unable to redo last operation"))
             return
         self._undo_stack.append(action)
         self._announce_operation(action.operation, undo=False)
@@ -1772,14 +1802,14 @@ class MainFrame(wx.Frame):
 
     def _start_loop_preview(self, playlist: PlaylistModel, item: PlaylistItem, start: float, end: float) -> bool:
         if end <= start:
-            self._announce(_("Loop end must be greater than start"))
+            self._announce_event("loop", _("Loop end must be greater than start"))
             return False
 
         self._stop_loop_preview(wait=True)
 
         pfl_device_id = self._pfl_device_id or self._settings.get_pfl_device()
         if not pfl_device_id:
-            self._announce(_("Configure a PFL device in Options"))
+            self._announce_event("pfl", _("Configure a PFL device in Options"))
             return False
 
         known_devices = {device.id for device in self._audio_engine.get_devices()}
@@ -1787,19 +1817,19 @@ class MainFrame(wx.Frame):
             self._audio_engine.refresh_devices()
             known_devices = {device.id for device in self._audio_engine.get_devices()}
         if pfl_device_id not in known_devices:
-            self._announce(_("Selected PFL device is not available"))
+            self._announce_event("pfl", _("Selected PFL device is not available"))
             return False
 
         busy_devices = self._get_busy_device_ids()
         if pfl_device_id in busy_devices:
-            self._announce(_("PFL device is currently in use"))
+            self._announce_event("pfl", _("PFL device is currently in use"))
             return False
 
         player: Player
         try:
             player = self._audio_engine.create_player(pfl_device_id)
         except Exception as exc:  # pylint: disable=broad-except
-            self._announce(_("Failed to prepare PFL preview: %s") % exc)
+            self._announce_event("pfl", _("Failed to prepare PFL preview: %s") % exc)
             return False
 
         finished_event: Event | None = None
@@ -1810,7 +1840,7 @@ class MainFrame(wx.Frame):
             finished_event = player.play(item.id + ":preview", str(item.path), start_seconds=start)
             player.set_loop(start, end)
         except Exception as exc:  # pylint: disable=broad-except
-            self._announce(_("Preview error: %s") % exc)
+            self._announce_event("pfl", _("Preview error: %s") % exc)
             try:
                 player.stop()
             except Exception:  # pylint: disable=broad-except
@@ -1834,7 +1864,7 @@ class MainFrame(wx.Frame):
         try:
             context.player.set_loop(start, end)
         except Exception as exc:  # pylint: disable=broad-except
-            self._announce(_("Preview error: %s") % exc)
+            self._announce_event("pfl", _("Preview error: %s") % exc)
             return False
         return True
 
@@ -1855,8 +1885,9 @@ class MainFrame(wx.Frame):
             selection = playlist.select_next_slot(set(device_map.keys()), busy_devices)
             if selection is None:
                 if playlist.get_configured_slots():
-                    self._announce(
-                        _("No configured player for playlist %s is available") % playlist.name
+                    self._announce_event(
+                        "device",
+                        _("No configured player for playlist %s is available") % playlist.name,
                     )
                 return None
 
@@ -1881,10 +1912,17 @@ class MainFrame(wx.Frame):
 
         if missing_devices:
             removed_list = ", ".join(sorted(missing_devices))
-            self._announce(_("Unavailable devices for playlist %s: %s") % (playlist.name, removed_list))
+            self._announce_event(
+                "device",
+                _("Unavailable devices for playlist %s: %s") % (playlist.name, removed_list),
+            )
         return None
 
-    def _announce(self, message: str) -> None:
-        """Show a message in the status bar (and later for screen readers)."""
+    def _announce_event(self, category: str, message: str) -> None:
+        """Announce `message` if the category is enabled in settings."""
         self.SetStatusText(message)
-        speak_text(message)
+        if self._settings.get_announcement_enabled(category):
+            speak_text(message)
+
+    def _announce(self, message: str) -> None:
+        self._announce_event("general", message)
