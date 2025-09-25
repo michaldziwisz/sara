@@ -986,6 +986,10 @@ class MainFrame(wx.Frame):
             self._announce(_("No scheduled tracks in playlist %s") % playlist.name)
             return False
         if self._start_playback(panel, item):
+            if self._marker_reference and self._marker_reference == (playlist.id, item.id):
+                playlist.set_marker(None)
+                self._marker_reference = None
+                self._refresh_marker_display(playlist.id)
             self._announce(_("Playing %s from playlist %s") % (item.title, playlist.name))
             return True
         return False
