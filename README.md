@@ -59,6 +59,10 @@ PYTHONPATH=src python -m pytest
 - Enhanced accessibility messages.
 - Persisting extra track parameters.
 - Advanced fade/crossfade scenarios and scheduling.
+- Separate buffer settings for main players and PFL.
+- Intro/outro mix-point editor compatible with StationPlaylist tags.
+- Spoken countdown for remaining intro time and shortcut for remaining track time.
+- Overlay playlist type that mixes without fading other outputs.
 
 ### License
 - Application code: BSD 3-Clause (see `LICENSE`).
