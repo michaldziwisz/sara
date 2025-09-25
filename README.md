@@ -126,6 +126,10 @@ PYTHONPATH=src python -m pytest
 - Rozbudowa komunikatów dostępności.
 - Persistencja dodatkowych parametrów utworu.
 - Zaawansowane crossfade i planowanie emisji.
+- Osobne buforowanie dla głównych odtwarzaczy i PFL.
+- Edytor punktów intro/outro zgodny z tagami StationPlaylist.
+- Wypowiadanie pozostałego czasu intra i skrót odczytujący czas do końca utworu.
+- Playlista nakładkowa, która odtwarza bez wygaszania pozostałych playlist.
 
 ### Licencja
 - Kod aplikacji: BSD 3-Clause (`LICENSE`).
