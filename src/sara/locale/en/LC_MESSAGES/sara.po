@@ -66,9 +66,3 @@ msgstr "Device availability warnings"
 
 msgid "Intro alert notifications"
 msgstr "Intro alert notifications"
-
-msgid "&Announce selected track"
-msgstr "&Announce selected track"
-
-msgid "Duration %s"
-msgstr "Duration %s"

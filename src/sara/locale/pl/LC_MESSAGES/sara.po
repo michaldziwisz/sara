@@ -184,12 +184,6 @@ msgstr "Ostrzeżenia o dostępności urządzeń"
 msgid "Intro alert notifications"
 msgstr "Powiadomienia alertu intra"
 
-msgid "&Announce selected track"
-msgstr "&Podaj informację o zaznaczonym utworze"
-
-msgid "Duration %s"
-msgstr "Czas trwania %s"
-
 msgid "Copied %d %s from playlist %s"
 msgstr "Skopiowano %d %s z playlisty %s"
 
