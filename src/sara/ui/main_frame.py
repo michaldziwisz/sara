@@ -1366,6 +1366,7 @@ class MainFrame(wx.Frame):
                 panel.select_index(index)
                 self._focus_lock[playlist_id] = False
                 cancel_speech()
+                wx.CallLater(50, cancel_speech)
                 break
 
     def _compute_intro_remaining(self, item: PlaylistItem, absolute_seconds: float | None = None) -> float | None:
