@@ -1040,7 +1040,7 @@ class MainFrame(wx.Frame):
             self._announce_event(
                 "playback_events",
                 status_message,
-                spoken_message=_("Playback started"),
+                spoken_message="",
             )
             return True
         return False
@@ -1934,6 +1934,8 @@ class MainFrame(wx.Frame):
         """Announce `message` and optionally override spoken content."""
         self.SetStatusText(message)
         if self._settings.get_announcement_enabled(category):
+            if spoken_message == "":
+                return
             speak_text(spoken_message if spoken_message is not None else message)
 
     def _announce(self, message: str) -> None:
