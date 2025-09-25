@@ -1363,10 +1363,12 @@ class MainFrame(wx.Frame):
                         return
         for index, track in enumerate(panel.model.items):
             if track.id == item_id:
+                cancel_speech()
                 panel.select_index(index)
                 self._focus_lock[playlist_id] = False
-                cancel_speech()
-                wx.CallLater(50, cancel_speech)
+                wx.CallLater(0, cancel_speech)
+                wx.CallLater(40, cancel_speech)
+                wx.CallLater(120, cancel_speech)
                 break
 
     def _compute_intro_remaining(self, item: PlaylistItem, absolute_seconds: float | None = None) -> float | None:
