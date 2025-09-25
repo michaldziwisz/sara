@@ -64,6 +64,8 @@ PYTHONPATH=src python -m pytest
 - Intro/outro mix-point editor compatible with StationPlaylist tags.
 - Spoken countdown for remaining intro time and shortcut for remaining track time.
 - Overlay playlist type that mixes without fading other outputs.
+- Finer control over accessibility announcements.
+- Investigate preloading tracks into memory to minimize disk I/O at cue time.
 
 ### License
 - Application code: BSD 3-Clause (see `LICENSE`).
@@ -132,6 +134,8 @@ PYTHONPATH=src python -m pytest
 - Wypowiadanie pozostałego czasu intra i skrót odczytujący czas do końca utworu.
 - Playlista nakładkowa, która odtwarza bez wygaszania pozostałych playlist.
 - Automatyczne pobieranie najnowszego buildu (skrypt + hooki git).
+- Granulacja komunikatów dostępności.
+- Wstępne ładowanie utworów do pamięci w celu ograniczenia opóźnień dyskowych.
 
 ### Licencja
 - Kod aplikacji: BSD 3-Clause (`LICENSE`).
