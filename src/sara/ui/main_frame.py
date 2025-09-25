@@ -1366,7 +1366,7 @@ class MainFrame(wx.Frame):
         for index, track in enumerate(panel.model.items):
             if track.id == item_id:
                 self._silence_screen_reader()
-                panel.select_index(index)
+                panel.select_index(index, focus=False)
                 self._focus_lock[playlist_id] = False
                 self._silence_screen_reader()
                 break

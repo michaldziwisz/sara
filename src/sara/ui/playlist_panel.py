@@ -58,6 +58,7 @@ class PlaylistPanel(wx.Panel):
         self._list_ctrl.Bind(wx.EVT_CHAR, self._handle_char)
         self._list_ctrl.Bind(wx.EVT_LIST_KEY_DOWN, self._handle_list_key_down)
         self._list_ctrl.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self._handle_item_activated)
+        self._list_ctrl.Bind(wx.EVT_LIST_ITEM_GETTOOLTIP, self._suppress_tooltip)
         self._refresh_content()
         self.set_active(False)
 
@@ -82,10 +83,10 @@ class PlaylistPanel(wx.Panel):
         # TODO: powiązać skróty z akcjami (play/pause/stop/fade)
         self.model.hotkeys.setdefault("play", HotkeyAction("F1"))
 
-    def refresh(self, selected_indices: list[int] | None = None) -> None:
+    def refresh(self, selected_indices: list[int] | None = None, *, focus: bool = True) -> None:
         self._refresh_content()
         if selected_indices is not None:
-            self.set_selection(selected_indices)
+            self.set_selection(selected_indices, focus=focus)
 
     def _refresh_content(self) -> None:
         self._list_ctrl.DeleteAllItems()
@@ -149,7 +150,7 @@ class PlaylistPanel(wx.Panel):
             index = self._list_ctrl.GetNextItem(index, wx.LIST_NEXT_ALL, wx.LIST_STATE_SELECTED)
         return indices
 
-    def set_selection(self, indices: list[int]) -> None:
+    def set_selection(self, indices: list[int], *, focus: bool = True) -> None:
         count = self._list_ctrl.GetItemCount()
         valid_indices = [index for index in indices if 0 <= index < count]
         self._list_ctrl.Freeze()
@@ -160,13 +161,13 @@ class PlaylistPanel(wx.Panel):
                     self._list_ctrl.Select(index, False)
             for index in valid_indices:
                 self._list_ctrl.Select(index)
-            if valid_indices:
+            if focus and valid_indices:
                 self._list_ctrl.Focus(valid_indices[0])
         finally:
             self._list_ctrl.Thaw()
 
-    def select_index(self, index: int) -> None:
-        self.set_selection([index])
+    def select_index(self, index: int, *, focus: bool = True) -> None:
+        self.set_selection([index], focus=focus)
 
     def _show_context_menu(self, event: wx.ContextMenuEvent) -> None:
         item_index = self._list_ctrl.GetFocusedItem()
@@ -254,6 +255,10 @@ class PlaylistPanel(wx.Panel):
         if self._on_set_marker:
             self._trigger_marker(event.GetIndex())
         event.Skip()
+
+    def _suppress_tooltip(self, event: wx.ListEvent) -> None:
+        event.SetToolTip(None)
+        event.Skip(False)
 
     def _trigger_marker(self, index: int) -> None:
         if index < 0 or index >= len(self.model.items) or not self._on_set_marker:
