@@ -199,6 +199,16 @@ class PlaylistModel:
                     item.status = PlaylistItemStatus.PENDING
                 break
 
+    def reset_from(self, item_id: str) -> None:
+        reset = False
+        for item in self.items:
+            if item.id == item_id:
+                reset = True
+            if reset:
+                item.current_position = 0.0
+                if item.status is not PlaylistItemStatus.PENDING:
+                    item.status = PlaylistItemStatus.PENDING
+
 
 # Future integration: import to avoid circular dependency
 from sara.core.hotkeys import HotkeyAction  # noqa: E402  # pylint: disable=wrong-import-position

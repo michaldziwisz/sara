@@ -1006,6 +1006,8 @@ class MainFrame(wx.Frame):
                 self._marker_reference = None
                 marker_item_id = None
                 self._announce(_("Marked track is not available"))
+            else:
+                playlist.reset_from(marker_item_id)
         item = playlist.begin_next_item(marker_item_id)
         if not item:
             self._announce(_("No scheduled tracks in playlist %s") % playlist.name)
