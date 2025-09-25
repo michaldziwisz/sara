@@ -9,6 +9,7 @@ from typing import Callable
 from sara.core.i18n import gettext as _
 from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistModel
 from sara.core.hotkeys import HotkeyAction
+from sara.ui.accessible import SilentListAccessible
 
 
 class PlaylistPanel(wx.Panel):
@@ -37,6 +38,10 @@ class PlaylistPanel(wx.Panel):
         self._list_ctrl.SetLabel(self._base_accessible_name)
         self._list_ctrl.SetToolTip(None)
         self.SetToolTip(None)
+        try:
+            self._list_ctrl.SetAccessible(SilentListAccessible(self._list_ctrl))
+        except AttributeError:
+            pass
         self._list_ctrl.InsertColumn(0, _("Title"))
         self._list_ctrl.InsertColumn(1, _("Duration"))
         self._list_ctrl.InsertColumn(2, _("Status"))

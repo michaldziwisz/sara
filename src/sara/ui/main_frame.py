@@ -97,6 +97,7 @@ class MainFrame(wx.Frame):
         self._marker_mode_toggle_id = wx.NewIdRef()
         self._loop_playback_toggle_id = wx.NewIdRef()
         self._loop_info_id = wx.NewIdRef()
+        self._announce_track_info_id = wx.NewIdRef()
         self._cut_id = wx.NewIdRef()
         self._copy_id = wx.NewIdRef()
         self._paste_id = wx.NewIdRef()
@@ -204,6 +205,13 @@ class MainFrame(wx.Frame):
         )
 
         tools_menu.Append(int(self._shortcut_editor_id), _("Edit &shortcuts…"))
+        self._append_shortcut_menu_item(
+            tools_menu,
+            self._announce_track_info_id,
+            _("&Announce selected track"),
+            "global",
+            "announce_track_info",
+        )
         tools_menu.Append(int(options_id), _("&Options…"))
         menu_bar.Append(tools_menu, _("&Tools"))
 
@@ -360,6 +368,8 @@ class MainFrame(wx.Frame):
 
         add_entry("global", "loop_playback_toggle", int(self._loop_playback_toggle_id))
         add_entry("global", "loop_info", int(self._loop_info_id))
+        add_entry("global", "announce_track_info", int(self._announce_track_info_id))
+        self.Bind(wx.EVT_MENU, self._on_announce_track_info, id=int(self._announce_track_info_id))
 
         add_entry("playlist_menu", "new", wx.ID_NEW)
         add_entry("playlist_menu", "add_tracks", int(self._add_tracks_id))
@@ -1694,6 +1704,26 @@ class MainFrame(wx.Frame):
             return
         self._undo_stack.append(action)
         self._announce_operation(action.operation, undo=False)
+
+    def _on_announce_track_info(self, _event: wx.CommandEvent) -> None:
+        panel = self._get_current_playlist_panel()
+        if panel is None:
+            self._announce_event("playlist", _("Select a playlist first"))
+            return
+        selection = panel.get_selected_indices()
+        if not selection:
+            self._announce_event("playlist", _("No track selected"))
+            return
+        index = selection[0]
+        if not (0 <= index < len(panel.model.items)):
+            self._announce_event("playlist", _("No track selected"))
+            return
+        item = panel.model.items[index]
+        parts = [item.title]
+        parts.append(_(item.status.value))
+        if item.duration_display:
+            parts.append(_("Duration %s") % item.duration_display)
+        self._announce_event("playlist", ", ".join(parts))
 
     def _update_active_playlist_styles(self) -> None:
         active_colour = wx.Colour(230, 240, 255)

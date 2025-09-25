@@ -23,6 +23,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "marker_mode_toggle": "CTRL+SHIFT+ENTER",
             "loop_playback_toggle": "CTRL+SHIFT+L",
             "loop_info": "CTRL+ALT+SHIFT+L",
+            "announce_track_info": "CTRL+ALT+I",
         },
         "playlist_menu": {
             "new": "CTRL+N",
