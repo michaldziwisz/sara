@@ -1934,27 +1934,37 @@ class MainFrame(wx.Frame):
         message: str,
         *,
         spoken_message: str | None = None,
+        _force: bool = False,
     ) -> None:
         """Announce `message` and optionally override spoken content."""
         self.SetStatusText(message)
-        if self._settings.get_announcement_enabled(category):
-            if spoken_message == "":
-                self._silence_screen_reader()
-                return
+        if not self._settings.get_announcement_enabled(category):
+            return
+        if spoken_message == "":
+            self._silence_screen_reader()
+            return
+        if not _force:
             remaining = self._silence_deadline - time.monotonic()
             if remaining > 0:
-                delay_ms = int(remaining * 1000) + 5
+                delay_ms = max(5, int(remaining * 1000) + 5)
+
                 def _announce_later() -> None:
                     try:
                         self._pending_announce_timers.remove(timer)
                     except ValueError:
                         pass
-                    self._announce_event(category, message, spoken_message=spoken_message)
+                    self._announce_event(
+                        category,
+                        message,
+                        spoken_message=spoken_message,
+                        _force=True,
+                    )
+
                 timer = wx.CallLater(delay_ms, _announce_later)
                 self._pending_announce_timers.append(timer)
                 return
-            self._cancel_pending_silence()
-            speak_text(spoken_message if spoken_message is not None else message)
+        self._cancel_pending_silence()
+        speak_text(spoken_message if spoken_message is not None else message)
 
     def _silence_screen_reader(self) -> None:
         self._cancel_pending_silence()
