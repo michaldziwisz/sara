@@ -83,9 +83,15 @@ class OptionsDialog(wx.Dialog):
         self._pfl_entries: list[tuple[Optional[str], str]] = []
         self._announcement_checkboxes: dict[str, wx.CheckBox] = {}
 
-        playback_box = wx.StaticBoxSizer(wx.StaticBox(self, label=_("Playback")), wx.VERTICAL)
-        fade_label = wx.StaticText(self, label=_("Default fade out (s):"))
-        self._fade_ctrl = wx.SpinCtrlDouble(self, min=0.0, max=30.0, inc=0.1)
+        notebook = wx.Notebook(self)
+        main_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 10)
+
+        general_panel = wx.Panel(notebook)
+        general_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        playback_box = wx.StaticBoxSizer(wx.StaticBox(general_panel, label=_("Playback")), wx.VERTICAL)
+        fade_label = wx.StaticText(general_panel, label=_("Default fade out (s):"))
+        self._fade_ctrl = wx.SpinCtrlDouble(general_panel, min=0.0, max=30.0, inc=0.1)
         self._fade_ctrl.SetDigits(2)
         self._fade_ctrl.SetValue(self._settings.get_playback_fade_seconds())
         playback_row = wx.BoxSizer(wx.HORIZONTAL)
@@ -94,29 +100,29 @@ class OptionsDialog(wx.Dialog):
         playback_box.Add(playback_row, 0, wx.ALL, 5)
 
         self._alternate_checkbox = wx.CheckBox(
-            self,
+            general_panel,
             label=_("Alternate playlists with Space key"),
         )
         self._alternate_checkbox.SetValue(self._settings.get_alternate_play_next())
         playback_box.Add(self._alternate_checkbox, 0, wx.ALL, 5)
 
         self._auto_remove_checkbox = wx.CheckBox(
-            self,
+            general_panel,
             label=_("Automatically remove played tracks"),
         )
         self._auto_remove_checkbox.SetValue(self._settings.get_auto_remove_played())
         playback_box.Add(self._auto_remove_checkbox, 0, wx.ALL, 5)
 
         self._focus_playing_checkbox = wx.CheckBox(
-            self,
+            general_panel,
             label=_("Keep selection on currently playing track"),
         )
         self._focus_playing_checkbox.SetValue(self._settings.get_focus_playing_track())
         playback_box.Add(self._focus_playing_checkbox, 0, wx.ALL, 5)
 
         intro_row = wx.BoxSizer(wx.HORIZONTAL)
-        intro_label = wx.StaticText(self, label=_("Intro alert (s):"))
-        self._intro_alert_ctrl = wx.SpinCtrlDouble(self, min=0.0, max=60.0, inc=0.5)
+        intro_label = wx.StaticText(general_panel, label=_("Intro alert (s):"))
+        self._intro_alert_ctrl = wx.SpinCtrlDouble(general_panel, min=0.0, max=60.0, inc=0.5)
         self._intro_alert_ctrl.SetDigits(1)
         self._intro_alert_ctrl.SetValue(self._settings.get_intro_alert_seconds())
         intro_row.Add(intro_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
@@ -124,10 +130,10 @@ class OptionsDialog(wx.Dialog):
         playback_box.Add(intro_row, 0, wx.ALL, 5)
 
         language_row = wx.BoxSizer(wx.HORIZONTAL)
-        language_label = wx.StaticText(self, label=_("Interface language:"))
+        language_label = wx.StaticText(general_panel, label=_("Interface language:"))
         self._language_codes = ["en", "pl"]
         language_names = [_("English"), _("Polish")]
-        self._language_choice = wx.Choice(self, choices=language_names)
+        self._language_choice = wx.Choice(general_panel, choices=language_names)
         current_language = self._settings.get_language()
         try:
             selection = self._language_codes.index(current_language)
@@ -137,53 +143,61 @@ class OptionsDialog(wx.Dialog):
         language_row.Add(language_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
         language_row.Add(self._language_choice, 0, wx.ALIGN_CENTER_VERTICAL)
         playback_box.Add(language_row, 0, wx.ALL, 5)
-        main_sizer.Add(playback_box, 0, wx.EXPAND | wx.ALL, 10)
+        general_sizer.Add(playback_box, 0, wx.EXPAND | wx.BOTTOM, 10)
 
-        pfl_box = wx.StaticBoxSizer(wx.StaticBox(self, label=_("Pre-fader listen (PFL)")), wx.VERTICAL)
+        pfl_box = wx.StaticBoxSizer(wx.StaticBox(general_panel, label=_("Pre-fader listen (PFL)")), wx.VERTICAL)
         pfl_row = wx.BoxSizer(wx.HORIZONTAL)
-        pfl_label = wx.StaticText(self, label=_("PFL device:"))
-        self._pfl_choice = wx.Choice(self)
+        pfl_label = wx.StaticText(general_panel, label=_("PFL device:"))
+        self._pfl_choice = wx.Choice(general_panel)
         pfl_row.Add(pfl_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
         pfl_row.Add(self._pfl_choice, 1, wx.ALIGN_CENTER_VERTICAL)
         pfl_box.Add(pfl_row, 0, wx.EXPAND | wx.ALL, 5)
-        main_sizer.Add(pfl_box, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+        general_sizer.Add(pfl_box, 0, wx.EXPAND | wx.BOTTOM, 10)
 
-        accessibility_box = wx.StaticBoxSizer(wx.StaticBox(self, label=_("Accessibility")), wx.VERTICAL)
+        startup_box = wx.StaticBoxSizer(wx.StaticBox(general_panel, label=_("Startup playlists")), wx.VERTICAL)
+        self._playlists_list = wx.ListCtrl(general_panel, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+        self._playlists_list.InsertColumn(0, _("Name"))
+        self._playlists_list.InsertColumn(1, _("Players"))
+        startup_box.Add(self._playlists_list, 1, wx.EXPAND | wx.ALL, 5)
+
+        buttons_row = wx.BoxSizer(wx.HORIZONTAL)
+        add_btn = wx.Button(general_panel, label=_("Add…"))
+        edit_btn = wx.Button(general_panel, label=_("Edit…"))
+        remove_btn = wx.Button(general_panel, label=_("Remove"))
+        buttons_row.Add(add_btn, 0, wx.RIGHT, 5)
+        buttons_row.Add(edit_btn, 0, wx.RIGHT, 5)
+        buttons_row.Add(remove_btn, 0)
+        startup_box.Add(buttons_row, 0, wx.ALL | wx.ALIGN_RIGHT, 5)
+        general_sizer.Add(startup_box, 1, wx.EXPAND | wx.BOTTOM, 10)
+
+        general_panel.SetSizer(general_sizer)
+        notebook.AddPage(general_panel, _("General"))
+
+        accessibility_panel = wx.Panel(notebook)
+        accessibility_sizer = wx.BoxSizer(wx.VERTICAL)
+
+        accessibility_box = wx.StaticBoxSizer(wx.StaticBox(accessibility_panel, label=_("Announcements")), wx.VERTICAL)
         announcements = self._settings.get_all_announcement_settings()
         info_label = wx.StaticText(
-            self,
+            accessibility_panel,
             label=_("Choose which announcements should be spoken by the screen reader."),
         )
         info_label.Wrap(440)
         accessibility_box.Add(info_label, 0, wx.ALL, 5)
 
         for category in ANNOUNCEMENT_CATEGORIES:
-            checkbox = wx.CheckBox(self, label=_(category.label))
+            checkbox = wx.CheckBox(accessibility_panel, label=_(category.label))
             checkbox.SetValue(announcements.get(category.id, category.default_enabled))
             accessibility_box.Add(checkbox, 0, wx.ALL, 4)
             self._announcement_checkboxes[category.id] = checkbox
 
-        main_sizer.Add(accessibility_box, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
-
-        startup_box = wx.StaticBoxSizer(wx.StaticBox(self, label=_("Startup playlists")), wx.VERTICAL)
-        self._playlists_list = wx.ListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
-        self._playlists_list.InsertColumn(0, _("Name"))
-        self._playlists_list.InsertColumn(1, _("Players"))
-        startup_box.Add(self._playlists_list, 1, wx.EXPAND | wx.ALL, 5)
-
-        buttons_row = wx.BoxSizer(wx.HORIZONTAL)
-        add_btn = wx.Button(self, label=_("Add…"))
-        edit_btn = wx.Button(self, label=_("Edit…"))
-        remove_btn = wx.Button(self, label=_("Remove"))
-        buttons_row.Add(add_btn, 0, wx.RIGHT, 5)
-        buttons_row.Add(edit_btn, 0, wx.RIGHT, 5)
-        buttons_row.Add(remove_btn, 0)
-        startup_box.Add(buttons_row, 0, wx.ALL | wx.ALIGN_RIGHT, 5)
-        main_sizer.Add(startup_box, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        accessibility_sizer.Add(accessibility_box, 0, wx.EXPAND | wx.ALL, 10)
+        accessibility_panel.SetSizer(accessibility_sizer)
+        notebook.AddPage(accessibility_panel, _("Accessibility"))
 
         button_sizer = self.CreateSeparatedButtonSizer(wx.OK | wx.CANCEL)
         if button_sizer:
-            main_sizer.Add(button_sizer, 0, wx.EXPAND | wx.ALL, 10)
+            main_sizer.Add(button_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         self.SetSizer(main_sizer)
         self.SetMinSize((520, 420))

@@ -121,6 +121,15 @@ msgstr "Wybierz liczbę odtwarzaczy oraz przypisz każde urządzenie audio."
 msgid "Choose which announcements should be spoken by the screen reader."
 msgstr "Wybierz, które komunikaty mają być wypowiadane przez czytnik ekranu."
 
+msgid "General"
+msgstr "Ogólne"
+
+msgid "Accessibility"
+msgstr "Dostępność"
+
+msgid "Announcements"
+msgstr "Komunikaty"
+
 msgid "Clipboard is empty"
 msgstr "Schowek jest pusty"
 

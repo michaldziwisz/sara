@@ -13,6 +13,15 @@ msgstr "Choose how many players to use and assign audio devices."
 msgid "Choose which announcements should be spoken by the screen reader."
 msgstr "Choose which announcements should be spoken by the screen reader."
 
+msgid "General"
+msgstr "General"
+
+msgid "Accessibility"
+msgstr "Accessibility"
+
+msgid "Announcements"
+msgstr "Announcements"
+
 msgid "General status messages"
 msgstr "General status messages"
 
