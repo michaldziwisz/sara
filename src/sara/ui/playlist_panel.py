@@ -21,6 +21,7 @@ class PlaylistPanel(wx.Panel):
         on_focus: Callable[[str], None] | None = None,
         on_loop_configure: Callable[[str, str], None] | None = None,
         on_set_marker: Callable[[str, str], None] | None = None,
+        on_selection_change: Callable[[str, list[int]], None] | None = None,
     ):
         super().__init__(parent)
         self.SetName(model.name)
@@ -28,6 +29,7 @@ class PlaylistPanel(wx.Panel):
         self._on_focus = on_focus
         self._on_loop_configure = on_loop_configure
         self._on_set_marker = on_set_marker
+        self._on_selection_change = on_selection_change
         self._active = False
         self._base_accessible_name = model.name
         self._list_ctrl = wx.ListCtrl(self, style=wx.LC_REPORT)
@@ -67,7 +69,12 @@ class PlaylistPanel(wx.Panel):
 
     def _handle_list_interaction(self, event: wx.Event) -> None:
         self._notify_focus()
+        self._notify_selection_change()
         event.Skip()
+
+    def _notify_selection_change(self) -> None:
+        if self._on_selection_change:
+            self._on_selection_change(self.model.id, self.get_selected_indices())
 
     def _register_hotkeys(self) -> None:
         # TODO: powiązać skróty z akcjami (play/pause/stop/fade)

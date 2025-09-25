@@ -113,6 +113,7 @@ class MainFrame(wx.Frame):
         self._clipboard_items: List[Dict[str, Any]] = []
         self._undo_stack: list[UndoAction] = []
         self._redo_stack: list[UndoAction] = []
+        self._focus_lock: Dict[str, bool] = {}
 
         self.CreateStatusBar()
         self.SetStatusText(_("Ready"))
@@ -404,6 +405,7 @@ class MainFrame(wx.Frame):
             on_focus=self._on_playlist_focus,
             on_loop_configure=self._on_loop_configure,
             on_set_marker=self._on_toggle_marker,
+            on_selection_change=self._on_playlist_selection_change,
         )
         panel.SetMinSize((360, 300))
 
@@ -436,6 +438,28 @@ class MainFrame(wx.Frame):
 
     def _get_playlist_model(self, playlist_id: str) -> PlaylistModel | None:
         return self._state.playlists.get(playlist_id)
+
+    def _on_playlist_selection_change(self, playlist_id: str, indices: list[int]) -> None:
+        if not self._focus_playing_track:
+            return
+        playing_id = self._get_playing_item_id(playlist_id)
+        panel = self._playlists.get(playlist_id)
+        if panel is None:
+            return
+        if playing_id is None:
+            self._focus_lock[playlist_id] = False
+            return
+        if not indices:
+            self._focus_lock[playlist_id] = False
+            return
+        if len(indices) == 1:
+            selected_index = indices[0]
+            if 0 <= selected_index < len(panel.model.items):
+                selected_item = panel.model.items[selected_index]
+                if selected_item.id == playing_id:
+                    self._focus_lock[playlist_id] = False
+                    return
+        self._focus_lock[playlist_id] = True
 
     def _on_new_playlist(self, event: wx.CommandEvent) -> None:
         dialog = NewPlaylistDialog(self)
@@ -942,6 +966,7 @@ class MainFrame(wx.Frame):
         self._auto_mix_state.pop(key, None)
         panel.mark_item_status(item.id, item.status)
         panel.refresh()
+        self._focus_lock[playlist.id] = False
         self._maybe_focus_playing_item(panel, item.id)
         if item.has_loop() and item.loop_enabled:
             self._announce(_("Loop playing"))
@@ -1256,14 +1281,29 @@ class MainFrame(wx.Frame):
     def _maybe_focus_playing_item(self, panel: PlaylistPanel, item_id: str) -> None:
         if not self._focus_playing_track:
             return
-        current = panel.get_selected_indices()
-        if len(current) == 1:
-            selected_item = panel.model.items[current[0]]
-            if selected_item.id == item_id:
+        playlist_id = panel.model.id
+        if self._focus_lock.get(playlist_id):
+            current = panel.get_selected_indices()
+            if len(current) == 1:
+                selected_index = current[0]
+                if 0 <= selected_index < len(panel.model.items):
+                    if panel.model.items[selected_index].id == item_id:
+                        self._focus_lock[playlist_id] = False
+                    else:
+                        return
+            else:
                 return
+        else:
+            current = panel.get_selected_indices()
+            if len(current) == 1:
+                selected_index = current[0]
+                if 0 <= selected_index < len(panel.model.items):
+                    if panel.model.items[selected_index].id == item_id:
+                        return
         for index, track in enumerate(panel.model.items):
             if track.id == item_id:
                 panel.select_index(index)
+                self._focus_lock[playlist_id] = False
                 break
 
     def _sync_marker_reference(self, model: PlaylistModel) -> None:
@@ -1499,6 +1539,13 @@ class MainFrame(wx.Frame):
             if key[0] == playlist_id:
                 return key, context
         return None
+
+    def _get_playing_item_id(self, playlist_id: str) -> str | None:
+        context = self._get_playback_context(playlist_id)
+        if context is None:
+            return None
+        key, _ctx = context
+        return key[1]
 
     def _get_busy_device_ids(self) -> set[str]:
         return {context.device_id for context in self._playback_contexts.values()}
