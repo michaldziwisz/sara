@@ -850,7 +850,7 @@ class MainFrame(wx.Frame):
             return
 
         if self._marker_reference:
-            old_playlist_id, _ = self._marker_reference
+            old_playlist_id, old_item_id = self._marker_reference
             if old_playlist_id != playlist_id:
                 old_playlist = self._get_playlist_model(old_playlist_id)
                 if old_playlist:
