@@ -120,6 +120,7 @@ class MainFrame(wx.Frame):
         self._redo_stack: list[UndoAction] = []
         self._focus_lock: Dict[str, bool] = {}
         self._intro_alert_players: list[Tuple[Player, Path]] = []
+        self._silence_timers: list[wx.CallLater] = []
 
         self.CreateStatusBar()
         self.SetStatusText(_("Ready"))
@@ -1940,9 +1941,15 @@ class MainFrame(wx.Frame):
             speak_text(spoken_message if spoken_message is not None else message)
 
     def _silence_screen_reader(self) -> None:
+        for timer in list(self._silence_timers):
+            try:
+                timer.Stop()
+            except Exception:
+                pass
+        self._silence_timers.clear()
+
         cancel_speech()
-        for delay in (0, 40, 90, 180, 320, 520, 800, 1200, 1600, 2200):
-            wx.CallLater(delay, cancel_speech)
+        self._silence_timers.append(wx.CallLater(60, cancel_speech))
 
     def _announce(self, message: str) -> None:
         self._announce_event("general", message)
