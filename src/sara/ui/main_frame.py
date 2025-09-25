@@ -28,7 +28,13 @@ from sara.ui.loop_dialog import LoopDialog
 from sara.ui.options_dialog import OptionsDialog
 from sara.ui.shortcut_editor_dialog import ShortcutEditorDialog
 from sara.ui.shortcut_utils import format_shortcut_display, parse_shortcut
-from sara.ui.speech import cancel_speech, speak_text
+from sara.ui.speech import (
+    NVDA_SPEECH_MODE_OFF,
+    cancel_speech,
+    get_speech_mode,
+    set_speech_mode,
+    speak_text,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -120,6 +126,8 @@ class MainFrame(wx.Frame):
         self._redo_stack: list[UndoAction] = []
         self._focus_lock: Dict[str, bool] = {}
         self._intro_alert_players: list[Tuple[Player, Path]] = []
+        self._nvda_speech_restore: int | None = None
+        self._nvda_speech_restore_timer: wx.CallLater | None = None
 
         self.CreateStatusBar()
         self.SetStatusText(_("Ready"))
@@ -1937,12 +1945,41 @@ class MainFrame(wx.Frame):
             if spoken_message == "":
                 self._silence_screen_reader()
                 return
+            self._ensure_nvda_speech_ready()
             speak_text(spoken_message if spoken_message is not None else message)
 
     def _silence_screen_reader(self) -> None:
+        self._suspend_nvda_speech()
         cancel_speech()
         for delay in (0, 40, 90, 180, 320, 520, 800, 1200, 1600, 2200):
             wx.CallLater(delay, cancel_speech)
+
+    def _suspend_nvda_speech(self) -> None:
+        if self._nvda_speech_restore_timer is not None:
+            self._nvda_speech_restore_timer.Stop()
+            self._nvda_speech_restore_timer = None
+        if self._nvda_speech_restore is None:
+            current_mode = get_speech_mode()
+            if current_mode is None or current_mode == NVDA_SPEECH_MODE_OFF:
+                return
+            if set_speech_mode(NVDA_SPEECH_MODE_OFF):
+                self._nvda_speech_restore = current_mode
+        self._nvda_speech_restore_timer = wx.CallLater(450, self._restore_nvda_speech_mode)
+
+    def _ensure_nvda_speech_ready(self) -> None:
+        if self._nvda_speech_restore_timer is not None:
+            self._nvda_speech_restore_timer.Stop()
+            self._nvda_speech_restore_timer = None
+        if self._nvda_speech_restore is not None:
+            set_speech_mode(self._nvda_speech_restore)
+            self._nvda_speech_restore = None
+
+    def _restore_nvda_speech_mode(self) -> None:
+        if self._nvda_speech_restore is None:
+            return
+        set_speech_mode(self._nvda_speech_restore)
+        self._nvda_speech_restore = None
+        self._nvda_speech_restore_timer = None
 
     def _announce(self, message: str) -> None:
         self._announce_event("general", message)
