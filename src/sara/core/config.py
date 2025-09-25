@@ -52,6 +52,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "fade_out_seconds": 0.0,
         "alternate_play_next": False,
         "auto_remove_played": False,
+        "focus_playing_track": True,
     },
     "startup": {
         "playlists": [],
@@ -163,6 +164,14 @@ class SettingsManager:
     def set_auto_remove_played(self, enabled: bool) -> None:
         playback = self._data.setdefault("playback", {})
         playback["auto_remove_played"] = bool(enabled)
+
+    def get_focus_playing_track(self) -> bool:
+        playback = self._data.get("playback", {})
+        return bool(playback.get("focus_playing_track", DEFAULT_CONFIG["playback"]["focus_playing_track"]))
+
+    def set_focus_playing_track(self, enabled: bool) -> None:
+        playback = self._data.setdefault("playback", {})
+        playback["focus_playing_track"] = bool(enabled)
 
     def get_language(self) -> str:
         general = self._data.get("general", {})

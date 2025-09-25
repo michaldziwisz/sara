@@ -94,6 +94,9 @@ msgstr "Miks automatyczny %s"
 msgid "Automatically remove played tracks"
 msgstr "Usuwaj automatycznie odegrane utwory"
 
+msgid "Keep selection on currently playing track"
+msgstr "Utrzymuj zaznaczenie na odtwarzanym utworze"
+
 msgid "Cannot move further %s"
 msgstr "Nie można przenieść dalej w %s"
 

@@ -105,6 +105,13 @@ class OptionsDialog(wx.Dialog):
         self._auto_remove_checkbox.SetValue(self._settings.get_auto_remove_played())
         playback_box.Add(self._auto_remove_checkbox, 0, wx.ALL, 5)
 
+        self._focus_playing_checkbox = wx.CheckBox(
+            self,
+            label=_("Keep selection on currently playing track"),
+        )
+        self._focus_playing_checkbox.SetValue(self._settings.get_focus_playing_track())
+        playback_box.Add(self._focus_playing_checkbox, 0, wx.ALL, 5)
+
         language_row = wx.BoxSizer(wx.HORIZONTAL)
         language_label = wx.StaticText(self, label=_("Interface language:"))
         self._language_codes = ["en", "pl"]
@@ -212,6 +219,7 @@ class OptionsDialog(wx.Dialog):
         self._settings.set_playback_fade_seconds(self._fade_ctrl.GetValue())
         self._settings.set_alternate_play_next(self._alternate_checkbox.GetValue())
         self._settings.set_auto_remove_played(self._auto_remove_checkbox.GetValue())
+        self._settings.set_focus_playing_track(self._focus_playing_checkbox.GetValue())
         self._settings.set_startup_playlists(self._playlists)
         self._settings.set_pfl_device(self._selected_pfl_device())
         self._settings.set_language(self._language_codes[self._language_choice.GetSelection()])

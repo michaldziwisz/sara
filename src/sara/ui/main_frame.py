@@ -108,6 +108,7 @@ class MainFrame(wx.Frame):
         self._marker_mode_menu_item: wx.MenuItem | None = None
         self._alternate_play_next: bool = self._settings.get_alternate_play_next()
         self._auto_remove_played: bool = self._settings.get_auto_remove_played()
+        self._focus_playing_track: bool = self._settings.get_focus_playing_track()
         self._pfl_device_id: str | None = self._settings.get_pfl_device()
         self._clipboard_items: List[Dict[str, Any]] = []
         self._undo_stack: list[UndoAction] = []
@@ -654,6 +655,7 @@ class MainFrame(wx.Frame):
             self._reload_pfl_device()
             self._alternate_play_next = self._settings.get_alternate_play_next()
             self._auto_remove_played = self._settings.get_auto_remove_played()
+            self._focus_playing_track = self._settings.get_focus_playing_track()
             new_language = self._settings.get_language()
             if new_language != current_language:
                 set_language(new_language)
@@ -940,6 +942,7 @@ class MainFrame(wx.Frame):
         self._auto_mix_state.pop(key, None)
         panel.mark_item_status(item.id, item.status)
         panel.refresh()
+        self._maybe_focus_playing_item(panel, item.id)
         if item.has_loop() and item.loop_enabled:
             self._announce(_("Loop playing"))
         return True
@@ -1065,6 +1068,7 @@ class MainFrame(wx.Frame):
             return
         item.update_progress(seconds)
         panel.update_progress(item_id)
+        self._maybe_focus_playing_item(panel, item_id)
 
         if self._auto_mix_enabled:
             key = (playlist_id, item_id)
@@ -1248,6 +1252,14 @@ class MainFrame(wx.Frame):
             panel.refresh(selection)
         self._sync_marker_reference(panel.model)
         panel.focus_list()
+
+    def _maybe_focus_playing_item(self, panel: PlaylistPanel, item_id: str) -> None:
+        if not self._focus_playing_track:
+            return
+        for index, track in enumerate(panel.model.items):
+            if track.id == item_id:
+                panel.select_index(index)
+                break
 
     def _sync_marker_reference(self, model: PlaylistModel) -> None:
         marker_item = next((item for item in model.items if item.is_marker), None)
