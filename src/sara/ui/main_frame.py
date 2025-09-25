@@ -124,6 +124,7 @@ class MainFrame(wx.Frame):
         self.CreateStatusBar()
         self.SetStatusText(_("Ready"))
         wx.ToolTip.Enable(False)
+        self.SetToolTip(None)
         self._fade_duration = max(self._settings.get_playback_fade_seconds(), 0.0)
         self._create_menu_bar()
         self._create_ui()
@@ -1934,12 +1935,13 @@ class MainFrame(wx.Frame):
         self.SetStatusText(message)
         if self._settings.get_announcement_enabled(category):
             if spoken_message == "":
+                self._silence_screen_reader()
                 return
             speak_text(spoken_message if spoken_message is not None else message)
 
     def _silence_screen_reader(self) -> None:
         cancel_speech()
-        for delay in (0, 30, 70, 150, 260):
+        for delay in (0, 25, 60, 140, 280, 520):
             wx.CallLater(delay, cancel_speech)
 
     def _announce(self, message: str) -> None:

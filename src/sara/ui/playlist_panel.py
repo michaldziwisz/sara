@@ -35,6 +35,8 @@ class PlaylistPanel(wx.Panel):
         self._list_ctrl = wx.ListCtrl(self, style=wx.LC_REPORT)
         self._list_ctrl.SetName(self._base_accessible_name)
         self._list_ctrl.SetLabel(self._base_accessible_name)
+        self._list_ctrl.SetToolTip(None)
+        self.SetToolTip(None)
         self._list_ctrl.InsertColumn(0, _("Title"))
         self._list_ctrl.InsertColumn(1, _("Duration"))
         self._list_ctrl.InsertColumn(2, _("Status"))
