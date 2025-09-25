@@ -44,6 +44,20 @@ class _NvdaClient:
             return False
         return result == 0
 
+    def cancel(self) -> bool:
+        controller = self._ensure_loaded()
+        if controller is None:
+            return False
+        cancel_func = getattr(controller, "nvdaController_cancelSpeech", None)
+        if cancel_func is None:
+            return False
+        try:
+            result = cancel_func()
+        except Exception as exc:  # pragma: no cover - NVDA specific path
+            logger.debug("NVDA cancel speech failed: %s", exc)
+            return False
+        return result == 0
+
     def reset(self) -> None:
         with self._lock:
             self._controller = None
@@ -74,6 +88,10 @@ class _NvdaClient:
                     controller = loader(dll_path)
                     controller.nvdaController_speakText.argtypes = [ctypes.c_wchar_p]  # type: ignore[attr-defined]
                     controller.nvdaController_speakText.restype = ctypes.c_int  # type: ignore[attr-defined]
+                    cancel_func = getattr(controller, "nvdaController_cancelSpeech", None)
+                    if cancel_func is not None:
+                        cancel_func.argtypes = []  # type: ignore[attr-defined]
+                        cancel_func.restype = ctypes.c_int  # type: ignore[attr-defined]
                     self._controller = controller
                     return controller
                 except OSError:
@@ -151,7 +169,13 @@ def speak_text(message: str) -> bool:
     return _NVDA_CLIENT.speak(message)
 
 
-__all__ = ["speak_text"]
+def cancel_speech() -> bool:
+    """Cancel any ongoing NVDA speech output if the API is available."""
+
+    return _NVDA_CLIENT.cancel()
+
+
+__all__ = ["speak_text", "cancel_speech"]
 def _executable_dir() -> Optional[Path]:
     """Return directory of frozen executable when running from PyInstaller."""
 

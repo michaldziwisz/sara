@@ -34,10 +34,9 @@ def test_announcement_settings_persist(tmp_path):
         assert reloaded.get_announcement_enabled(category.id) == category.default_enabled
 
 
-def test_focus_playing_track_default_false(tmp_path):
+def test_focus_playing_track_default_true(tmp_path):
     manager = SettingsManager(config_path=_settings_path(tmp_path))
-
-    assert manager.get_focus_playing_track() is False
+    assert manager.get_focus_playing_track() is True
 
 
 def test_focus_playing_track_saved_in_accessibility(tmp_path):
@@ -71,3 +70,16 @@ def test_focus_playing_track_legacy_false(tmp_path):
 
     reloaded = SettingsManager(config_path=path)
     assert reloaded.get_focus_playing_track() is True
+
+
+def test_focus_playing_track_legacy_true(tmp_path):
+    path = _settings_path(tmp_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "playback:\n  focus_playing_track: true\n",
+        encoding="utf-8",
+    )
+
+    manager = SettingsManager(config_path=path)
+
+    assert manager.get_focus_playing_track() is True

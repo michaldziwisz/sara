@@ -28,7 +28,7 @@ from sara.ui.loop_dialog import LoopDialog
 from sara.ui.options_dialog import OptionsDialog
 from sara.ui.shortcut_editor_dialog import ShortcutEditorDialog
 from sara.ui.shortcut_utils import format_shortcut_display, parse_shortcut
-from sara.ui.speech import speak_text
+from sara.ui.speech import cancel_speech, speak_text
 
 
 logger = logging.getLogger(__name__)
@@ -1365,6 +1365,7 @@ class MainFrame(wx.Frame):
             if track.id == item_id:
                 panel.select_index(index)
                 self._focus_lock[playlist_id] = False
+                cancel_speech()
                 break
 
     def _compute_intro_remaining(self, item: PlaylistItem, absolute_seconds: float | None = None) -> float | None:

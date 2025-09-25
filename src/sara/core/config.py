@@ -53,7 +53,6 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "fade_out_seconds": 0.0,
         "alternate_play_next": False,
         "auto_remove_played": False,
-        "focus_playing_track": False,
         "intro_alert_seconds": 5.0,
     },
     "startup": {
@@ -65,7 +64,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     },
     "accessibility": {
         "announcements": {},
-        "follow_playing_selection": False,
+        "follow_playing_selection": True,
     },
 }
 
@@ -94,6 +93,7 @@ class SettingsManager:
 
     def __post_init__(self) -> None:
         self._data: Dict[str, Any] = {}
+        self._user_config: Dict[str, Any] = {}
         self.load()
 
     def load(self) -> None:
@@ -102,8 +102,10 @@ class SettingsManager:
                 user_config = yaml.safe_load(file) or {}
             if not isinstance(user_config, dict):
                 user_config = {}
+            self._user_config = copy.deepcopy(user_config)
             self._data = _deep_merge(DEFAULT_CONFIG, user_config)
         else:
+            self._user_config = {}
             self._data = copy.deepcopy(DEFAULT_CONFIG)
 
     def save(self) -> None:
@@ -176,18 +178,16 @@ class SettingsManager:
         playback["auto_remove_played"] = bool(enabled)
 
     def get_focus_playing_track(self) -> bool:
-        accessibility = self._data.get("accessibility", {})
-        if "follow_playing_selection" in accessibility:
-            return bool(accessibility.get("follow_playing_selection", False))
+        accessibility_raw = self._user_config.get("accessibility", {}) if isinstance(self._user_config, dict) else {}
+        if isinstance(accessibility_raw, dict) and "follow_playing_selection" in accessibility_raw:
+            return bool(accessibility_raw.get("follow_playing_selection"))
 
-        # Backward compatibility: older builds stored the flag under playback.
-        playback = self._data.get("playback", {})
-        value = playback.get("focus_playing_track")
-        if value is None:
-            return DEFAULT_CONFIG["accessibility"]["follow_playing_selection"]
-        if value is False:
-            return False
-        return DEFAULT_CONFIG["accessibility"]["follow_playing_selection"]
+        playback_raw = self._user_config.get("playback", {}) if isinstance(self._user_config, dict) else {}
+        if isinstance(playback_raw, dict) and "focus_playing_track" in playback_raw:
+            return bool(playback_raw.get("focus_playing_track"))
+
+        accessibility = self._data.get("accessibility", {})
+        return bool(accessibility.get("follow_playing_selection", DEFAULT_CONFIG["accessibility"]["follow_playing_selection"]))
 
     def set_focus_playing_track(self, enabled: bool) -> None:
         accessibility = self._data.setdefault("accessibility", {})
@@ -195,6 +195,13 @@ class SettingsManager:
         # Remove legacy location to keep saved config clean.
         playback = self._data.setdefault("playback", {})
         playback.pop("focus_playing_track", None)
+        if isinstance(self._user_config, dict):
+            accessibility_raw = self._user_config.setdefault("accessibility", {})
+            if isinstance(accessibility_raw, dict):
+                accessibility_raw["follow_playing_selection"] = bool(enabled)
+            playback_raw = self._user_config.setdefault("playback", {})
+            if isinstance(playback_raw, dict):
+                playback_raw.pop("focus_playing_track", None)
 
     def get_intro_alert_seconds(self) -> float:
         playback = self._data.get("playback", {})
