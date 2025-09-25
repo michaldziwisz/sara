@@ -63,38 +63,6 @@ class _NvdaClient:
             self._controller = None
             self._load_failed = False
 
-    def get_speech_mode(self) -> Optional[int]:
-        controller = self._ensure_loaded()
-        if controller is None:
-            return None
-        get_mode = getattr(controller, "nvdaController_getSpeechMode", None)
-        if get_mode is None:
-            return None
-
-        mode_value = ctypes.c_int()
-        try:
-            result = get_mode(ctypes.byref(mode_value))
-        except Exception as exc:  # pragma: no cover - NVDA specific path
-            logger.debug("NVDA get speech mode failed: %s", exc)
-            return None
-        if result != 0:
-            return None
-        return mode_value.value
-
-    def set_speech_mode(self, mode: int) -> bool:
-        controller = self._ensure_loaded()
-        if controller is None:
-            return False
-        set_mode = getattr(controller, "nvdaController_setSpeechMode", None)
-        if set_mode is None:
-            return False
-        try:
-            result = set_mode(int(mode))
-        except Exception as exc:  # pragma: no cover - NVDA specific path
-            logger.debug("NVDA set speech mode failed: %s", exc)
-            return False
-        return result == 0
-
     def _ensure_loaded(self):
         with self._lock:
             if self._controller is not None:
@@ -124,14 +92,6 @@ class _NvdaClient:
                     if cancel_func is not None:
                         cancel_func.argtypes = []  # type: ignore[attr-defined]
                         cancel_func.restype = ctypes.c_int  # type: ignore[attr-defined]
-                    set_mode = getattr(controller, "nvdaController_setSpeechMode", None)
-                    if set_mode is not None:
-                        set_mode.argtypes = [ctypes.c_int]  # type: ignore[attr-defined]
-                        set_mode.restype = ctypes.c_int  # type: ignore[attr-defined]
-                    get_mode = getattr(controller, "nvdaController_getSpeechMode", None)
-                    if get_mode is not None:
-                        get_mode.argtypes = [ctypes.POINTER(ctypes.c_int)]  # type: ignore[attr-defined]
-                        get_mode.restype = ctypes.c_int  # type: ignore[attr-defined]
                     self._controller = controller
                     return controller
                 except OSError:
@@ -199,10 +159,6 @@ class _NvdaClient:
 
 _NVDA_CLIENT = _NvdaClient()
 
-NVDA_SPEECH_MODE_OFF = 0
-NVDA_SPEECH_MODE_BEEPS = 1
-NVDA_SPEECH_MODE_TALK = 2
-
 
 def speak_text(message: str) -> bool:
     """Announce `message` through NVDA if available.
@@ -219,27 +175,7 @@ def cancel_speech() -> bool:
     return _NVDA_CLIENT.cancel()
 
 
-def get_speech_mode() -> Optional[int]:
-    """Return the current NVDA speech mode or None if unavailable."""
-
-    return _NVDA_CLIENT.get_speech_mode()
-
-
-def set_speech_mode(mode: int) -> bool:
-    """Set NVDA speech mode when controller is available."""
-
-    return _NVDA_CLIENT.set_speech_mode(mode)
-
-
-__all__ = [
-    "speak_text",
-    "cancel_speech",
-    "get_speech_mode",
-    "set_speech_mode",
-    "NVDA_SPEECH_MODE_OFF",
-    "NVDA_SPEECH_MODE_BEEPS",
-    "NVDA_SPEECH_MODE_TALK",
-]
+__all__ = ["speak_text", "cancel_speech"]
 def _executable_dir() -> Optional[Path]:
     """Return directory of frozen executable when running from PyInstaller."""
 

@@ -22,16 +22,6 @@ except AttributeError:
     _get_speech_mode = None
     _set_speech_mode = None
 
-MANUAL_NAV_KEYS = {
-    "kb:upArrow",
-    "kb:downArrow",
-    "kb:pageUp",
-    "kb:pageDown",
-    "kb:home",
-    "kb:end",
-}
-
-
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     """Silence NVDA focus announcements for SARA unless triggered manually."""
 
@@ -72,17 +62,20 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         speech.speakObjectProperties(focus, reason=REASON_FOCUS)
 
     def script_manualNavigation(self, gesture) -> None:
-        self._manual_request = True
+        focus = api.getFocusObject()
+        if self._belongs_to_sara(focus):
+            self._manual_request = True
         gesture.send()
 
     __gestures = {
         "kb:NVDA+shift+i": "requestManualAnnouncement",
-        "kb:NVDA+shift+upArrow": "requestManualAnnouncement",
-        "kb:NVDA+shift+downArrow": "requestManualAnnouncement",
+        "kb:upArrow": "manualNavigation",
+        "kb:downArrow": "manualNavigation",
+        "kb:pageUp": "manualNavigation",
+        "kb:pageDown": "manualNavigation",
+        "kb:home": "manualNavigation",
+        "kb:end": "manualNavigation",
     }
-
-    for key in MANUAL_NAV_KEYS:
-        __gestures[f"kb:{key.split(':')[1]}"] = "manualNavigation"
 
     def _belongs_to_sara(self, obj) -> bool:
         try:
