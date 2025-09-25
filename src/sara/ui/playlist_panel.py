@@ -58,7 +58,9 @@ class PlaylistPanel(wx.Panel):
         self._list_ctrl.Bind(wx.EVT_CHAR, self._handle_char)
         self._list_ctrl.Bind(wx.EVT_LIST_KEY_DOWN, self._handle_list_key_down)
         self._list_ctrl.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self._handle_item_activated)
-        self._list_ctrl.Bind(wx.EVT_LIST_ITEM_GETTOOLTIP, self._suppress_tooltip)
+        tooltip_event = getattr(wx, "EVT_LIST_ITEM_GETTOOLTIP", None)
+        if tooltip_event is not None:
+            self._list_ctrl.Bind(tooltip_event, self._suppress_tooltip)
         self._refresh_content()
         self.set_active(False)
 
@@ -256,8 +258,9 @@ class PlaylistPanel(wx.Panel):
             self._trigger_marker(event.GetIndex())
         event.Skip()
 
-    def _suppress_tooltip(self, event: wx.ListEvent) -> None:
-        event.SetToolTip(None)
+    def _suppress_tooltip(self, event: wx.Event) -> None:
+        if hasattr(event, "SetToolTip"):
+            event.SetToolTip(None)
         event.Skip(False)
 
     def _trigger_marker(self, index: int) -> None:
