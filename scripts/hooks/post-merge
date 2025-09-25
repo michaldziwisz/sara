@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+if command -v gh >/dev/null 2>&1; then
+  if [[ -x scripts/auto_download.sh ]]; then
+    scripts/auto_download.sh || echo "[post-merge] Artifact download skipped."
+  fi
+else
+  echo "[post-merge] gh CLI not available; skipping artifact download."
+fi

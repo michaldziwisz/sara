@@ -53,6 +53,7 @@ PYTHONPATH=src python -m pytest
 - Build distributables with `python -m build`; the `sara` console entry starts the GUI.
 - GitHub Actions provides a **Windows Build** workflow that publishes a downloadable `.zip` (containing `dist/SARA`) on every push to `main` and on tagged releases.
 - The CI bundle includes NVDA controller DLLs and the Windows `bass.dll` so speech and optional BASS playback work out of the box.
+- Scripts `scripts/auto_download.sh` and `scripts/download_latest_artifact.sh` (install via `scripts/install_hooks.sh`) keep the latest Windows artifact under `artifacts/` after each successful build.
 - For frozen Windows builds, bundle NVDA controller DLLs and optional BASS binaries alongside the executable.
 
 ### Roadmap highlights
@@ -130,6 +131,7 @@ PYTHONPATH=src python -m pytest
 - Edytor punktów intro/outro zgodny z tagami StationPlaylist.
 - Wypowiadanie pozostałego czasu intra i skrót odczytujący czas do końca utworu.
 - Playlista nakładkowa, która odtwarza bez wygaszania pozostałych playlist.
+- Automatyczne pobieranie najnowszego buildu (skrypt + hooki git).
 
 ### Licencja
 - Kod aplikacji: BSD 3-Clause (`LICENSE`).
