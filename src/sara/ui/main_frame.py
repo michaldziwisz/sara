@@ -1938,18 +1938,21 @@ class MainFrame(wx.Frame):
             if spoken_message == "":
                 self._silence_screen_reader()
                 return
+            self._cancel_pending_silence()
             speak_text(spoken_message if spoken_message is not None else message)
 
     def _silence_screen_reader(self) -> None:
+        self._cancel_pending_silence()
+        cancel_speech()
+        self._silence_timers.append(wx.CallLater(60, cancel_speech))
+
+    def _cancel_pending_silence(self) -> None:
         for timer in list(self._silence_timers):
             try:
                 timer.Stop()
             except Exception:
                 pass
         self._silence_timers.clear()
-
-        cancel_speech()
-        self._silence_timers.append(wx.CallLater(60, cancel_speech))
 
     def _announce(self, message: str) -> None:
         self._announce_event("general", message)
