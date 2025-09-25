@@ -8,6 +8,7 @@ import logging
 import tempfile
 from pathlib import Path
 from threading import Event
+import time
 from typing import Any, Dict, List, Tuple
 
 import wx
@@ -121,6 +122,8 @@ class MainFrame(wx.Frame):
         self._focus_lock: Dict[str, bool] = {}
         self._intro_alert_players: list[Tuple[Player, Path]] = []
         self._silence_timers: list[wx.CallLater] = []
+        self._pending_announce_timers: list[wx.CallLater] = []
+        self._silence_deadline: float = 0.0
 
         self.CreateStatusBar()
         self.SetStatusText(_("Ready"))
@@ -1938,12 +1941,25 @@ class MainFrame(wx.Frame):
             if spoken_message == "":
                 self._silence_screen_reader()
                 return
+            remaining = self._silence_deadline - time.monotonic()
+            if remaining > 0:
+                delay_ms = int(remaining * 1000) + 5
+                def _announce_later() -> None:
+                    try:
+                        self._pending_announce_timers.remove(timer)
+                    except ValueError:
+                        pass
+                    self._announce_event(category, message, spoken_message=spoken_message)
+                timer = wx.CallLater(delay_ms, _announce_later)
+                self._pending_announce_timers.append(timer)
+                return
             self._cancel_pending_silence()
             speak_text(spoken_message if spoken_message is not None else message)
 
     def _silence_screen_reader(self) -> None:
         self._cancel_pending_silence()
         cancel_speech()
+        self._silence_deadline = time.monotonic() + 0.25
         self._silence_timers.append(wx.CallLater(60, cancel_speech))
 
     def _cancel_pending_silence(self) -> None:
@@ -1953,6 +1969,13 @@ class MainFrame(wx.Frame):
             except Exception:
                 pass
         self._silence_timers.clear()
+        for timer in list(self._pending_announce_timers):
+            try:
+                timer.Stop()
+            except Exception:
+                pass
+        self._pending_announce_timers.clear()
+        self._silence_deadline = 0.0
 
     def _announce(self, message: str) -> None:
         self._announce_event("general", message)
