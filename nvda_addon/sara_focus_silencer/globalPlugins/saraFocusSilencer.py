@@ -1,4 +1,4 @@
-"""NVDA global plugin that silences focus speech when SARA is active."""
+"""NVDA global plugin that silences focus speech when SARA auto-selects items."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ import wx
 from controlTypes import REASON_FOCUS
 from logHandler import log
 
-# Fallback int constants in case speech exposes enums differently across NVDA versions.
 SPEECH_MODE_OFF = getattr(speech, "SpeechMode", None)
 if SPEECH_MODE_OFF is not None:
     SPEECH_MODE_OFF = speech.SpeechMode.off
@@ -23,14 +22,24 @@ except AttributeError:
     _get_speech_mode = None
     _set_speech_mode = None
 
+MANUAL_NAV_KEYS = {
+    "kb:upArrow",
+    "kb:downArrow",
+    "kb:pageUp",
+    "kb:pageDown",
+    "kb:home",
+    "kb:end",
+}
+
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
-    """Silence NVDA focus announcements for the SARA application."""
+    """Silence NVDA focus announcements for SARA unless triggered manually."""
 
     def __init__(self) -> None:
         super().__init__()
         self._restore_mode: int | None = None
         self._restore_timer: wx.CallLater | None = None
+        self._manual_request = False
 
     def terminate(self) -> None:  # type: ignore[override]
         self._restore_speech(force=True)
@@ -38,6 +47,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
     def event_gainFocus(self, obj, nextHandler):  # type: ignore[override]
         if self._belongs_to_sara(obj):
+            if self._manual_request:
+                self._manual_request = False
+                self._restore_speech(force=True)
+                nextHandler()
+                speech.speakObjectProperties(obj, reason=REASON_FOCUS)
+                return
             self._suspend_speech()
             try:
                 nextHandler()
@@ -47,19 +62,27 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             self._restore_speech(force=False)
             nextHandler()
 
-    def script_announceSaraFocus(self, gesture) -> None:
+    def script_requestManualAnnouncement(self, gesture) -> None:
         focus = api.getFocusObject()
         if not self._belongs_to_sara(focus):
-            # Fall back to NVDA's default announcement outside of SARA.
             speech.speakObjectProperties(focus, reason=REASON_FOCUS)
             return
-
+        self._manual_request = True
         self._restore_speech(force=True)
         speech.speakObjectProperties(focus, reason=REASON_FOCUS)
 
+    def script_manualNavigation(self, gesture) -> None:
+        self._manual_request = True
+        gesture.send()
+
     __gestures = {
-        "kb:NVDA+shift+i": "announceSaraFocus",
+        "kb:NVDA+shift+i": "requestManualAnnouncement",
+        "kb:NVDA+shift+upArrow": "requestManualAnnouncement",
+        "kb:NVDA+shift+downArrow": "requestManualAnnouncement",
     }
+
+    for key in MANUAL_NAV_KEYS:
+        __gestures[f"kb:{key.split(':')[1]}"] = "manualNavigation"
 
     def _belongs_to_sara(self, obj) -> bool:
         try:
@@ -79,7 +102,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                 title = (foreground.name or "").lower()
                 if title.startswith("sara"):
                     return True
-        except Exception:  # pragma: no cover - defensive
+        except Exception:  # pragma: no cover
             log.debug("SARA silencer: unable to inspect foreground window", exc_info=True)
 
         return False
@@ -107,7 +130,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             return
         if self._restore_timer is not None:
             self._restore_timer.Stop()
-        self._restore_timer = wx.CallLater(250, self._restore_speech, True)
+        self._restore_timer = wx.CallLater(250, self._restore_speech, False)
 
     def _restore_speech(self, force: bool) -> None:
         if _set_speech_mode is None:
