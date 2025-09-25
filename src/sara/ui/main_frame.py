@@ -1256,6 +1256,11 @@ class MainFrame(wx.Frame):
     def _maybe_focus_playing_item(self, panel: PlaylistPanel, item_id: str) -> None:
         if not self._focus_playing_track:
             return
+        current = panel.get_selected_indices()
+        if len(current) == 1:
+            selected_item = panel.model.items[current[0]]
+            if selected_item.id == item_id:
+                return
         for index, track in enumerate(panel.model.items):
             if track.id == item_id:
                 panel.select_index(index)
