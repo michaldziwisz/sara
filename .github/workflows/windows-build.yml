@@ -35,8 +35,11 @@ jobs:
         env:
           PYTHONPATH: src
 
-      - name: Build executable
-        run: pyinstaller --noconfirm --noconsole --name SARA --collect-data sara --collect-binaries sara --add-data "config;config" --add-data "src/sara/locale;sara/locale" --paths src src\sara\app.py
+      - name: Build executables
+        run: |
+          pyinstaller --noconfirm --noconsole --name SARA --collect-data sara --collect-binaries sara --add-data "config;config" --add-data "src/sara/locale;sara/locale" --paths src src\sara\app.py
+          pyinstaller --noconfirm --noconsole --onefile --name SARA-News-Editor --collect-data sara --collect-binaries sara --add-data "config;config" --add-data "src/sara/locale;sara/locale" --paths src src\sara\news_editor_app.py
+          Copy-Item dist\SARA-News-Editor.exe dist\SARA\ -Force
 
       - name: Copy NVDA and BASS DLLs
         run: |

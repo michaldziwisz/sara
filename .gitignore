@@ -15,6 +15,7 @@ build/
 *.egg-info/
 artifacts/
 nvda_addon.zip
+scripts/create_release.sh
 
 # Local config
 config/settings.yaml
