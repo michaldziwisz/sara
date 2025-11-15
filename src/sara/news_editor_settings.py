@@ -45,3 +45,14 @@ class NewsEditorSettings:
         else:
             self._data.pop("last_device_id", None)
         self.save()
+
+    def get_line_length(self, default: int) -> int:
+        value = self._data.get("line_length")
+        try:
+            return max(0, int(value))
+        except (TypeError, ValueError):
+            return default
+
+    def set_line_length(self, value: int) -> None:
+        self._data["line_length"] = max(0, int(value))
+        self.save()

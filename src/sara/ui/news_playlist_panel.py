@@ -33,6 +33,9 @@ class NewsPlaylistPanel(wx.Panel):
         on_focus: Callable[[str], None],
         on_play_audio: Callable[[Path, str | None], None],
         on_device_change: Callable[[PlaylistModel], None],
+        enable_line_length_control: bool = False,
+        line_length_bounds: tuple[int, int] = (0, 500),
+        on_line_length_change: Callable[[int], None] | None = None,
     ) -> None:
         super().__init__(parent)
         self.model = model
@@ -41,11 +44,16 @@ class NewsPlaylistPanel(wx.Panel):
         self._on_focus_request = on_focus
         self._on_play_audio = on_play_audio
         self._on_device_change = on_device_change
+        self._line_length_bounds = line_length_bounds
+        self._on_line_length_change = on_line_length_change if enable_line_length_control else None
         self._mode: str = "edit"
         self._read_text_ctrl: wx.TextCtrl | None = None
         self._heading_lines: list[int] = []
         self._suppress_play_shortcut = False
         self._audio_markers: list[tuple[int, str]] = []
+        self._line_length_spin: wx.SpinCtrl | None = None
+        self._line_length_apply: wx.Button | None = None
+        self._caret_position: int = 0
 
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         toolbar = wx.BoxSizer(wx.HORIZONTAL)
@@ -58,6 +66,27 @@ class NewsPlaylistPanel(wx.Panel):
         toolbar.Add(self._insert_button, 0, wx.RIGHT, 5)
         toolbar.Add(self._load_button, 0, wx.RIGHT, 5)
         toolbar.Add(self._save_button, 0, wx.RIGHT, 5)
+
+        if self._on_line_length_change:
+            line_label = wx.StaticText(self, label=_("Line length:"))
+            toolbar.Add(line_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+            min_len, max_len = self._line_length_bounds
+            initial_length = max(min_len, min(max_len, self._get_line_length()))
+            self._line_length_spin = wx.SpinCtrl(
+                self,
+                min=min_len,
+                max=max_len or 1000,
+                initial=initial_length,
+                style=wx.TE_PROCESS_TAB | wx.TE_PROCESS_ENTER,
+            )
+            self._line_length_spin.Bind(wx.EVT_SPINCTRL, self._handle_line_length_change)
+            self._line_length_spin.Bind(wx.EVT_TEXT_ENTER, self._handle_line_length_change)
+            self._line_length_spin.Bind(wx.EVT_CHAR_HOOK, self._handle_toolbar_char_hook)
+            toolbar.Add(self._line_length_spin, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+            self._line_length_apply = wx.Button(self, label=_("Apply"))
+            self._line_length_apply.Bind(wx.EVT_BUTTON, self._handle_line_length_change)
+            self._line_length_apply.Bind(wx.EVT_CHAR_HOOK, self._handle_toolbar_char_hook)
+            toolbar.Add(self._line_length_apply, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
         device_label = wx.StaticText(self, label=_("Playback device:"))
         toolbar.AddStretchSpacer()
@@ -89,10 +118,10 @@ class NewsPlaylistPanel(wx.Panel):
         self._insert_button.Bind(wx.EVT_BUTTON, self._insert_audio_placeholder)
         self._load_button.Bind(wx.EVT_BUTTON, self._on_load_service)
         self._save_button.Bind(wx.EVT_BUTTON, self._on_save_service)
-        self.Bind(wx.EVT_CHAR_HOOK, self._handle_char_hook)
         self._device_choice.Bind(wx.EVT_CHOICE, self._on_device_selected)
 
         self._populate_devices()
+        self._sync_line_length_spin()
         self._update_mode_ui()
         self.set_active(False)
 
@@ -110,6 +139,7 @@ class NewsPlaylistPanel(wx.Panel):
     # ------------------------------------------------------------------ public
     def refresh_configuration(self) -> None:
         self._populate_devices()
+        self._sync_line_length_spin()
         if self._mode == "read":
             self._render_read_panel()
             self._read_panel.Layout()
@@ -181,6 +211,10 @@ class NewsPlaylistPanel(wx.Panel):
                     self._focus_audio_marker(direction=direction)
                     event.StopPropagation()
                     return
+                if keycode == wx.WXK_TAB and not event.ControlDown() and not event.AltDown():
+                    if self._focus_toolbar_from_text(backwards=event.ShiftDown()):
+                        event.StopPropagation()
+                        return
             event.Skip()
             return
 
@@ -209,6 +243,7 @@ class NewsPlaylistPanel(wx.Panel):
         event.Skip()
 
     def _toggle_mode(self, _event: wx.Event | None) -> None:
+        self._remember_caret_position()
         self._mode = "read" if self._mode == "edit" else "edit"
         self._update_mode_ui()
 
@@ -218,6 +253,7 @@ class NewsPlaylistPanel(wx.Panel):
             self._read_panel.Hide()
             self._edit_ctrl.Show()
             self.Layout()
+            self._restore_caret_position(self._edit_ctrl)
             self._edit_ctrl.SetFocus()
             self._on_focus_request(self.model.id)
         else:
@@ -227,6 +263,7 @@ class NewsPlaylistPanel(wx.Panel):
             self._read_panel.Show()
             self.Layout()
             if self._read_text_ctrl:
+                self._restore_caret_position(self._read_text_ctrl)
                 self._read_text_ctrl.SetFocus()
             else:
                 self._read_panel.SetFocus()
@@ -309,6 +346,101 @@ class NewsPlaylistPanel(wx.Panel):
 
     def _show_error(self, message: str) -> None:
         wx.MessageBox(message, _("Error"), parent=self)
+
+    def _normalize_line_length(self, value: int) -> int:
+        minimum, maximum = self._line_length_bounds
+        normalized = max(minimum, value)
+        if maximum > minimum:
+            normalized = min(normalized, maximum)
+        return normalized
+
+    def _sync_line_length_spin(self) -> None:
+        if self._line_length_spin:
+            self._line_length_spin.SetValue(self._normalize_line_length(self._get_line_length()))
+
+    def _handle_line_length_change(self, _event: wx.Event) -> None:
+        if not self._line_length_spin or not self._on_line_length_change:
+            return
+        value = self._normalize_line_length(self._line_length_spin.GetValue())
+        self._line_length_spin.SetValue(value)
+        self._on_line_length_change(value)
+        self.refresh_configuration()
+
+    def _toolbar_focusables(self) -> list[wx.Window]:
+        controls: list[wx.Window] = [
+            self._mode_button,
+            self._insert_button,
+            self._load_button,
+            self._save_button,
+        ]
+        if self._line_length_spin:
+            controls.append(self._line_length_spin)
+        if self._line_length_apply:
+            controls.append(self._line_length_apply)
+        controls.append(self._device_choice)
+        return [ctrl for ctrl in controls if ctrl and ctrl.IsShown() and ctrl.IsEnabled()]
+
+    def _focus_toolbar_from_text(self, *, backwards: bool) -> bool:
+        controls = self._toolbar_focusables()
+        if not controls:
+            return False
+        self._update_caret_from_read()
+        target = controls[-1] if backwards else controls[0]
+        target.SetFocus()
+        return True
+
+    def _handle_toolbar_char_hook(self, event: wx.KeyEvent) -> None:
+        if event.GetKeyCode() == wx.WXK_TAB and not event.ControlDown() and not event.AltDown():
+            backwards = event.ShiftDown()
+            if self._move_within_toolbar(event.GetEventObject(), backwards=backwards):
+                return
+        event.Skip()
+
+    def _move_within_toolbar(self, current: wx.Window, *, backwards: bool) -> bool:
+        controls = self._toolbar_focusables()
+        if not controls:
+            return False
+        try:
+            index = controls.index(current)
+        except ValueError:
+            return False
+        if backwards:
+            next_index = (index - 1) % len(controls)
+        else:
+            next_index = (index + 1) % len(controls)
+        controls[next_index].SetFocus()
+        return True
+
+    def _remember_caret_position(self) -> None:
+        if self._mode == "edit":
+            self._caret_position = self._edit_ctrl.GetInsertionPoint()
+        elif self._read_text_ctrl:
+            self._caret_position = self._read_text_ctrl.GetInsertionPoint()
+
+    def _restore_caret_position(self, ctrl: wx.TextCtrl | None) -> None:
+        if ctrl is None:
+            return
+        length = ctrl.GetLastPosition()
+        position = max(0, min(self._caret_position, length))
+        ctrl.SetInsertionPoint(position)
+        ctrl.ShowPosition(position)
+
+    def _update_caret_from_read(self) -> None:
+        if self._read_text_ctrl:
+            self._caret_position = self._read_text_ctrl.GetInsertionPoint()
+
+    def focus_default(self) -> None:
+        """Set focus to the active control depending on mode."""
+        if self._mode == "edit":
+            self._edit_ctrl.SetFocus()
+        else:
+            if self._read_text_ctrl is None:
+                self._render_read_panel()
+            if self._read_text_ctrl:
+                self._read_text_ctrl.SetFocus()
+            else:
+                self._read_panel.SetFocus()
+        self._on_focus_request(self.model.id)
 
     def _clipboard_audio_paths(self) -> list[str]:
         candidates = self._collect_clipboard_strings()
@@ -440,7 +572,7 @@ class NewsPlaylistPanel(wx.Panel):
         self._read_text_ctrl = wx.TextCtrl(
             self._read_panel,
             value=text_value,
-            style=wx.TE_READONLY | wx.TE_MULTILINE | wx.BORDER_NONE,
+            style=wx.TE_READONLY | wx.TE_MULTILINE | wx.BORDER_NONE | wx.TE_PROCESS_TAB,
         )
         self._read_text_ctrl.Bind(wx.EVT_SET_FOCUS, self._notify_focus)
         self._read_text_ctrl.Bind(wx.EVT_CHAR_HOOK, self._handle_char_hook)
@@ -455,6 +587,7 @@ class NewsPlaylistPanel(wx.Panel):
 
         self._read_panel.SetSizer(wrapper)
         self._read_panel.SetupScrolling(scroll_x=False, scroll_y=True)
+        self._restore_caret_position(self._read_text_ctrl)
 
     def _activate_audio_marker(self) -> bool:
         if not self._read_text_ctrl or not self._audio_markers:
@@ -475,6 +608,10 @@ class NewsPlaylistPanel(wx.Panel):
             if self._activate_audio_marker():
                 event.StopPropagation()
                 return
+        if keycode == wx.WXK_TAB and not event.ControlDown() and not event.AltDown():
+            flags = wx.NavigationKeyEvent.IsBackward if event.ShiftDown() else wx.NavigationKeyEvent.IsForward
+            self.Navigate(flags)
+            return
         event.Skip()
 
     def _focus_heading(self, *, direction: int) -> None:
@@ -502,6 +639,7 @@ class NewsPlaylistPanel(wx.Panel):
             self._read_text_ctrl.SetInsertionPoint(pos_target)
             self._read_text_ctrl.ShowPosition(pos_target)
             self._read_text_ctrl.SetFocus()
+            self._update_caret_from_read()
 
     def _focus_audio_marker(self, *, direction: int) -> None:
         if not self._audio_markers or not self._read_text_ctrl:
@@ -529,6 +667,7 @@ class NewsPlaylistPanel(wx.Panel):
             self._read_text_ctrl.SetInsertionPoint(pos_target)
             self._read_text_ctrl.ShowPosition(pos_target)
             self._read_text_ctrl.SetFocus()
+            self._update_caret_from_read()
 
     def _play_clip(self, path_str: str) -> None:
         device_id = self.model.output_device or (self.model.output_slots[0] if self.model.output_slots else None)

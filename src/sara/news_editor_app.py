@@ -26,6 +26,7 @@ class NewsEditorFrame(wx.Frame):
         self._settings = settings
         self._audio_engine = AudioEngine()
         self._editor_settings = NewsEditorSettings()
+        self._line_length = self._editor_settings.get_line_length(self._settings.get_news_line_length())
         self._model = PlaylistModel(id="news-editor", name=_("News service"), kind=PlaylistKind.NEWS)
         last_device = self._editor_settings.get_last_device_id()
         if last_device:
@@ -33,15 +34,18 @@ class NewsEditorFrame(wx.Frame):
         self._panel = NewsPlaylistPanel(
             self,
             model=self._model,
-            get_line_length=self._settings.get_news_line_length,
+            get_line_length=lambda: self._line_length,
             get_audio_devices=self._news_device_entries,
             on_focus=lambda _playlist_id: None,
             on_play_audio=self._on_play_audio,
             on_device_change=self._on_device_changed,
+            enable_line_length_control=True,
+            line_length_bounds=(0, 500),
+            on_line_length_change=self._on_line_length_change,
         )
-        sizer = wx.BoxSizer(wx.VERTICAL)
-        sizer.Add(self._panel, 1, wx.EXPAND)
-        self.SetSizer(sizer)
+        root_sizer = wx.BoxSizer(wx.VERTICAL)
+        root_sizer.Add(self._panel, 1, wx.EXPAND)
+        self.SetSizer(root_sizer)
         self.SetSize((900, 600))
         self.Bind(wx.EVT_CLOSE, self._on_close)
 
@@ -62,6 +66,10 @@ class NewsEditorFrame(wx.Frame):
 
     def _on_device_changed(self, model: PlaylistModel) -> None:
         self._editor_settings.set_last_device_id(model.output_device or None)
+
+    def _on_line_length_change(self, value: int) -> None:
+        self._line_length = value
+        self._editor_settings.set_line_length(value)
 
     def _on_play_audio(self, path: Path, device_id: str | None) -> None:
         if not path.exists():

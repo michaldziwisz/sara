@@ -395,6 +395,9 @@ class MainFrame(wx.Frame):
 
     def _handle_global_char_hook(self, event: wx.KeyEvent) -> None:
         keycode = event.GetKeyCode()
+        if keycode == wx.WXK_F6:
+            if self._cycle_playlist_focus(backwards=event.ShiftDown()):
+                return
         panel, focus = self._active_news_panel()
         if keycode == wx.WXK_SPACE and panel and panel.is_edit_control(focus):
             event.Skip()
@@ -516,6 +519,45 @@ class MainFrame(wx.Frame):
             if isinstance(panel, NewsPlaylistPanel) and panel.contains_window(focus):
                 return panel, focus
         return None, focus
+
+    def _focused_playlist_id(self) -> str | None:
+        focus = wx.Window.FindFocus()
+        if focus is None:
+            return None
+        for playlist_id, wrapper in self._playlist_wrappers.items():
+            current = focus
+            while current:
+                if current is wrapper:
+                    return playlist_id
+                current = current.GetParent()
+        return None
+
+    def _focus_playlist_panel(self, playlist_id: str) -> bool:
+        panel = self._playlists.get(playlist_id)
+        if panel is None:
+            return False
+        if isinstance(panel, NewsPlaylistPanel):
+            panel.focus_default()
+        elif isinstance(panel, PlaylistPanel):
+            panel.focus_list()
+        else:
+            return False
+        self._on_playlist_focus(playlist_id)
+        return True
+
+    def _cycle_playlist_focus(self, *, backwards: bool) -> bool:
+        order = [playlist_id for playlist_id in self._playlist_order if playlist_id in self._playlists]
+        if not order:
+            self._announce_event("playlist", _("No playlists available"))
+            return False
+        current_id = self._focused_playlist_id()
+        if current_id in order:
+            current_index = order.index(current_id)
+            next_index = (current_index - 1) if backwards else (current_index + 1)
+        else:
+            next_index = len(order) - 1 if backwards else 0
+        target_id = order[next_index % len(order)]
+        return self._focus_playlist_panel(target_id)
 
     def _on_playlist_selection_change(self, playlist_id: str, indices: list[int]) -> None:
         if not self._focus_playing_track:
