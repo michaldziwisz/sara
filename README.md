@@ -52,6 +52,7 @@ PYTHONPATH=src python -m pytest
 - Streamed audio playback (sounddevice/pycaw/pythonnet) with ReplayGain support.
 - Rich keyboard control and clipboard operations.
 - Loop dialog with PFL preview and persistent loop metadata.
+- Sample-accurate intro looping on BASS-based players.
 - Options dialog for fade, PFL device, startup playlists, language, alternate play, auto-remove.
 - Screen-reader announcements (NVDA) and coverage in the test suite.
 
@@ -123,6 +124,7 @@ PYTHONPATH=src python -m pytest
 - Strumieniowe odtwarzanie (sounddevice/pycaw/pythonnet) z ReplayGain.
 - Rozbudowane sterowanie klawiaturą i operacje schowka.
 - Dialog pętli z odsłuchem PFL oraz zapisem w tagach.
+- Dokładne zapętlanie intra w odtwarzaczu BASS.
 - Opcje: fade, PFL, playlisty startowe, język interfejsu, tryb naprzemienny, auto-usuwanie.
 - Komunikaty dostępności (NVDA) i testy pokrywające kluczowe moduły.
 
