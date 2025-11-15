@@ -315,7 +315,13 @@ class MainFrame(wx.Frame):
             if existing:
                 created.append(existing)
                 continue
-            model = self._playlist_factory.create_playlist(name)
+            kind = entry.get("kind", PlaylistKind.MUSIC)
+            if not isinstance(kind, PlaylistKind):
+                try:
+                    kind = PlaylistKind(kind)
+                except Exception:
+                    kind = PlaylistKind.MUSIC
+            model = self._playlist_factory.create_playlist(name, kind=kind)
             slots = entry.get("slots", [])
             if isinstance(slots, list):
                 model.set_output_slots(slots)

@@ -11,6 +11,7 @@ import yaml
 
 from sara.core.shortcuts import ensure_defaults
 from sara.core.announcement_registry import ANNOUNCEMENT_CATEGORIES
+from sara.core.playlist import PlaylistKind
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "general": {
@@ -278,7 +279,12 @@ class SettingsManager:
                             normalized_slots.append(None)
                         else:
                             normalized_slots.append(str(slot))
-                result.append({"name": name, "slots": normalized_slots})
+                kind_value = entry.get("kind")
+                try:
+                    kind = PlaylistKind(kind_value)
+                except Exception:
+                    kind = PlaylistKind.MUSIC
+                result.append({"name": name, "slots": normalized_slots, "kind": kind})
         return result
 
     def set_startup_playlists(self, playlists: list[dict[str, Any]]) -> None:
@@ -295,7 +301,15 @@ class SettingsManager:
                         slots.append(None)
                     else:
                         slots.append(str(slot))
-            normalized.append({"name": str(name), "slots": slots})
+            entry_kind = entry.get("kind", PlaylistKind.MUSIC)
+            if isinstance(entry_kind, PlaylistKind):
+                kind_value = entry_kind.value
+            else:
+                try:
+                    kind_value = PlaylistKind(entry_kind).value
+                except Exception:
+                    kind_value = PlaylistKind.MUSIC.value
+            normalized.append({"name": str(name), "slots": slots, "kind": kind_value})
         self._data.setdefault("startup", {})["playlists"] = normalized
 
     def get_playlist_outputs(self, playlist_name: str) -> list[Optional[str]]:

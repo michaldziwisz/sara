@@ -11,6 +11,7 @@ from sara.core.config import SettingsManager
 from sara.core.announcement_registry import ANNOUNCEMENT_CATEGORIES
 from sara.core.i18n import gettext as _
 from sara.ui.playlist_devices_dialog import PlaylistDevicesDialog
+from sara.core.playlist import PlaylistKind
 
 
 class StartupPlaylistDialog(wx.Dialog):
@@ -23,10 +24,15 @@ class StartupPlaylistDialog(wx.Dialog):
         audio_engine: AudioEngine,
         name: str = "",
         slots: Optional[List[Optional[str]]] = None,
+        kind: PlaylistKind = PlaylistKind.MUSIC,
     ) -> None:
         super().__init__(parent, title=_("Startup playlist"), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._audio_engine = audio_engine
         self._slots: List[Optional[str]] = list(slots or [])
+        self._type_choices = (
+            (PlaylistKind.MUSIC, _("Music playlist")),
+            (PlaylistKind.NEWS, _("News playlist")),
+        )
 
         main_sizer = wx.BoxSizer(wx.VERTICAL)
 
@@ -34,6 +40,15 @@ class StartupPlaylistDialog(wx.Dialog):
         self._name_ctrl = wx.TextCtrl(self, value=name)
         main_sizer.Add(name_label, 0, wx.ALL, 5)
         main_sizer.Add(self._name_ctrl, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
+
+        type_labels = [choice[1] for choice in self._type_choices]
+        self._type_radio = wx.RadioBox(self, label=_("Playlist type:"), choices=type_labels, majorDimension=1, style=wx.RA_SPECIFY_COLS)
+        try:
+            selection = next(index for index, choice in enumerate(self._type_choices) if choice[0] == kind)
+        except StopIteration:
+            selection = 0
+        self._type_radio.SetSelection(selection)
+        main_sizer.Add(self._type_radio, 0, wx.ALL | wx.EXPAND, 5)
 
         self._slots_label = wx.StaticText(self, label=self._format_slots())
         main_sizer.Add(self._slots_label, 0, wx.ALL, 5)
@@ -68,7 +83,9 @@ class StartupPlaylistDialog(wx.Dialog):
         if not name:
             wx.MessageBox(_("Playlist name cannot be empty."), _("Error"), parent=self)
             return None
-        return {"name": name, "slots": list(self._slots)}
+        selection = self._type_radio.GetSelection()
+        selected_kind = self._type_choices[max(0, selection)][0]
+        return {"name": name, "slots": list(self._slots), "kind": selected_kind}
 
 
 class OptionsDialog(wx.Dialog):
@@ -150,7 +167,8 @@ class OptionsDialog(wx.Dialog):
         startup_box = wx.StaticBoxSizer(wx.StaticBox(general_panel, label=_("Startup playlists")), wx.VERTICAL)
         self._playlists_list = wx.ListCtrl(general_panel, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
         self._playlists_list.InsertColumn(0, _("Name"))
-        self._playlists_list.InsertColumn(1, _("Players"))
+        self._playlists_list.InsertColumn(1, _("Type"))
+        self._playlists_list.InsertColumn(2, _("Players"))
         startup_box.Add(self._playlists_list, 1, wx.EXPAND | wx.ALL, 5)
 
         buttons_row = wx.BoxSizer(wx.HORIZONTAL)
@@ -227,11 +245,20 @@ class OptionsDialog(wx.Dialog):
     def _refresh_list(self) -> None:
         self._playlists_list.DeleteAllItems()
         for entry in self._playlists:
-            index = self._playlists_list.InsertItem(self._playlists_list.GetItemCount(), entry["name"])
+            name = entry["name"]
+            kind = entry.get("kind", PlaylistKind.MUSIC)
+            if not isinstance(kind, PlaylistKind):
+                try:
+                    kind = PlaylistKind(kind)
+                except Exception:
+                    kind = PlaylistKind.MUSIC
+            index = self._playlists_list.InsertItem(self._playlists_list.GetItemCount(), name)
+            kind_label = _("Music") if kind is PlaylistKind.MUSIC else _("News")
+            self._playlists_list.SetItem(index, 1, kind_label)
             slot_count = sum(1 for slot in entry.get("slots", []) if slot)
-            self._playlists_list.SetItem(index, 1, str(slot_count))
-        self._playlists_list.SetColumnWidth(0, wx.LIST_AUTOSIZE_USEHEADER)
-        self._playlists_list.SetColumnWidth(1, wx.LIST_AUTOSIZE_USEHEADER)
+            self._playlists_list.SetItem(index, 2, str(slot_count))
+        for column in range(3):
+            self._playlists_list.SetColumnWidth(column, wx.LIST_AUTOSIZE_USEHEADER)
 
     def _selected_index(self) -> int:
         return self._playlists_list.GetFirstSelected()
@@ -255,6 +282,7 @@ class OptionsDialog(wx.Dialog):
             audio_engine=self._audio_engine,
             name=current.get("name", ""),
             slots=current.get("slots", []),
+            kind=current.get("kind", PlaylistKind.MUSIC),
         )
         if dialog.ShowModal() == wx.ID_OK:
             result = dialog.get_result()
