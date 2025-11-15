@@ -8,6 +8,14 @@ import wx
 from sara.core.i18n import gettext as _
 from sara.ui.shortcut_utils import accelerator_to_string, format_shortcut_display
 
+_RAW_CTRL_KEYCODES = tuple(
+    key
+    for key in (
+        getattr(wx, "WXK_RAW_CONTROL", None),
+        getattr(wx, "WXK_RAW_CTRL", None),
+    )
+    if key is not None
+)
 
 class ShortcutCaptureDialog(wx.Dialog):
     """Let the user press a new key combination."""
@@ -23,26 +31,46 @@ class ShortcutCaptureDialog(wx.Dialog):
         )
         main_sizer.Add(instruction, 0, wx.ALL, 10)
 
-        self._display = wx.StaticText(self, label="—")
+        self._display = wx.TextCtrl(
+            self,
+            value="—",
+            style=wx.TE_CENTER | wx.TE_READONLY | wx.BORDER_SIMPLE | wx.WANTS_CHARS,
+        )
         font = self._display.GetFont()
         font.MakeBold()
         self._display.SetFont(font)
-        main_sizer.Add(self._display, 0, wx.ALIGN_CENTER | wx.ALL, 10)
+        self._display.SetMinSize((260, self._display.GetCharHeight() * 2))
+        main_sizer.Add(self._display, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
+        self._ok_button = None
         button_sizer = self.CreateSeparatedButtonSizer(wx.OK | wx.CANCEL)
         if button_sizer:
-            self._ok_button = button_sizer.GetAffirmativeButton()
+            main_sizer.Add(button_sizer, 0, wx.EXPAND | wx.ALL, 10)
+            self._ok_button = self.FindWindowById(wx.ID_OK, self)
             if self._ok_button:
                 self._ok_button.Enable(False)
-            main_sizer.Add(button_sizer, 0, wx.EXPAND | wx.ALL, 10)
-        else:
-            self._ok_button = None
 
         self.SetSizerAndFit(main_sizer)
         self.CentreOnParent()
 
-        self.Bind(wx.EVT_CHAR_HOOK, self._on_key)
-        self.Bind(wx.EVT_KEY_DOWN, self._on_key)
+        self._bind_key_events(self)
+        self._bind_key_events(self._display)
+        self.Bind(wx.EVT_SHOW, self._ensure_focus)
+        wx.CallAfter(self._focus_capture_panel)
+
+    def _bind_key_events(self, window: wx.Window) -> None:
+        window.Bind(wx.EVT_CHAR_HOOK, self._on_key)
+        window.Bind(wx.EVT_KEY_DOWN, self._on_key)
+
+    def _ensure_focus(self, event: wx.ShowEvent) -> None:
+        if event.IsShown():
+            self._focus_capture_panel()
+        event.Skip()
+
+    def _focus_capture_panel(self) -> None:
+        if self._display:
+            self._display.SetFocus()
+            self._display.SetSelection(-1, -1)
 
     def _on_key(self, event: wx.KeyEvent) -> None:
         keycode = event.GetKeyCode()
@@ -51,7 +79,7 @@ class ShortcutCaptureDialog(wx.Dialog):
             self.EndModal(wx.ID_CANCEL)
             return
 
-        if keycode in (wx.WXK_SHIFT, wx.WXK_ALT, wx.WXK_CONTROL, wx.WXK_RAW_CTRL):
+        if keycode in (wx.WXK_SHIFT, wx.WXK_ALT, wx.WXK_CONTROL, *_RAW_CTRL_KEYCODES):
             return
 
         modifiers = 0
@@ -68,7 +96,7 @@ class ShortcutCaptureDialog(wx.Dialog):
             return
 
         self._captured = shortcut
-        self._display.SetLabel(format_shortcut_display(shortcut) or shortcut)
+        self._display.SetValue(format_shortcut_display(shortcut) or shortcut)
         if self._ok_button:
             self._ok_button.Enable(True)
         event.Skip(False)

@@ -28,6 +28,7 @@ from sara.ui.loop_dialog import LoopDialog
 from sara.ui.options_dialog import OptionsDialog
 from sara.ui.shortcut_editor_dialog import ShortcutEditorDialog
 from sara.ui.shortcut_utils import format_shortcut_display, parse_shortcut
+from sara.ui.nvda_sleep import notify_nvda_play_next
 from sara.ui.speech import cancel_speech, speak_text
 
 
@@ -978,6 +979,8 @@ class MainFrame(wx.Frame):
 
         start_seconds = item.cue_in_seconds or 0.0
 
+        notify_nvda_play_next()
+
         try:
             player.play(item.id, str(item.path), start_seconds=start_seconds)
         except Exception as exc:  # pylint: disable=broad-except
@@ -1341,6 +1344,58 @@ class MainFrame(wx.Frame):
         self._sync_marker_reference(panel.model)
         panel.focus_list()
 
+    def _get_system_clipboard_paths(self) -> list[Path]:
+        paths: list[Path] = []
+        clipboard = wx.TheClipboard
+        if not clipboard.Open():
+            return paths
+        try:
+            data = wx.FileDataObject()
+            if clipboard.GetData(data):
+                paths = [Path(filename) for filename in data.GetFilenames()]
+        finally:
+            clipboard.Close()
+        return paths
+
+    def _collect_files_from_paths(self, paths: list[Path]) -> list[Path]:
+        files: list[Path] = []
+        for path in paths:
+            if path.is_file():
+                files.append(path)
+                continue
+            if path.is_dir():
+                try:
+                    for file_path in sorted(path.rglob("*")):
+                        if file_path.is_file():
+                            files.append(file_path)
+                except Exception as exc:
+                    logger.warning("Failed to enumerate %s: %s", path, exc)
+        return files
+
+    def _create_items_from_paths(self, file_paths: list[Path]) -> list[PlaylistItem]:
+        items: list[PlaylistItem] = []
+        for path in file_paths:
+            try:
+                metadata: AudioMetadata = extract_metadata(path)
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.warning("Failed to read metadata from %s: %s", path, exc)
+                continue
+            item = self._playlist_factory.create_item(
+                path=path,
+                title=metadata.title,
+                duration_seconds=metadata.duration_seconds,
+                replay_gain_db=metadata.replay_gain_db,
+                cue_in_seconds=metadata.cue_in_seconds,
+                segue_seconds=metadata.segue_seconds,
+                overlap_seconds=metadata.overlap_seconds,
+                intro_seconds=metadata.intro_seconds,
+                loop_start_seconds=metadata.loop_start_seconds,
+                loop_end_seconds=metadata.loop_end_seconds,
+                loop_enabled=metadata.loop_enabled,
+            )
+            items.append(item)
+        return items
+
     def _maybe_focus_playing_item(self, panel: PlaylistPanel, item_id: str) -> None:
         if not self._focus_playing_track:
             return
@@ -1365,10 +1420,8 @@ class MainFrame(wx.Frame):
                         return
         for index, track in enumerate(panel.model.items):
             if track.id == item_id:
-                self._silence_screen_reader()
                 panel.select_index(index)
                 self._focus_lock[playlist_id] = False
-                self._silence_screen_reader()
                 break
 
     def _compute_intro_remaining(self, item: PlaylistItem, absolute_seconds: float | None = None) -> float | None:
@@ -1589,9 +1642,6 @@ class MainFrame(wx.Frame):
             self._push_undo_action(model, operation)
 
     def _on_paste_selection(self, _event: wx.CommandEvent) -> None:
-        if not self._clipboard_items:
-            self._announce_event("clipboard", _("Clipboard is empty"))
-            return
         context = self._get_selected_context()
         panel: PlaylistPanel
         if context is None:
@@ -1604,7 +1654,23 @@ class MainFrame(wx.Frame):
             panel, model, indices = context
         index = indices[-1] if indices else None
         insert_at = index + 1 if index is not None else len(model.items)
-        new_items = [self._create_item_from_serialized(data) for data in self._clipboard_items]
+
+        if self._clipboard_items:
+            new_items = [self._create_item_from_serialized(data) for data in self._clipboard_items]
+        else:
+            clipboard_paths = self._get_system_clipboard_paths()
+            if not clipboard_paths:
+                self._announce_event("clipboard", _("Clipboard is empty"))
+                return
+            file_paths = self._collect_files_from_paths(clipboard_paths)
+            if not file_paths:
+                self._announce_event("clipboard", _("Clipboard does not contain files or folders"))
+                return
+            new_items = self._create_items_from_paths(file_paths)
+            if not new_items:
+                self._announce_event("clipboard", _("No supported audio files found on the clipboard"))
+                return
+
         model.items[insert_at:insert_at] = new_items
         if new_items:
             insert_indices = list(range(insert_at, insert_at + len(new_items)))

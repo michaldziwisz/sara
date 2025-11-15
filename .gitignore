@@ -13,6 +13,8 @@ venv/
 dist/
 build/
 *.egg-info/
+artifacts/
+nvda_addon.zip
 
 # Local config
 config/settings.yaml

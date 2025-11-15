@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sara"
-version = "0.0.2"
+version = "0.0.3"
 description = "Simple Accessible Radio Automation for radio stations"
 readme = "README.md"
 authors = [{name = "SARA Team"}]
@@ -22,6 +22,7 @@ dependencies = [
 [project.optional-dependencies]
 asio = ["pythonnet>=3.0.3"]
 wasapi = ["pycaw>=20181226", "comtypes>=1.2.0"]
+qt = ["PySide6>=6.7.0"]
 dev = ["black>=24.3.0", "ruff>=0.3.5", "pytest>=8.1.1"]
 
 [project.scripts]

@@ -67,6 +67,9 @@ PYTHONPATH=src python -m pytest
 - Finer control over accessibility announcements.
 - Investigate preloading tracks into memory to minimize disk I/O at cue time.
 
+### Qt playlist experiment
+- Install the optional `qt` extra (`pip install .[qt]`) and set `SARA_QT_PLAYLIST=1` before launching SARA to test an alternative Qt-based playlist window that may work better with some screen readers.
+
 ### License
 - Application code: BSD 3-Clause (see `LICENSE`).
 - Bundled BASS libraries retain Un4seen licensing (see `src/sara/audio/vendor/bass.txt`).

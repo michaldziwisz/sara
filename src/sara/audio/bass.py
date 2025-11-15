@@ -366,10 +366,12 @@ class BassPlayer:
         if self._stream:
             self._manager.channel_pause(self._stream)
 
-    def stop(self) -> None:
+    def stop(self, *, _from_fade: bool = False) -> None:
         self._monitor_stop.set()
-        if self._fade_thread and self._fade_thread.is_alive():
+        if self._fade_thread and self._fade_thread.is_alive() and not _from_fade:
             self._fade_thread.join(timeout=0.5)
+        if not _from_fade:
+            self._fade_thread = None
         if self._stream:
             self._manager.channel_stop(self._stream)
             if self._loop_sync_handle:
@@ -383,28 +385,47 @@ class BassPlayer:
             self._device_context = None
         self._current_item_id = None
         self._loop_active = False
-        if self._monitor_thread and self._monitor_thread.is_alive():
+        if self._monitor_thread and self._monitor_thread.is_alive() and not _from_fade:
             self._monitor_thread.join(timeout=0.5)
         self._monitor_thread = None
         self._monitor_stop.clear()
+        if _from_fade:
+            self._fade_thread = None
 
     def fade_out(self, duration: float) -> None:
         if duration <= 0 or not self._stream:
             self.stop()
             return
 
-        def _runner() -> None:
+        target_stream = self._stream
+
+        def _runner(target: int) -> None:
             steps = max(4, int(duration / 0.05))
+            interrupted = False
             try:
                 initial = self._gain_factor
                 for i in range(steps):
+                    if self._stream != target:
+                        interrupted = True
+                        break
                     factor = initial * (1.0 - float(i + 1) / steps)
-                    self._manager.channel_set_volume(self._stream, factor)
+                    try:
+                        self._manager.channel_set_volume(target, factor)
+                    except Exception as exc:
+                        logger.debug("BASS fade step failed: %s", exc)
+                        interrupted = True
+                        break
                     time.sleep(duration / steps)
             finally:
-                self.stop()
+                if interrupted or self._stream != target:
+                    try:
+                        self._manager.channel_set_volume(target, self._gain_factor)
+                    except Exception:
+                        pass
+                else:
+                    self.stop(_from_fade=True)
 
-        self._fade_thread = threading.Thread(target=_runner, daemon=True)
+        self._fade_thread = threading.Thread(target=_runner, args=(target_stream,), daemon=True)
         self._fade_thread.start()
 
     def set_finished_callback(self, callback: Optional[Callable[[str], None]]) -> None:

@@ -8,3 +8,4 @@ numpy>=1.23.0
 black>=24.3.0
 ruff>=0.3.5
 pytest>=8.1.1
+comtypes>=1.4.6

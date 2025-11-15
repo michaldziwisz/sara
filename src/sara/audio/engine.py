@@ -487,23 +487,32 @@ class SoundDevicePlayer:
             else:
                 should_stop = False
                 initial_gain = self._gain_factor
+                target_item = self._current_item
                 fade_stop_event = Event()
                 self._fade_stop_event = fade_stop_event
 
                 def _runner() -> None:
+                    interrupted = False
                     try:
                         steps = max(4, int(duration / 0.05))
                         sleep_slice = duration / steps if steps else duration
                         for index in range(steps):
                             if fade_stop_event.is_set():
                                 break
+                            with self._lock:
+                                if target_item is not None and self._current_item != target_item:
+                                    interrupted = True
+                                    break
                             fraction = 1.0 - float(index + 1) / steps
                             with self._lock:
                                 self._gain_factor = max(0.0, initial_gain * fraction)
                             time.sleep(sleep_slice)
                     finally:
+                        with self._lock:
+                            same_item = target_item is not None and self._current_item == target_item
                         if not fade_stop_event.is_set():
                             fade_stop_event.set()
+                        if same_item and not interrupted:
                             self.stop()
 
                 thread = Thread(target=_runner, daemon=True)
