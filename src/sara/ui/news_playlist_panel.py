@@ -36,6 +36,7 @@ class NewsPlaylistPanel(wx.Panel):
         enable_line_length_control: bool = False,
         line_length_bounds: tuple[int, int] = (0, 500),
         on_line_length_change: Callable[[int], None] | None = None,
+        on_line_length_apply: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(parent)
         self.model = model
@@ -46,6 +47,7 @@ class NewsPlaylistPanel(wx.Panel):
         self._on_device_change = on_device_change
         self._line_length_bounds = line_length_bounds
         self._on_line_length_change = on_line_length_change if enable_line_length_control else None
+        self._on_line_length_apply = on_line_length_apply if enable_line_length_control else None
         self._mode: str = "edit"
         self._read_text_ctrl: wx.TextCtrl | None = None
         self._heading_lines: list[int] = []
@@ -84,7 +86,7 @@ class NewsPlaylistPanel(wx.Panel):
             self._line_length_spin.Bind(wx.EVT_CHAR_HOOK, self._handle_toolbar_char_hook)
             toolbar.Add(self._line_length_spin, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
             self._line_length_apply = wx.Button(self, label=_("Apply"))
-            self._line_length_apply.Bind(wx.EVT_BUTTON, self._handle_line_length_change)
+            self._line_length_apply.Bind(wx.EVT_BUTTON, self._handle_line_apply)
             self._line_length_apply.Bind(wx.EVT_CHAR_HOOK, self._handle_toolbar_char_hook)
             toolbar.Add(self._line_length_apply, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
 
@@ -358,13 +360,18 @@ class NewsPlaylistPanel(wx.Panel):
         if self._line_length_spin:
             self._line_length_spin.SetValue(self._normalize_line_length(self._get_line_length()))
 
-    def _handle_line_length_change(self, _event: wx.Event) -> None:
+    def _handle_line_length_change(self, _event: wx.Event | None) -> None:
         if not self._line_length_spin or not self._on_line_length_change:
             return
         value = self._normalize_line_length(self._line_length_spin.GetValue())
         self._line_length_spin.SetValue(value)
         self._on_line_length_change(value)
         self.refresh_configuration()
+
+    def _handle_line_apply(self, _event: wx.Event) -> None:
+        self._handle_line_length_change(None)
+        if self._on_line_length_apply:
+            self._on_line_length_apply()
 
     def _toolbar_focusables(self) -> list[wx.Window]:
         controls: list[wx.Window] = [

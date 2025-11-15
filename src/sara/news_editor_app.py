@@ -42,6 +42,7 @@ class NewsEditorFrame(wx.Frame):
             enable_line_length_control=True,
             line_length_bounds=(0, 500),
             on_line_length_change=self._on_line_length_change,
+            on_line_length_apply=self._persist_editor_preferences,
         )
         root_sizer = wx.BoxSizer(wx.VERTICAL)
         root_sizer.Add(self._panel, 1, wx.EXPAND)
@@ -70,6 +71,11 @@ class NewsEditorFrame(wx.Frame):
     def _on_line_length_change(self, value: int) -> None:
         self._line_length = value
         self._editor_settings.set_line_length(value)
+        self._persist_editor_preferences()
+
+    def _persist_editor_preferences(self) -> None:
+        self._editor_settings.set_line_length(self._line_length)
+        self._editor_settings.set_last_device_id(self._model.output_device or None)
 
     def _on_play_audio(self, path: Path, device_id: str | None) -> None:
         if not path.exists():

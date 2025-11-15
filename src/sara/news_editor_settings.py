@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 from typing import Any, Dict
 
@@ -14,20 +13,14 @@ def _default_config_path() -> Path:
     env_override = os.environ.get("SARA_NEWS_EDITOR_CONFIG")
     if env_override:
         return Path(env_override).expanduser()
-    if sys.platform.startswith("win"):
-        base = os.environ.get("APPDATA")
-        root = Path(base) if base else Path.home()
-        return root / "SARA" / "news_editor.yaml"
-    xdg = os.environ.get("XDG_CONFIG_HOME")
-    root = Path(xdg).expanduser() if xdg else Path.home() / ".config"
-    return root / "sara" / "news_editor.yaml"
+    root = Path(__file__).resolve().parents[2] / "config"
+    return root / "news_editor.yaml"
 
 
 class NewsEditorSettings:
-    """Persist editor-specific preferences without touching the main SARA config."""
+    """Persist editor-specific preferences near the application folder."""
 
     def __init__(self, config_path: Path | None = None) -> None:
-        self._legacy_path = Path(__file__).resolve().parents[2] / "config" / "news_editor.yaml"
         self.config_path = Path(config_path) if config_path else _default_config_path()
         self._data: Dict[str, Any] = {}
         self.load()
@@ -43,11 +36,6 @@ class NewsEditorSettings:
     def load(self) -> None:
         if self.config_path.exists():
             self._data = self._load_from_path(self.config_path)
-            return
-        if self._legacy_path.exists():
-            self._data = self._load_from_path(self._legacy_path)
-            # migrate to the new location
-            self.save()
             return
         self._data = {}
 
