@@ -13,7 +13,7 @@ from sara.ui import speech
 
 logger = logging.getLogger(__name__)
 
-_MODULE_FILENAMES = ("python.py", "sara.py")
+_MODULE_FILENAMES = ("python.py", "sara.py", "SARA.py")
 _TARGET_FILE = "nvda_sleep_targets.json"
 _PLAY_NEXT_SIGNAL_FILE = "nvda_play_next_signal.txt"
 
