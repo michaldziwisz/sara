@@ -306,8 +306,12 @@ class BassManager:
     def make_sync_proc(self, func: Callable[[int, int, int, ctypes.c_void_p], None]):
         return self._sync_type(func)
 
-    def channel_set_sync_pos(self, stream: int, seconds: float, proc) -> int:
-        position = self.seconds_to_bytes(stream, seconds)
+    def channel_set_sync_pos(self, stream: int, position_or_seconds: float, proc, *, is_bytes: bool = False) -> int:
+        position = (
+            int(position_or_seconds)
+            if is_bytes
+            else self.seconds_to_bytes(stream, float(position_or_seconds))
+        )
         handle = self._lib.BASS_ChannelSetSync(
             stream,
             _BassConstants.SYNC_POS | _BassConstants.SYNC_MIXTIME,
@@ -476,16 +480,18 @@ class BassPlayer:
 
         start = max(0.0, self._loop_start)
         end = max(start + 0.001, self._loop_end)
+        start_bytes = self._manager.seconds_to_bytes(self._stream, start)
+        end_bytes = self._manager.seconds_to_bytes(self._stream, end)
 
         def _sync_proc(hsync, channel, data, user):  # pragma: no cover - C callback
             try:
-                self._manager.channel_set_position(channel, start)
+                self._manager.channel_set_position_bytes(channel, start_bytes)
             except Exception as exc:
                 logger.warning("BASS: nie udało się ustawić pozycji pętli: %s", exc)
 
         self._loop_sync_proc = self._manager.make_sync_proc(_sync_proc)
         try:
-            self._loop_sync_handle = self._manager.channel_set_sync_pos(self._stream, end, self._loop_sync_proc)
+            self._loop_sync_handle = self._manager.channel_set_sync_pos(self._stream, end_bytes, self._loop_sync_proc, is_bytes=True)
         except Exception as exc:
             logger.warning("BASS: nie udało się zarejestrować pętli: %s", exc)
             self._loop_sync_proc = None
