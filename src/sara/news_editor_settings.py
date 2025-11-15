@@ -11,6 +11,9 @@ import yaml
 
 
 def _application_root() -> Path:
+    cwd_config = Path.cwd() / "config"
+    if cwd_config.exists():
+        return Path.cwd()
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parents[2]
