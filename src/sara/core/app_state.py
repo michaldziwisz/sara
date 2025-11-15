@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List
 
-from sara.core.playlist import PlaylistItem, PlaylistModel
+from sara.core.playlist import PlaylistItem, PlaylistKind, PlaylistModel
 
 
 @dataclass
@@ -33,9 +33,15 @@ class PlaylistFactory:
     def __init__(self) -> None:
         self._playlist_counter = itertools.count(1)
 
-    def create_playlist(self, name: str, items: List[PlaylistItem] | None = None) -> PlaylistModel:
+    def create_playlist(
+        self,
+        name: str,
+        *,
+        kind: PlaylistKind = PlaylistKind.MUSIC,
+        items: List[PlaylistItem] | None = None,
+    ) -> PlaylistModel:
         playlist_id = f"pl-{next(self._playlist_counter)}-{uuid.uuid4().hex[:6]}"
-        return PlaylistModel(id=playlist_id, name=name, items=items or [])
+        return PlaylistModel(id=playlist_id, name=name, items=items or [], kind=kind)
 
     @staticmethod
     def create_item(

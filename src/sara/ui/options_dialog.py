@@ -163,6 +163,19 @@ class OptionsDialog(wx.Dialog):
         startup_box.Add(buttons_row, 0, wx.ALL | wx.ALIGN_RIGHT, 5)
         general_sizer.Add(startup_box, 1, wx.EXPAND | wx.BOTTOM, 10)
 
+        news_box = wx.StaticBoxSizer(wx.StaticBox(general_panel, label=_("News playlists")), wx.VERTICAL)
+        news_row = wx.BoxSizer(wx.HORIZONTAL)
+        news_label = wx.StaticText(
+            general_panel,
+            label=_("Read-mode line length (characters, 0 = unlimited):"),
+        )
+        self._news_line_ctrl = wx.SpinCtrl(general_panel, min=0, max=400)
+        self._news_line_ctrl.SetValue(self._settings.get_news_line_length())
+        news_row.Add(news_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        news_row.Add(self._news_line_ctrl, 0, wx.ALIGN_CENTER_VERTICAL)
+        news_box.Add(news_row, 0, wx.ALL, 5)
+        general_sizer.Add(news_box, 0, wx.EXPAND | wx.BOTTOM, 10)
+
         general_panel.SetSizer(general_sizer)
         notebook.AddPage(general_panel, _("General"))
 
@@ -263,6 +276,7 @@ class OptionsDialog(wx.Dialog):
         self._settings.set_auto_remove_played(self._auto_remove_checkbox.GetValue())
         self._settings.set_focus_playing_track(self._focus_playing_checkbox.GetValue())
         self._settings.set_intro_alert_seconds(self._intro_alert_ctrl.GetValue())
+        self._settings.set_news_line_length(self._news_line_ctrl.GetValue())
         self._settings.set_startup_playlists(self._playlists)
         self._settings.set_pfl_device(self._selected_pfl_device())
         self._settings.set_language(self._language_codes[self._language_choice.GetSelection()])

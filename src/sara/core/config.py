@@ -16,6 +16,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "general": {
         "language": "en",
     },
+    "news": {
+        "line_length": 30,
+    },
     "shortcuts": {
         "global": {
             "play_next": "SPACE",
@@ -214,6 +217,18 @@ class SettingsManager:
     def set_intro_alert_seconds(self, seconds: float) -> None:
         playback = self._data.setdefault("playback", {})
         playback["intro_alert_seconds"] = max(0.0, float(seconds))
+
+    def get_news_line_length(self) -> int:
+        news = self._data.get("news", {})
+        value = news.get("line_length", DEFAULT_CONFIG["news"]["line_length"])
+        try:
+            return max(0, int(value))
+        except (TypeError, ValueError):
+            return DEFAULT_CONFIG["news"]["line_length"]
+
+    def set_news_line_length(self, line_length: int) -> None:
+        news = self._data.setdefault("news", {})
+        news["line_length"] = max(0, int(line_length))
 
     def _announcement_settings(self) -> dict[str, bool]:
         accessibility = self._data.setdefault("accessibility", {})

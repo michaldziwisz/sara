@@ -18,11 +18,12 @@ from sara.core.config import SettingsManager
 from sara.core.i18n import gettext as _, set_language
 from sara.core.hotkeys import HotkeyAction
 from sara.core.media_metadata import AudioMetadata, extract_metadata, save_loop_metadata
-from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistModel
+from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistKind, PlaylistModel
 from sara.core.shortcuts import get_shortcut
 from sara.ui.undo import InsertOperation, MoveOperation, RemoveOperation, UndoAction
 from sara.ui.new_playlist_dialog import NewPlaylistDialog
 from sara.ui.playlist_panel import PlaylistPanel
+from sara.ui.news_playlist_panel import NewsPlaylistPanel
 from sara.ui.playlist_devices_dialog import PlaylistDevicesDialog
 from sara.ui.loop_dialog import LoopDialog
 from sara.ui.options_dialog import OptionsDialog
@@ -131,6 +132,7 @@ class MainFrame(wx.Frame):
         self._create_ui()
         self._register_accessibility()
         self._configure_accelerators()
+        self._global_shortcut_blocked = False
 
     def _create_menu_bar(self) -> None:
         menu_bar = wx.MenuBar()
@@ -221,6 +223,7 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self._on_delete_selection, id=int(self._delete_id))
         self.Bind(wx.EVT_MENU, self._on_move_selection_up, id=int(self._move_up_id))
         self.Bind(wx.EVT_MENU, self._on_move_selection_down, id=int(self._move_down_id))
+        self.Bind(wx.EVT_CHAR_HOOK, self._handle_global_char_hook)
 
     def _append_shortcut_menu_item(
         self,
@@ -390,6 +393,15 @@ class MainFrame(wx.Frame):
         accel_table = wx.AcceleratorTable(accel_entries)
         self.SetAcceleratorTable(accel_table)
 
+    def _handle_global_char_hook(self, event: wx.KeyEvent) -> None:
+        keycode = event.GetKeyCode()
+        panel, focus = self._active_news_panel()
+        if keycode == wx.WXK_SPACE and panel and panel.is_edit_control(focus):
+            event.Skip()
+            event.StopPropagation()
+            return
+        event.Skip()
+
     def add_playlist(self, model: PlaylistModel) -> None:
         for action, key in self._playlist_hotkey_defaults.items():
             model.hotkeys.setdefault(action, HotkeyAction(key=key, description=action.title()))
@@ -414,14 +426,25 @@ class MainFrame(wx.Frame):
         header.SetEditable(False)
         header.SetInsertionPoint(0)
 
-        panel = PlaylistPanel(
-            container,
-            model=model,
-            on_focus=self._on_playlist_focus,
-            on_loop_configure=self._on_loop_configure,
-            on_set_marker=self._on_toggle_marker,
-            on_selection_change=self._on_playlist_selection_change,
-        )
+        if model.kind is PlaylistKind.NEWS:
+            panel = NewsPlaylistPanel(
+                container,
+                model=model,
+                get_line_length=self._settings.get_news_line_length,
+                get_audio_devices=self._news_device_entries,
+                on_focus=self._on_playlist_focus,
+                on_play_audio=lambda path, device: self._play_news_audio_clip(model, path, device),
+                on_device_change=lambda _model=model: self._persist_playlist_outputs(model),
+            )
+        else:
+            panel = PlaylistPanel(
+                container,
+                model=model,
+                on_focus=self._on_playlist_focus,
+                on_loop_configure=self._on_loop_configure,
+                on_set_marker=self._on_toggle_marker,
+                on_selection_change=self._on_playlist_selection_change,
+            )
         panel.SetMinSize((360, 300))
 
         column_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -454,12 +477,52 @@ class MainFrame(wx.Frame):
     def _get_playlist_model(self, playlist_id: str) -> PlaylistModel | None:
         return self._state.playlists.get(playlist_id)
 
+    def _news_device_entries(self) -> list[tuple[str, str]]:
+        entries: list[tuple[str, str]] = [(None, _("(use global/PFL device)"))]
+        entries.extend((device.id, device.name) for device in self._audio_engine.get_devices())
+        return entries
+
+    def _play_news_audio_clip(self, model: PlaylistModel, clip_path: Path, device_id: str | None) -> None:
+        if not clip_path.exists():
+            self._announce_event("device", _("Audio file %s does not exist") % clip_path)
+            return
+        configured = model.get_configured_slots()
+        target_device = device_id or (configured[0] if configured else None) or self._settings.get_pfl_device()
+        if not target_device:
+            self._announce_event("device", _("Select a playback device first"))
+            return
+        try:
+            player = self._audio_engine.create_player(target_device)
+        except ValueError:
+            self._announce_event("device", _("Device %s is not available") % target_device)
+            return
+        try:
+            player.play(f"{model.id}:news", str(clip_path))
+        except Exception as exc:  # pylint: disable=broad-except
+            self._announce_event("device", _("Failed to play audio clip: %s") % exc)
+
+    def _persist_playlist_outputs(self, model: PlaylistModel) -> None:
+        self._settings.set_playlist_outputs(model.name, model.get_configured_slots())
+        self._settings.save()
+    def _refresh_news_panels(self) -> None:
+        for panel in self._playlists.values():
+            if isinstance(panel, NewsPlaylistPanel):
+                panel.refresh_configuration()
+    def _active_news_panel(self) -> tuple[NewsPlaylistPanel | None, wx.Window | None]:
+        focus = wx.Window.FindFocus()
+        if focus is None:
+            return None, None
+        for panel in self._playlists.values():
+            if isinstance(panel, NewsPlaylistPanel) and panel.contains_window(focus):
+                return panel, focus
+        return None, focus
+
     def _on_playlist_selection_change(self, playlist_id: str, indices: list[int]) -> None:
         if not self._focus_playing_track:
             return
         playing_id = self._get_playing_item_id(playlist_id)
         panel = self._playlists.get(playlist_id)
-        if panel is None:
+        if not isinstance(panel, PlaylistPanel):
             return
         if playing_id is None:
             self._focus_lock[playlist_id] = False
@@ -479,12 +542,15 @@ class MainFrame(wx.Frame):
     def _on_new_playlist(self, event: wx.CommandEvent) -> None:
         dialog = NewPlaylistDialog(self)
         if dialog.ShowModal() == wx.ID_OK:
-            model = self._playlist_factory.create_playlist(dialog.playlist_name)
+            model = self._playlist_factory.create_playlist(
+                dialog.playlist_name,
+                kind=dialog.playlist_kind,
+            )
             self.add_playlist(model)
         dialog.Destroy()
 
     def _on_add_tracks(self, event: wx.CommandEvent) -> None:
-        panel = self._get_current_playlist_panel()
+        panel = self._get_current_music_panel()
         if panel is None:
             self._announce_event("playlist", _("Select a playlist first"))
             return
@@ -527,7 +593,7 @@ class MainFrame(wx.Frame):
         )
 
     def _on_assign_device(self, event: wx.CommandEvent) -> None:
-        panel = self._get_current_playlist_panel()
+        panel = self._get_current_music_panel()
         if panel is None:
             self._announce_event("playlist", _("Select a playlist first"))
             return
@@ -541,8 +607,7 @@ class MainFrame(wx.Frame):
         if dialog.ShowModal() == wx.ID_OK:
             slots = dialog.get_slots()
             panel.model.set_output_slots(slots)
-            self._settings.set_playlist_outputs(panel.model.name, slots)
-            self._settings.save()
+            self._persist_playlist_outputs(panel.model)
 
             device_map = {device.id: device for device in devices}
             assigned_names = [
@@ -563,7 +628,7 @@ class MainFrame(wx.Frame):
         dialog.Destroy()
 
     def _on_import_playlist(self, event: wx.CommandEvent) -> None:
-        panel = self._get_current_playlist_panel()
+        panel = self._get_current_music_panel()
         if panel is None:
             self._announce_event("playlist", _("Select a playlist first"))
             return
@@ -660,7 +725,7 @@ class MainFrame(wx.Frame):
         return entries
 
     def _on_export_playlist(self, _event: wx.CommandEvent) -> None:
-        panel = self._get_current_playlist_panel()
+        panel = self._get_current_music_panel()
         if panel is None:
             self._announce_event("playlist", _("Select a playlist first"))
             return
@@ -708,6 +773,7 @@ class MainFrame(wx.Frame):
             self._auto_remove_played = self._settings.get_auto_remove_played()
             self._focus_playing_track = self._settings.get_focus_playing_track()
             self._intro_alert_seconds = self._settings.get_intro_alert_seconds()
+            self._refresh_news_panels()
             new_language = self._settings.get_language()
             if new_language != current_language:
                 set_language(new_language)
@@ -1092,12 +1158,20 @@ class MainFrame(wx.Frame):
             self._announce_event("playlist", _("No playlists available"))
             return
 
+        panel, focus = self._active_news_panel()
+        if panel:
+            if panel.consume_space_shortcut():
+                return
+            if panel.is_edit_control(focus):
+                return
+            return
+
         if self._alternate_play_next:
             if not self._play_next_alternate():
                 self._announce_event("playback_events", _("No scheduled tracks available"))
             return
 
-        panel = self._get_current_playlist_panel()
+        panel = self._get_current_music_panel()
         if panel is None:
             self._announce_event("playlist", _("Select a playlist first"))
             return
@@ -1183,7 +1257,7 @@ class MainFrame(wx.Frame):
         if not action:
             return
 
-        panel = self._get_current_playlist_panel()
+        panel = self._get_current_music_panel()
         if panel is None:
             self._announce_event("playlist", _("Select a playlist first"))
             return
@@ -1225,7 +1299,7 @@ class MainFrame(wx.Frame):
                 "playback_events",
                 _("Playlist %s finished track with fade out") % playlist.name,
             )
-    def _get_current_playlist_panel(self) -> PlaylistPanel | None:
+    def _get_current_playlist_panel(self):
         if self._current_panel_id and self._current_panel_id in self._playlists:
             return self._playlists[self._current_panel_id]
 
@@ -1240,6 +1314,12 @@ class MainFrame(wx.Frame):
                 self._update_active_playlist_styles()
                 self._announce_event("playlist", panel.model.name)
                 return panel
+        return None
+
+    def _get_current_music_panel(self) -> PlaylistPanel | None:
+        panel = self._get_current_playlist_panel()
+        if isinstance(panel, PlaylistPanel):
+            return panel
         return None
 
     def _handle_focus_click(self, event: wx.MouseEvent, playlist_id: str) -> None:
@@ -1271,7 +1351,7 @@ class MainFrame(wx.Frame):
             self._announce_event("playlist", panel.model.name)
 
     def _get_selected_context(self) -> tuple[PlaylistPanel, PlaylistModel, list[int]] | None:
-        panel = self._get_current_playlist_panel()
+        panel = self._get_current_music_panel()
         if panel is None:
             self._announce_event("playlist", _("Select a playlist first"))
             return None
@@ -1645,7 +1725,7 @@ class MainFrame(wx.Frame):
         context = self._get_selected_context()
         panel: PlaylistPanel
         if context is None:
-            panel = self._get_current_playlist_panel()
+            panel = self._get_current_music_panel()
             if panel is None:
                 return
             model = panel.model

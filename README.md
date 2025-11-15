@@ -25,6 +25,7 @@ SARA is a wxPython-based automation suite for radio stations. It provides multip
    - Use `Ctrl+Shift+L` to toggle looping per track; `Ctrl+Alt+Shift+L` announces loop info.
    - Options (`Tools → Options…`) let you adjust fade out, PFL device, startup playlists, alternate play mode and auto removal of played tracks.
    - Edit menu provides standard clipboard actions, move items with `Alt+↑/↓`.
+   - News playlists expose `Load service…` / `Save service…` buttons (and `Ctrl+O` / `Ctrl+S`) to import/export `.saranews` files. The same format is available in the standalone `sara-news-editor` app, which remembers the last device you picked and lets newsroom staff preview clips without launching the full SARA UI.
 
 You can also paste straight from the system clipboard: copy audio files or folders in the Explorer, then press `Ctrl+V` in a playlist — SARA will expand folders, extract metadata, and insert tracks in place.
 
@@ -53,6 +54,8 @@ PYTHONPATH=src python -m pytest
 - Rich keyboard control and clipboard operations.
 - Loop dialog with PFL preview and persistent loop metadata.
 - Sample-accurate intro looping on BASS-based players.
+- News playlists with Markdown editing, per-line read mode, and inline audio buttons.
+- `.saranews` import/export plus a standalone News Editor (`sara-news-editor`) with persistent audio-device selection for preparing services outside the studio.
 - Options dialog for fade, PFL device, startup playlists, language, alternate play, auto-remove.
 - Screen-reader announcements (NVDA) and coverage in the test suite.
 
@@ -104,6 +107,7 @@ Wersja rozwojowa – odtwarzanie, wielokrotne sloty odtwarzaczy i narzędzia pę
    - Przełączanie zapętlenia utworu (`Ctrl+Shift+L`) i informacja o pętli (`Ctrl+Alt+Shift+L`).
    - `Narzędzia → Opcje…` udostępniają sterowanie fade, urządzeniem PFL, playlistami startowymi, językiem, trybem naprzemiennym i auto-usuwaniem.
    - Menu `Edycja` udostępnia operacje schowka, `Alt+↑/↓` przenosi pozycje.
+   - Playlisty newsowe mają teraz przyciski „Wczytaj serwis…” / „Zapisz serwis…” (oraz skróty `Ctrl+O` / `Ctrl+S`) działające na plikach `.saranews`. Ten sam format obsługuje niezależna aplikacja `sara-news-editor`, która zapamiętuje ostatnio użyte urządzenie, pozwala wybrać kartę audio i odsłuchiwać klipy bez uruchamiania całej Sary.
 
 Konfiguracja trafia do `config/settings.yaml`, ale wygodniej edytować ją z poziomu okna „Opcje…”. Pamiętaj o licencjach BASS przy użyciu komercyjnym.
 
@@ -125,6 +129,8 @@ PYTHONPATH=src python -m pytest
 - Rozbudowane sterowanie klawiaturą i operacje schowka.
 - Dialog pętli z odsłuchem PFL oraz zapisem w tagach.
 - Dokładne zapętlanie intra w odtwarzaczu BASS.
+- Playlisty newsowe z edycją Markdown, trybem tylko do odczytu i przyciskami audio.
+- Import/eksport plików `.saranews` oraz niezależny News Editor (`sara-news-editor`) z zapamiętywaniem urządzenia audio do przygotowywania serwisów.
 - Opcje: fade, PFL, playlisty startowe, język interfejsu, tryb naprzemienny, auto-usuwanie.
 - Komunikaty dostępności (NVDA) i testy pokrywające kluczowe moduły.
 

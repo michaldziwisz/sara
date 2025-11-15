@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sara"
-version = "0.0.3"
+version = "0.0.4"
 description = "Simple Accessible Radio Automation for radio stations"
 readme = "README.md"
 authors = [{name = "SARA Team"}]
@@ -27,6 +27,7 @@ dev = ["black>=24.3.0", "ruff>=0.3.5", "pytest>=8.1.1"]
 
 [project.scripts]
 sara = "sara.app:run"
+sara-news-editor = "sara.news_editor_app:run"
 
 [tool.setuptools.packages.find]
 where = ["src"]

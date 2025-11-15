@@ -15,6 +15,11 @@ class PlaylistItemStatus(Enum):
     PLAYED = "Played"
 
 
+class PlaylistKind(Enum):
+    MUSIC = "music"
+    NEWS = "news"
+
+
 @dataclass
 class PlaylistItem:
     id: str
@@ -81,6 +86,7 @@ class PlaylistItem:
 class PlaylistModel:
     id: str
     name: str
+    kind: PlaylistKind = PlaylistKind.MUSIC
     output_slots: List[Optional[str]] = field(default_factory=list)
     next_slot_index: int = 0
     items: List[PlaylistItem] = field(default_factory=list)
@@ -88,6 +94,7 @@ class PlaylistModel:
 
     # backward compatibility: single device
     output_device: Optional[str] = None
+    news_markdown: str = ""
 
     def next_item(self) -> Optional[PlaylistItem]:
         for item in self.items:
