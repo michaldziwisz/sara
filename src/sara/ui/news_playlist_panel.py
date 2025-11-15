@@ -418,6 +418,13 @@ class NewsPlaylistPanel(wx.Panel):
         controls[next_index].SetFocus()
         return True
 
+    def get_selected_device_id(self) -> str | None:
+        selection = self._device_choice.GetSelection()
+        if selection == wx.NOT_FOUND:
+            return None
+        data = self._device_choice.GetClientData(selection)
+        return str(data) if data else None
+
     def _remember_caret_position(self) -> None:
         if self._mode == "edit":
             self._caret_position = self._edit_ctrl.GetInsertionPoint()

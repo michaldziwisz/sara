@@ -75,7 +75,8 @@ class NewsEditorFrame(wx.Frame):
 
     def _persist_editor_preferences(self) -> None:
         self._editor_settings.set_line_length(self._line_length)
-        self._editor_settings.set_last_device_id(self._model.output_device or None)
+        device_id = self._panel.get_selected_device_id() or self._model.output_device
+        self._editor_settings.set_last_device_id(device_id or None)
 
     def _on_play_audio(self, path: Path, device_id: str | None) -> None:
         if not path.exists():
