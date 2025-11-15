@@ -13,7 +13,7 @@ from sara.ui import speech
 
 logger = logging.getLogger(__name__)
 
-_MODULE_FILENAME = "python.py"
+_MODULE_FILENAMES = ("python.py", "sara.py")
 _TARGET_FILE = "nvda_sleep_targets.json"
 _PLAY_NEXT_SIGNAL_FILE = "nvda_play_next_signal.txt"
 
@@ -43,7 +43,6 @@ def ensure_nvda_sleep_mode() -> None:
             init_path.write_text("", encoding="utf-8")
         except OSError as exc:
             logger.warning("Failed to create NVDA appModules __init__: %s", exc)
-    module_path = nvda_app_modules / _MODULE_FILENAME
     package_dir = nvda_app_modules / "python"
     if package_dir.exists():
         try:
@@ -88,14 +87,19 @@ def ensure_nvda_sleep_mode() -> None:
         "            pass\n"
     )
 
-    try:
-        existing = module_path.read_text(encoding="utf-8") if module_path.exists() else None
-        if existing != module_body:
-            module_path.write_text(module_body, encoding="utf-8")
-            logger.info("Installed/updated NVDA sleep app module at %s", module_path)
-            speech.speak_text("NVDA sleep module updated. Restart NVDA to apply.")
-    except OSError as exc:
-        logger.warning("Failed to create NVDA sleep module: %s", exc)
+    notified = False
+    for filename in _MODULE_FILENAMES:
+        module_path = nvda_app_modules / filename
+        try:
+            existing = module_path.read_text(encoding="utf-8") if module_path.exists() else None
+            if existing != module_body:
+                module_path.write_text(module_body, encoding="utf-8")
+                logger.info("Installed/updated NVDA sleep app module at %s", module_path)
+                if not notified:
+                    speech.speak_text("NVDA sleep module updated. Restart NVDA to apply.")
+                    notified = True
+        except OSError as exc:
+            logger.warning("Failed to create NVDA sleep module %s: %s", filename, exc)
 
     SaraSleepRegistry(appdata).register_process()
 
