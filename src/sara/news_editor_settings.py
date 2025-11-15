@@ -9,12 +9,17 @@ from typing import Any, Dict
 import yaml
 
 
+def _application_root() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parents[2]
+
+
 def _default_config_path() -> Path:
     env_override = os.environ.get("SARA_NEWS_EDITOR_CONFIG")
     if env_override:
         return Path(env_override).expanduser()
-    root = Path(__file__).resolve().parents[2] / "config"
-    return root / "news_editor.yaml"
+    return _application_root() / "config" / "news_editor.yaml"
 
 
 class NewsEditorSettings:
