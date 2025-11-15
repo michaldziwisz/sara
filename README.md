@@ -26,7 +26,14 @@ SARA is a wxPython-based automation suite for radio stations. It provides multip
    - Options (`Tools → Options…`) let you adjust fade out, PFL device, startup playlists, alternate play mode and auto removal of played tracks.
    - Edit menu provides standard clipboard actions, move items with `Alt+↑/↓`.
 
+You can also paste straight from the system clipboard: copy audio files or folders in the Explorer, then press `Ctrl+V` in a playlist — SARA will expand folders, extract metadata, and insert tracks in place.
+
 Configuration is stored in `config/settings.yaml`, but editing through the Options dialog is recommended. Bundled BASS binaries (Windows/Linux) are provided for convenience; commercial usage requires a license from Un4seen.
+
+### Accessibility & NVDA
+- On startup SARA installs/updates its NVDA helper (`sara.ui.nvda_sleep`) so NVDA keeps quiet unless the playlist explicitly opens the speech window.
+- The repository ships an NVDA add-on (`artifacts/sara-silent-addon.nvda-addon` in releases) that keeps Play Next silent while letting arrow navigation read every track. Install it via NVDA’s “Manage Add-ons” dialog for the best experience.
+- Playlist selection changes are optimized for screen readers; when audio focus switches back to a playing item, NVDA receives just one concise announcement.
 
 ### Tests
 ```
@@ -67,9 +74,6 @@ PYTHONPATH=src python -m pytest
 - Overlay playlist type that mixes without fading other outputs.
 - Finer control over accessibility announcements.
 - Investigate preloading tracks into memory to minimize disk I/O at cue time.
-
-### Qt playlist experiment
-- Install the optional `qt` extra (`pip install .[qt]`) and set `SARA_QT_PLAYLIST=1` before launching SARA to test an alternative Qt-based playlist window that may work better with some screen readers.
 
 ### License
 - Application code: BSD 3-Clause (see `LICENSE`).
