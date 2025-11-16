@@ -71,7 +71,7 @@ PYTHONPATH=src python -m pytest
 - Ensure locale and vendor binaries are included (`MANIFEST.in`, `pyproject.toml`).
 - Build distributables with `python -m build`; the `sara` console entry starts the GUI.
 - GitHub Actions provides a **Windows Build** workflow that publishes a downloadable `.zip` (containing `dist/SARA`) on every push to `main` and on tagged releases.
-- The Windows zip now ships both `SARA.exe` and `SARA-News-Editor.exe`, sharing the same runtime files and NVDA/BASS DLLs.
+- The Windows zip now ships both `SARA.exe` and `SARA-News-Editor.exe`, sharing the same runtime files, NVDA/BASS DLLs, and an `ffmpeg.exe` helper for MP4/M4A playback.
 - The CI bundle includes NVDA controller DLLs and the Windows `bass.dll` so speech and optional BASS playback work out of the box.
 - Scripts `scripts/auto_download.sh` and `scripts/download_latest_artifact.sh` (install via `scripts/install_hooks.sh`) keep the latest Windows artifact under `artifacts/` after each successful build.
 - For frozen Windows builds, bundle NVDA controller DLLs and optional BASS binaries alongside the executable.

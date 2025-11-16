@@ -30,6 +30,9 @@ jobs:
           pip install -r requirements-dev.txt
           pip install pyinstaller pyinstaller-hooks-contrib
 
+      - name: Install FFmpeg
+        run: choco install ffmpeg -y
+
       - name: Run tests
         run: python -m pytest
         env:
@@ -45,6 +48,13 @@ jobs:
         run: |
           Copy-Item src\sara\ui\nvdaControllerClient*.dll dist\SARA\ -Force
           Copy-Item src\sara\audio\vendor\windows\bass.dll dist\SARA\ -Force
+
+      - name: Copy FFmpeg binaries
+        run: |
+          $ffmpegPath = "C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg\bin"
+          Copy-Item "$ffmpegPath\ffmpeg.exe" dist\SARA\ -Force
+          if (Test-Path "$ffmpegPath\ffprobe.exe") { Copy-Item "$ffmpegPath\ffprobe.exe" dist\SARA\ -Force }
+          if (Test-Path "$ffmpegPath\LICENSE.txt") { Copy-Item "$ffmpegPath\LICENSE.txt" dist\SARA\ffmpeg-LICENSE.txt -Force }
 
       - name: Package NVDA add-on
         run: |
