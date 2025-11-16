@@ -24,6 +24,7 @@ SARA is a wxPython-based automation suite for radio stations. It provides multip
    - Loop dialog (`Shift+F10 → Loop…`): fine-tune start/end, capture preview (`Ctrl+P` / `Ctrl+Shift+P`). Loop ranges are saved in APEv2 tags (`SARA_LOOP_*`).
    - Use `Ctrl+Shift+L` to toggle looping per track; `Ctrl+Alt+Shift+L` announces loop info.
    - Options (`Tools → Options…`) let you adjust fade out, PFL device, startup playlists, alternate play mode and auto removal of played tracks.
+   - Startup playlists in Options can now include both music and news panels, so you can reopen newsroom scripts automatically at launch.
    - Edit menu provides standard clipboard actions, move items with `Alt+↑/↓`.
    - News playlists expose `Load service…` / `Save service…` buttons (and `Ctrl+O` / `Ctrl+S`) to import/export `.saranews` files. The same format is available in the standalone `sara-news-editor` app, which remembers the last device you picked and lets newsroom staff preview clips without launching the full SARA UI.
 
@@ -107,6 +108,7 @@ Wersja rozwojowa – odtwarzanie, wielokrotne sloty odtwarzaczy i narzędzia pę
    - Dialog pętli (`Shift+F10 → Zapętl…`): precyzyjne start/koniec, odsłuch PFL (`Ctrl+P` / `Ctrl+Shift+P`). Pętle zapisują się w tagach APEv2.
    - Przełączanie zapętlenia utworu (`Ctrl+Shift+L`) i informacja o pętli (`Ctrl+Alt+Shift+L`).
    - `Narzędzia → Opcje…` udostępniają sterowanie fade, urządzeniem PFL, playlistami startowymi, językiem, trybem naprzemiennym i auto-usuwaniem.
+   - W sekcji Startup playlists możesz dodać zarówno playlisty muzyczne, jak i newsowe, żeby po starcie Sary od razu otwierały się właściwe panele.
    - Menu `Edycja` udostępnia operacje schowka, `Alt+↑/↓` przenosi pozycje.
    - Playlisty newsowe mają teraz przyciski „Wczytaj serwis…” / „Zapisz serwis…” (oraz skróty `Ctrl+O` / `Ctrl+S`) działające na plikach `.saranews`. Ten sam format obsługuje niezależna aplikacja `sara-news-editor`, która zapamiętuje ostatnio użyte urządzenie, pozwala wybrać kartę audio i odsłuchiwać klipy bez uruchamiania całej Sary.
 
