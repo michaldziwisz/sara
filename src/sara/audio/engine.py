@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from enum import Enum
 import math
+import shutil
+import subprocess
+import tempfile
 import time
 from pathlib import Path
 from threading import Event, Lock, Thread, Timer, current_thread
@@ -239,6 +243,9 @@ class MockPlayer:
                 self._timer.start()
 
 
+_TRANSCODE_EXTENSIONS = {".mp4", ".m4a", ".m4v"}
+
+
 class SoundDevicePlayer:
     """Player odtwarzający audio przy użyciu sounddevice + soundfile."""
 
@@ -270,6 +277,7 @@ class SoundDevicePlayer:
         self._loop_end_frame: int = 0
         self._fade_thread: Optional[Thread] = None
         self._fade_stop_event: Optional[Event] = None
+        self._transcoded_path: Optional[Path] = None
 
     def play(self, playlist_item_id: str, source_path: str, *, start_seconds: float = 0.0) -> Event:  # noqa: D401
         path = Path(source_path)
@@ -281,7 +289,7 @@ class SoundDevicePlayer:
             self._stop_locked()
 
             try:
-                sound_file = sf.SoundFile(path, mode="r")
+                sound_file = self._open_audio_file(path)
             except Exception as exc:  # pylint: disable=broad-except
                 raise RuntimeError(f"Nie udało się otworzyć pliku audio: {exc}") from exc
 
@@ -446,6 +454,7 @@ class SoundDevicePlayer:
                                 self._on_finished(current_item)
                             except Exception as exc:  # pylint: disable=broad-except
                                 logger.error("Błąd callbacku zakończenia odtwarzania: %s", exc)
+                        self._cleanup_transcoded_file()
 
             self._thread = Thread(target=_run, daemon=True)
             self._thread.start()
@@ -559,6 +568,68 @@ class SoundDevicePlayer:
                 self._on_progress(item_id, 0.0)
             except Exception as exc:  # pylint: disable=broad-except
                 logger.error("Błąd callbacku postępu: %s", exc)
+        self._cleanup_transcoded_file()
+        self._cleanup_transcoded_file()
+
+    def _open_audio_file(self, path: Path):
+        if sf is None:
+            raise RuntimeError("soundfile niedostępne")
+        self._cleanup_transcoded_file()
+        try:
+            return sf.SoundFile(path, mode="r")
+        except Exception:
+            if path.suffix.lower() not in _TRANSCODE_EXTENSIONS:
+                raise
+            wav_path = self._transcode_source(path)
+            try:
+                sound_file = sf.SoundFile(wav_path, mode="r")
+            except Exception as exc:  # pylint: disable=broad-except
+                try:
+                    wav_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                raise RuntimeError("Nie udało się odczytać przekodowanego pliku MP4") from exc
+            self._transcoded_path = wav_path
+            return sound_file
+
+    def _transcode_source(self, source: Path) -> Path:
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg:
+            raise RuntimeError("FFmpeg jest wymagany do odtwarzania plików MP4/M4A")
+        fd, temp_name = tempfile.mkstemp(suffix=".wav")
+        os.close(fd)
+        target = Path(temp_name)
+        cmd = [
+            ffmpeg,
+            "-y",
+            "-i",
+            str(source),
+            "-vn",
+            "-acodec",
+            "pcm_s16le",
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
+            str(target),
+        ]
+        try:
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except FileNotFoundError as exc:  # pragma: no cover - zależy od środowiska
+            target.unlink(missing_ok=True)
+            raise RuntimeError("FFmpeg nie został znaleziony w PATH") from exc
+        except subprocess.CalledProcessError as exc:
+            target.unlink(missing_ok=True)
+            raise RuntimeError(f"FFmpeg nie mógł zdekodować pliku {source.name}") from exc
+        return target
+
+    def _cleanup_transcoded_file(self) -> None:
+        if self._transcoded_path:
+            try:
+                self._transcoded_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+            self._transcoded_path = None
 
     def set_finished_callback(self, callback: Optional[Callable[[str], None]]) -> None:  # noqa: D401
         with self._lock:

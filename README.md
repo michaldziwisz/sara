@@ -11,11 +11,12 @@ SARA is a wxPython-based automation suite for radio stations. It provides multip
 ### Quick start
 1. Install system prerequisites (wxWidgets, audio backends such as WASAPI/ASIO where required).
 2. Optionally download [BASS](https://www.un4seen.com/) and place `bass.dll` next to the project (or set `BASS_LIBRARY_PATH`).
-3. Create a virtualenv for Python 3.11+: `python -m venv .venv && source .venv/bin/activate` (Windows: `.venv\Scripts\activate`).
-4. Install dependencies: `pip install -r requirements-dev.txt`.
+3. Install [FFmpeg](https://ffmpeg.org/) if you plan to play MP4/M4A audio (the executable must be visible in `PATH`).
+4. Create a virtualenv for Python 3.11+: `python -m venv .venv && source .venv/bin/activate` (Windows: `.venv\Scripts\activate`).
+5. Install dependencies: `pip install -r requirements-dev.txt`.
    - Optional ASIO support: `pip install pythonnet>=3.0.3` (or `pip install -e .[asio]`).
-5. Run the app: `python -m sara.app`.
-6. In the UI:
+6. Run the app: `python -m sara.app`.
+7. In the UI:
    - Add a playlist (`Ctrl+N`).
    - Add tracks (`Ctrl+D`).
    - Map players/devices (`Ctrl+Shift+D`).
@@ -101,11 +102,12 @@ Wersja rozwojowa – odtwarzanie, wielokrotne sloty odtwarzaczy i narzędzia pę
 ### Szybki start
 1. Zainstaluj zależności systemowe (wxWidgets, backendy audio typu WASAPI/ASIO).
 2. (Opcjonalnie) pobierz [BASS](https://www.un4seen.com/) i umieść `bass.dll` w katalogu projektu (lub ustaw `BASS_LIBRARY_PATH`).
-3. Utwórz wirtualne środowisko Python 3.11+: `python -m venv .venv && source .venv/bin/activate` (Windows: `.venv\Scripts\activate`).
-4. Zainstaluj zależności projektu: `pip install -r requirements-dev.txt`.
+3. Zainstaluj [FFmpeg](https://ffmpeg.org/), jeśli chcesz odtwarzać pliki MP4/M4A (plik `ffmpeg.exe` musi być w `PATH`).
+4. Utwórz wirtualne środowisko Python 3.11+: `python -m venv .venv && source .venv/bin/activate` (Windows: `.venv\Scripts\activate`).
+5. Zainstaluj zależności projektu: `pip install -r requirements-dev.txt`.
    - Opcjonalna obsługa ASIO: `pip install pythonnet>=3.0.3` (lub `pip install -e .[asio]`).
-5. Uruchom aplikację: `python -m sara.app`.
-6. W interfejsie:
+6. Uruchom aplikację: `python -m sara.app`.
+7. W interfejsie:
    - Dodaj playlistę (`Ctrl+N`).
    - Dodaj utwory (`Ctrl+D`).
    - Przypisz odtwarzacze/urządzenia (`Ctrl+Shift+D`).

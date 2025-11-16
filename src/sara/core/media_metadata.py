@@ -26,6 +26,7 @@ SUPPORTED_AUDIO_EXTENSIONS = {
     ".aif",
     ".wma",
     ".wv",
+    ".mp4",
 }
 
 

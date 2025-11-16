@@ -1864,36 +1864,37 @@ class MainFrame(wx.Frame):
         index = indices[-1] if indices else None
         insert_at = index + 1 if index is not None else len(model.items)
 
+        clipboard_paths = self._get_system_clipboard_paths()
+        if clipboard_paths:
+            file_paths, skipped = self._collect_files_from_paths(clipboard_paths)
+            if not file_paths:
+                if skipped:
+                    self._announce_event("clipboard", _("Clipboard does not contain supported audio files"))
+                else:
+                    self._announce_event("clipboard", _("Clipboard does not contain files or folders"))
+                return
+
+            description = _("Loading tracks from clipboard…")
+            self._run_item_loader(
+                description=description,
+                worker=lambda file_paths=file_paths: self._create_items_from_paths(file_paths),
+                on_complete=lambda items, panel=panel, model=model, insert_at=insert_at, anchor=index, skipped=skipped: self._finalize_clipboard_paste(
+                    panel,
+                    model,
+                    items,
+                    insert_at,
+                    anchor,
+                    skipped_files=skipped,
+                ),
+            )
+            return
+
         if self._clipboard_items:
             new_items = [self._create_item_from_serialized(data) for data in self._clipboard_items]
             self._finalize_clipboard_paste(panel, model, new_items, insert_at, index, skipped_files=0)
             return
 
-        clipboard_paths = self._get_system_clipboard_paths()
-        if not clipboard_paths:
-            self._announce_event("clipboard", _("Clipboard is empty"))
-            return
-        file_paths, skipped = self._collect_files_from_paths(clipboard_paths)
-        if not file_paths:
-            if skipped:
-                self._announce_event("clipboard", _("Clipboard does not contain supported audio files"))
-            else:
-                self._announce_event("clipboard", _("Clipboard does not contain files or folders"))
-            return
-
-        description = _("Loading tracks from clipboard…")
-        self._run_item_loader(
-            description=description,
-            worker=lambda file_paths=file_paths: self._create_items_from_paths(file_paths),
-            on_complete=lambda items, panel=panel, model=model, insert_at=insert_at, anchor=index, skipped=skipped: self._finalize_clipboard_paste(
-                panel,
-                model,
-                items,
-                insert_at,
-                anchor,
-                skipped_files=skipped,
-            ),
-        )
+        self._announce_event("clipboard", _("Clipboard is empty"))
         return
 
     def _finalize_clipboard_paste(
