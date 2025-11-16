@@ -11,12 +11,13 @@ import wx
 from wx.lib import scrolledpanel
 
 from sara.core.i18n import gettext as _
+from sara.core.media_metadata import is_supported_audio_file
 from sara.core.playlist import PlaylistModel
 from sara.news_service import NewsService, load_news_service, save_news_service
+from sara.ui.file_selection_dialog import FileSelectionDialog
 
 
 _AUDIO_TOKEN = re.compile(r"\[\[audio:(.+?)\]\]")
-_AUDIO_EXTENSIONS = {".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac"}
 _SERVICE_WILDCARD = _("News services (*.saranews)|*.saranews|All files|*.*")
 
 
@@ -116,10 +117,14 @@ class NewsPlaylistPanel(wx.Panel):
         main_sizer.Add(self._read_panel, 1, wx.EXPAND)
         self.SetSizer(main_sizer)
 
-        self._mode_button.Bind(wx.EVT_BUTTON, self._toggle_mode)
-        self._insert_button.Bind(wx.EVT_BUTTON, self._insert_audio_placeholder)
-        self._load_button.Bind(wx.EVT_BUTTON, self._on_load_service)
-        self._save_button.Bind(wx.EVT_BUTTON, self._on_save_service)
+        for button, handler in (
+            (self._mode_button, self._toggle_mode),
+            (self._insert_button, self._insert_audio_placeholder),
+            (self._load_button, self._on_load_service),
+            (self._save_button, self._on_save_service),
+        ):
+            button.Bind(wx.EVT_BUTTON, handler)
+            button.Bind(wx.EVT_CHAR_HOOK, self._handle_toolbar_char_hook)
         self._device_choice.Bind(wx.EVT_CHOICE, self._on_device_selected)
 
         self._populate_devices()
@@ -289,41 +294,57 @@ class NewsPlaylistPanel(wx.Panel):
         self._edit_ctrl.SetInsertionPoint(insertion_point + len(text_to_insert))
         self.model.news_markdown = self._edit_ctrl.GetValue()
 
-    def _on_load_service(self, _event: wx.Event | None) -> None:
-        dialog = wx.FileDialog(
+    def prompt_load_service(self) -> Path | None:
+        dialog = FileSelectionDialog(
             self,
-            _("Load news service"),
+            title=_("Load news service"),
             wildcard=_SERVICE_WILDCARD,
             style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
         )
         if dialog.ShowModal() != wx.ID_OK:
             dialog.Destroy()
-            return
-        path = Path(dialog.GetPath())
+            return None
+        paths = dialog.get_paths()
         dialog.Destroy()
+        if not paths:
+            return None
+        path = Path(paths[0])
+        return path if self._load_service_from_path(path) else None
+
+    def _load_service_from_path(self, path: Path) -> bool:
         try:
             service = load_news_service(path)
         except Exception as exc:  # pylint: disable=broad-except
             self._show_error(_("Failed to load news service: %s") % exc)
-            return
+            return False
         self._apply_service(service)
+        return True
 
-    def _on_save_service(self, _event: wx.Event | None) -> None:
-        dialog = wx.FileDialog(
+    def _on_load_service(self, _event: wx.Event | None) -> None:
+        self.prompt_load_service()
+
+    def prompt_save_service(self) -> Path | None:
+        dialog = FileSelectionDialog(
             self,
-            _("Save news service"),
+            title=_("Save news service"),
             wildcard=_SERVICE_WILDCARD,
             style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
         )
         if dialog.ShowModal() != wx.ID_OK:
             dialog.Destroy()
-            return
-        raw_path = Path(dialog.GetPath())
+            return None
+        paths = dialog.get_paths()
         dialog.Destroy()
+        if not paths:
+            return None
+        raw_path = Path(paths[0])
         if raw_path.suffix.lower() != ".saranews":
             target_path = raw_path.with_suffix(".saranews")
         else:
             target_path = raw_path
+        return target_path if self._save_service_to_path(target_path) else None
+
+    def _save_service_to_path(self, target_path: Path) -> bool:
         service = NewsService(
             title=self.model.name,
             markdown=self.model.news_markdown or self._edit_ctrl.GetValue(),
@@ -334,6 +355,11 @@ class NewsPlaylistPanel(wx.Panel):
             save_news_service(target_path, service)
         except Exception as exc:  # pylint: disable=broad-except
             self._show_error(_("Failed to save news service: %s") % exc)
+            return False
+        return True
+
+    def _on_save_service(self, _event: wx.Event | None) -> None:
+        self.prompt_save_service()
 
     def _apply_service(self, service: NewsService) -> None:
         markdown = service.markdown or ""
@@ -396,8 +422,32 @@ class NewsPlaylistPanel(wx.Panel):
         target.SetFocus()
         return True
 
+    def activate_toolbar_control(self, window: wx.Window | None) -> bool:
+        if window is None:
+            return False
+        buttons: list[wx.Button] = [
+            self._mode_button,
+            self._insert_button,
+            self._load_button,
+            self._save_button,
+        ]
+        if self._line_length_apply:
+            buttons.append(self._line_length_apply)
+        for button in buttons:
+            if window is button:
+                event = wx.CommandEvent(wx.EVT_BUTTON.typeId, button.GetId())
+                event.SetEventObject(button)
+                button.GetEventHandler().ProcessEvent(event)
+                return True
+        return False
+
     def _handle_toolbar_char_hook(self, event: wx.KeyEvent) -> None:
-        if event.GetKeyCode() == wx.WXK_TAB and not event.ControlDown() and not event.AltDown():
+        keycode = event.GetKeyCode()
+        if keycode == wx.WXK_SPACE and not event.ControlDown() and not event.AltDown():
+            self._suppress_play_shortcut = True
+            event.Skip()
+            return
+        if keycode == wx.WXK_TAB and not event.ControlDown() and not event.AltDown():
             backwards = event.ShiftDown()
             if self._move_within_toolbar(event.GetEventObject(), backwards=backwards):
                 return
@@ -472,10 +522,10 @@ class NewsPlaylistPanel(wx.Panel):
                 return
             if target.is_dir():
                 for file_path in sorted(target.rglob("*")):
-                    if file_path.is_file() and file_path.suffix.lower() in _AUDIO_EXTENSIONS:
+                    if file_path.is_file() and is_supported_audio_file(file_path):
                         audio_files.append(str(file_path))
                 return
-            if target.suffix.lower() in _AUDIO_EXTENSIONS:
+            if is_supported_audio_file(target):
                 audio_files.append(str(target))
 
         for candidate in candidates:

@@ -26,6 +26,7 @@ class PlaylistItem:
     path: Path
     title: str
     duration_seconds: float
+    artist: Optional[str] = None
     status: PlaylistItemStatus = PlaylistItemStatus.PENDING
     current_position: float = 0.0
     replay_gain_db: Optional[float] = None
@@ -36,7 +37,7 @@ class PlaylistItem:
     loop_start_seconds: Optional[float] = None
     loop_end_seconds: Optional[float] = None
     loop_enabled: bool = False
-    is_marker: bool = False
+    is_selected: bool = False
 
     @property
     def duration_display(self) -> str:
@@ -102,20 +103,20 @@ class PlaylistModel:
                 return item
         return None
 
-    def begin_next_item(self, marker_item_id: Optional[str] = None) -> Optional[PlaylistItem]:
-        if marker_item_id:
-            marker = self.get_item(marker_item_id)
-            if marker:
-                if marker.status is PlaylistItemStatus.PAUSED:
-                    marker.status = PlaylistItemStatus.PLAYING
-                    return marker
-                if marker.status is PlaylistItemStatus.PENDING:
-                    marker.status = PlaylistItemStatus.PLAYING
-                    if marker.current_position <= 0.0:
-                        marker.current_position = 0.0
-                    return marker
-                if marker.status is PlaylistItemStatus.PLAYING:
-                    return marker
+    def begin_next_item(self, preferred_item_id: Optional[str] = None) -> Optional[PlaylistItem]:
+        if preferred_item_id:
+            preferred = self.get_item(preferred_item_id)
+            if preferred:
+                if preferred.status is PlaylistItemStatus.PAUSED:
+                    preferred.status = PlaylistItemStatus.PLAYING
+                    return preferred
+                if preferred.status is PlaylistItemStatus.PENDING:
+                    preferred.status = PlaylistItemStatus.PLAYING
+                    if preferred.current_position <= 0.0:
+                        preferred.current_position = 0.0
+                    return preferred
+                if preferred.status is PlaylistItemStatus.PLAYING:
+                    return preferred
 
         paused = next((item for item in self.items if item.status is PlaylistItemStatus.PAUSED), None)
         if paused:
@@ -190,9 +191,34 @@ class PlaylistModel:
                 return item
         return None
 
-    def set_marker(self, item_id: Optional[str]) -> None:
+    def toggle_selection(self, item_id: str) -> bool:
         for item in self.items:
-            item.is_marker = item.id == item_id if item_id else False
+            if item.id == item_id:
+                item.is_selected = not item.is_selected
+                if item.is_selected and item.status is not PlaylistItemStatus.PENDING:
+                    item.status = PlaylistItemStatus.PENDING
+                    item.current_position = 0.0
+                return item.is_selected
+        return False
+
+    def clear_selection(self, item_id: Optional[str] = None) -> None:
+        if item_id is None:
+            for item in self.items:
+                item.is_selected = False
+            return
+        for item in self.items:
+            if item.id == item_id:
+                item.is_selected = False
+                break
+
+    def next_selected_item_id(self) -> Optional[str]:
+        for item in self.items:
+            if item.is_selected and item.status in (PlaylistItemStatus.PENDING, PlaylistItemStatus.PAUSED):
+                return item.id
+        return None
+
+    def has_selected_items(self) -> bool:
+        return any(item.is_selected for item in self.items)
 
     def reset_progress(self, item_id: str) -> None:
         for item in self.items:

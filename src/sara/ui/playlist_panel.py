@@ -20,7 +20,7 @@ class PlaylistPanel(wx.Panel):
         model: PlaylistModel,
         on_focus: Callable[[str], None] | None = None,
         on_loop_configure: Callable[[str, str], None] | None = None,
-        on_set_marker: Callable[[str, str], None] | None = None,
+        on_toggle_selection: Callable[[str, str], None] | None = None,
         on_selection_change: Callable[[str, list[int]], None] | None = None,
     ):
         super().__init__(parent)
@@ -28,7 +28,7 @@ class PlaylistPanel(wx.Panel):
         self.model = model
         self._on_focus = on_focus
         self._on_loop_configure = on_loop_configure
-        self._on_set_marker = on_set_marker
+        self._on_toggle_selection = on_toggle_selection
         self._on_selection_change = on_selection_change
         self._active = False
         self._base_accessible_name = model.name
@@ -93,7 +93,7 @@ class PlaylistPanel(wx.Panel):
     def _refresh_content(self) -> None:
         self._list_ctrl.DeleteAllItems()
         for index, item in enumerate(self.model.items):
-            self._list_ctrl.InsertItem(index, item.title)
+            self._list_ctrl.InsertItem(index, self._display_title(item))
             self._list_ctrl.SetItem(index, 1, item.duration_display)
             self._list_ctrl.SetItem(index, 2, self._status_label(item))
             self._list_ctrl.SetItem(index, 3, item.progress_display)
@@ -110,7 +110,7 @@ class PlaylistPanel(wx.Panel):
         current_count = self._list_ctrl.GetItemCount()
         for item in items:
             index = current_count
-            self._list_ctrl.InsertItem(index, item.title)
+            self._list_ctrl.InsertItem(index, self._display_title(item))
             self._list_ctrl.SetItem(index, 1, item.duration_display)
             self._list_ctrl.SetItem(index, 2, item.status.value)
             self._list_ctrl.SetItem(index, 3, item.progress_display)
@@ -124,12 +124,18 @@ class PlaylistPanel(wx.Panel):
                     self._list_ctrl.SetItem(index, 2, self._status_label(item))
                 break
 
+    def _display_title(self, item: PlaylistItem) -> str:
+        title = item.title
+        if item.artist:
+            title = f"{item.artist} - {title}"
+        if item.is_selected:
+            return _("[selected] %s") % title
+        return title
+
     def _status_label(self, item: PlaylistItem) -> str:
         label = _(item.status.value)
         if item.has_loop():
             label += _(" (loop)")
-        if item.is_marker:
-            label += _(" [marker]")
         return label
 
     def set_active(self, active: bool) -> None:
@@ -195,16 +201,16 @@ class PlaylistPanel(wx.Panel):
 
             self.Bind(wx.EVT_MENU, _trigger_loop, id=int(loop_id))
 
-        if self._on_set_marker:
-            marker_id = wx.NewIdRef()
-            marker_label = _("&Set marker") if not item.is_marker else _("Remove &marker")
-            menu.Append(marker_id, marker_label)
+        if self._on_toggle_selection:
+            toggle_id = wx.NewIdRef()
+            toggle_label = _("&Select for playback") if not item.is_selected else _("Remove &selection")
+            menu.Append(toggle_id, toggle_label)
 
-            def _trigger_marker(_evt: wx.CommandEvent) -> None:
+            def _trigger_selection(_evt: wx.CommandEvent) -> None:
                 self._notify_focus()
-                self._on_set_marker(self.model.id, item.id)
+                self._on_toggle_selection(self.model.id, item.id)
 
-            self.Bind(wx.EVT_MENU, _trigger_marker, id=int(marker_id))
+            self.Bind(wx.EVT_MENU, _trigger_selection, id=int(toggle_id))
 
         if not menu.GetMenuItemCount():
             event.Skip()
@@ -214,26 +220,26 @@ class PlaylistPanel(wx.Panel):
         menu.Destroy()
 
     def _handle_key_down(self, event: wx.KeyEvent) -> None:
-        if not self._handle_marker_event(event):
+        if not self._handle_selection_key_event(event):
             event.Skip()
 
     def _handle_char_hook(self, event: wx.KeyEvent) -> None:
-        if not self._handle_marker_event(event):
+        if not self._handle_selection_key_event(event):
             event.Skip()
 
     def _handle_char(self, event: wx.KeyEvent) -> None:
-        if not self._handle_marker_event(event):
+        if not self._handle_selection_key_event(event):
             event.Skip()
 
     def _handle_list_key_down(self, event: wx.ListEvent) -> None:
-        if not self._handle_marker_event(event):
+        if not self._handle_selection_key_event(event):
             event.Skip()
 
-    def _handle_marker_event(self, event: wx.KeyEvent | wx.ListEvent) -> bool:
+    def _handle_selection_key_event(self, event: wx.KeyEvent | wx.ListEvent) -> bool:
         key_code = event.GetKeyCode()
         if key_code not in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
             return False
-        if not self._on_set_marker:
+        if not self._on_toggle_selection:
             return False
         if isinstance(event, wx.KeyEvent):
             if event.ControlDown() or event.AltDown() or event.MetaDown():
@@ -250,12 +256,12 @@ class PlaylistPanel(wx.Panel):
         if index == wx.NOT_FOUND or index >= len(self.model.items):
             return False
 
-        self._trigger_marker(index)
+        self._trigger_selection_toggle(index)
         return True
 
     def _handle_item_activated(self, event: wx.ListEvent) -> None:
-        if self._on_set_marker:
-            self._trigger_marker(event.GetIndex())
+        if self._on_toggle_selection:
+            self._trigger_selection_toggle(event.GetIndex())
         event.Skip()
 
     def _suppress_tooltip(self, event: wx.Event) -> None:
@@ -263,9 +269,9 @@ class PlaylistPanel(wx.Panel):
             event.SetToolTip(None)
         event.Skip(False)
 
-    def _trigger_marker(self, index: int) -> None:
-        if index < 0 or index >= len(self.model.items) or not self._on_set_marker:
+    def _trigger_selection_toggle(self, index: int) -> None:
+        if index < 0 or index >= len(self.model.items) or not self._on_toggle_selection:
             return
         item = self.model.items[index]
         self._notify_focus()
-        self._on_set_marker(self.model.id, item.id)
+        self._on_toggle_selection(self.model.id, item.id)

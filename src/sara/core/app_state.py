@@ -6,7 +6,7 @@ import itertools
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Optional
 
 from sara.core.playlist import PlaylistItem, PlaylistKind, PlaylistModel
 
@@ -48,6 +48,7 @@ class PlaylistFactory:
         path: Path,
         title: str,
         duration_seconds: float,
+        artist: str | None = None,
         replay_gain_db: float | None = None,
         cue_in_seconds: float | None = None,
         segue_seconds: float | None = None,
@@ -63,6 +64,7 @@ class PlaylistFactory:
             path=path,
             title=title,
             duration_seconds=duration_seconds,
+            artist=artist,
             replay_gain_db=replay_gain_db,
             cue_in_seconds=cue_in_seconds,
             segue_seconds=segue_seconds,

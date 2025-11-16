@@ -5,10 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from importlib.resources import as_file, files
 import logging
+import os
 import tempfile
+import time
 from pathlib import Path
-from threading import Event
-from typing import Any, Dict, List, Tuple
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event, Thread
+from typing import Any, Callable, Dict, List, Tuple
 
 import wx
 
@@ -17,7 +20,7 @@ from sara.core.app_state import AppState, PlaylistFactory
 from sara.core.config import SettingsManager
 from sara.core.i18n import gettext as _, set_language
 from sara.core.hotkeys import HotkeyAction
-from sara.core.media_metadata import AudioMetadata, extract_metadata, save_loop_metadata
+from sara.core.media_metadata import AudioMetadata, extract_metadata, is_supported_audio_file, save_loop_metadata
 from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistKind, PlaylistModel
 from sara.core.shortcuts import get_shortcut
 from sara.ui.undo import InsertOperation, MoveOperation, RemoveOperation, UndoAction
@@ -31,6 +34,7 @@ from sara.ui.shortcut_editor_dialog import ShortcutEditorDialog
 from sara.ui.shortcut_utils import format_shortcut_display, parse_shortcut
 from sara.ui.nvda_sleep import notify_nvda_play_next
 from sara.ui.speech import cancel_speech, speak_text
+from sara.ui.file_selection_dialog import FileSelectionDialog
 
 
 logger = logging.getLogger(__name__)
@@ -90,7 +94,7 @@ class MainFrame(wx.Frame):
         self._add_tracks_id = wx.NewIdRef()
         self._assign_device_id = wx.NewIdRef()
         self._auto_mix_toggle_id = wx.NewIdRef()
-        self._marker_mode_toggle_id = wx.NewIdRef()
+        self._selection_mode_toggle_id = wx.NewIdRef()
         self._loop_playback_toggle_id = wx.NewIdRef()
         self._loop_info_id = wx.NewIdRef()
         self._cut_id = wx.NewIdRef()
@@ -109,9 +113,8 @@ class MainFrame(wx.Frame):
         self._preview_context: PreviewContext | None = None
         self._auto_mix_enabled: bool = False
         self._auto_mix_state: Dict[tuple[str, str], bool] = {}
-        self._marker_mode_enabled: bool = False
-        self._marker_reference: tuple[str, str] | None = None
-        self._marker_mode_menu_item: wx.MenuItem | None = None
+        self._selection_mode_enabled: bool = False
+        self._selection_mode_menu_item: wx.MenuItem | None = None
         self._alternate_play_next: bool = self._settings.get_alternate_play_next()
         self._auto_remove_played: bool = self._settings.get_auto_remove_played()
         self._focus_playing_track: bool = self._settings.get_focus_playing_track()
@@ -171,16 +174,16 @@ class MainFrame(wx.Frame):
 
         tools_menu = wx.Menu()
         options_id = wx.NewIdRef()
-        marker_item = self._append_shortcut_menu_item(
+        selection_item = self._append_shortcut_menu_item(
             tools_menu,
-            self._marker_mode_toggle_id,
-            _("&Marker mode"),
+            self._selection_mode_toggle_id,
+            _("&Selection mode"),
             "global",
-            "marker_mode_toggle",
+            "selection_mode_toggle",
             check=True,
         )
-        marker_item.Check(self._marker_mode_enabled)
-        self._marker_mode_menu_item = marker_item
+        selection_item.Check(self._selection_mode_enabled)
+        self._selection_mode_menu_item = selection_item
 
         self._append_shortcut_menu_item(
             tools_menu,
@@ -211,7 +214,7 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self._on_export_playlist, id=wx.ID_SAVE)
         self.Bind(wx.EVT_MENU, self._on_exit, id=wx.ID_EXIT)
         self.Bind(wx.EVT_MENU, self._on_options, id=int(options_id))
-        self.Bind(wx.EVT_MENU, self._on_toggle_marker_mode, id=int(self._marker_mode_toggle_id))
+        self.Bind(wx.EVT_MENU, self._on_toggle_selection_mode, id=int(self._selection_mode_toggle_id))
         self.Bind(wx.EVT_MENU, self._on_toggle_loop_playback, id=int(self._loop_playback_toggle_id))
         self.Bind(wx.EVT_MENU, self._on_loop_info, id=int(self._loop_info_id))
         self.Bind(wx.EVT_MENU, self._on_edit_shortcuts, id=int(self._shortcut_editor_id))
@@ -356,9 +359,9 @@ class MainFrame(wx.Frame):
         add_entry("global", "auto_mix_toggle", auto_mix_id)
         self.Bind(wx.EVT_MENU, self._on_toggle_auto_mix, id=auto_mix_id)
 
-        marker_id = int(self._marker_mode_toggle_id)
-        add_entry("global", "marker_mode_toggle", marker_id)
-        self.Bind(wx.EVT_MENU, self._on_toggle_marker_mode, id=marker_id)
+        selection_id = int(self._selection_mode_toggle_id)
+        add_entry("global", "selection_mode_toggle", selection_id)
+        self.Bind(wx.EVT_MENU, self._on_toggle_selection_mode, id=selection_id)
 
         add_entry("global", "loop_playback_toggle", int(self._loop_playback_toggle_id))
         add_entry("global", "loop_info", int(self._loop_info_id))
@@ -451,7 +454,7 @@ class MainFrame(wx.Frame):
                 model=model,
                 on_focus=self._on_playlist_focus,
                 on_loop_configure=self._on_loop_configure,
-                on_set_marker=self._on_toggle_marker,
+                on_toggle_selection=self._on_toggle_selection,
                 on_selection_change=self._on_playlist_selection_change,
             )
         panel.SetMinSize((360, 300))
@@ -485,6 +488,14 @@ class MainFrame(wx.Frame):
 
     def _get_playlist_model(self, playlist_id: str) -> PlaylistModel | None:
         return self._state.playlists.get(playlist_id)
+
+    def _playlist_has_selection(self, playlist_id: str) -> bool:
+        model = self._get_playlist_model(playlist_id)
+        return model.has_selected_items() if model else False
+
+    @staticmethod
+    def _format_track_name(item: PlaylistItem) -> str:
+        return f"{item.artist} - {item.title}" if item.artist else item.title
 
     def _news_device_entries(self) -> list[tuple[str, str]]:
         entries: list[tuple[str, str]] = [(None, _("(use global/PFL device)"))]
@@ -605,35 +616,36 @@ class MainFrame(wx.Frame):
 
         style = wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE
         wildcard = _("Audio files (*.mp3;*.wav;*.flac;*.ogg)|*.mp3;*.wav;*.flac;*.ogg|All files|*.*")
-        dialog = wx.FileDialog(self, _("Select audio files"), wildcard=wildcard, style=style)
-        if dialog.ShowModal() != wx.ID_OK:
-            dialog.Destroy()
+        dialog = FileSelectionDialog(
+            self,
+            title=_("Select audio files"),
+            wildcard=wildcard,
+            style=style,
+        )
+        result = dialog.ShowModal()
+        paths = [Path(path) for path in dialog.get_paths()] if result == wx.ID_OK else []
+        dialog.Destroy()
+        if result != wx.ID_OK:
             return
 
-        paths = [Path(path) for path in dialog.GetPaths()]
-        dialog.Destroy()
-
-        new_items = []
-        for path in paths:
-            metadata: AudioMetadata = extract_metadata(path)
-            item = self._playlist_factory.create_item(
-                path=path,
-                title=metadata.title,
-                duration_seconds=metadata.duration_seconds,
-                replay_gain_db=metadata.replay_gain_db,
-                cue_in_seconds=metadata.cue_in_seconds,
-                segue_seconds=metadata.segue_seconds,
-                overlap_seconds=metadata.overlap_seconds,
-                intro_seconds=metadata.intro_seconds,
-                loop_start_seconds=metadata.loop_start_seconds,
-                loop_end_seconds=metadata.loop_end_seconds,
-            )
-            new_items.append(item)
-
-        if not new_items:
+        if not paths:
             self._announce_event("playlist", _("No tracks were added"))
             return
 
+        description = _("Loading %d selected tracks…") % len(paths)
+        self._run_item_loader(
+            description=description,
+            worker=lambda paths=paths: self._create_items_from_paths(paths),
+            on_complete=lambda items, panel=panel: self._finalize_add_tracks(panel, items),
+        )
+
+    def _finalize_add_tracks(self, panel: PlaylistPanel, new_items: list[PlaylistItem]) -> None:
+        playlist_id = panel.model.id
+        if playlist_id not in self._playlists or self._playlists.get(playlist_id) is not panel:
+            return
+        if not new_items:
+            self._announce_event("playlist", _("No tracks were added"))
+            return
         panel.append_items(new_items)
         self._announce_event(
             "playlist",
@@ -676,23 +688,36 @@ class MainFrame(wx.Frame):
         dialog.Destroy()
 
     def _on_import_playlist(self, event: wx.CommandEvent) -> None:
-        panel = self._get_current_music_panel()
+        panel = self._get_current_playlist_panel()
         if panel is None:
             self._announce_event("playlist", _("Select a playlist first"))
             return
+        if isinstance(panel, NewsPlaylistPanel):
+            result = panel.prompt_load_service()
+            if result:
+                self._announce_event(
+                    "import_export",
+                    _("Imported news service from %s") % result.name,
+                )
+            return
+        if not isinstance(panel, PlaylistPanel):
+            self._announce_event("playlist", _("Active playlist does not support import"))
+            return
 
-        dialog = wx.FileDialog(
+        dialog = FileSelectionDialog(
             self,
+            title=_("Import playlist"),
             message=_("Select playlist"),
             wildcard=_("M3U playlists (*.m3u)|*.m3u|All files|*.*"),
             style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
         )
-        if dialog.ShowModal() != wx.ID_OK:
-            dialog.Destroy()
+        result = dialog.ShowModal()
+        selected_paths = dialog.get_paths() if result == wx.ID_OK else []
+        dialog.Destroy()
+        if result != wx.ID_OK or not selected_paths:
             return
 
-        path = Path(dialog.GetPath())
-        dialog.Destroy()
+        path = Path(selected_paths[0])
 
         try:
             entries = self._parse_m3u(path)
@@ -704,32 +729,11 @@ class MainFrame(wx.Frame):
             self._announce_event("import_export", _("Playlist file is empty"))
             return
 
-        new_items: list[PlaylistItem] = []
-        for entry in entries:
-            audio_path = Path(entry["path"])
-            metadata = extract_metadata(audio_path)
-            title = entry.get("title") or metadata.title or audio_path.stem
-            duration = metadata.duration_seconds if metadata.duration_seconds else entry.get("duration", 0.0)
-            item = self._playlist_factory.create_item(
-                path=audio_path,
-                title=title,
-                duration_seconds=float(duration or 0.0),
-                replay_gain_db=metadata.replay_gain_db,
-                cue_in_seconds=metadata.cue_in_seconds,
-                segue_seconds=metadata.segue_seconds,
-                overlap_seconds=metadata.overlap_seconds,
-                intro_seconds=metadata.intro_seconds,
-                loop_start_seconds=metadata.loop_start_seconds,
-                loop_end_seconds=metadata.loop_end_seconds,
-                loop_enabled=metadata.loop_enabled,
-            )
-            new_items.append(item)
-
-        panel.model.add_items(new_items)
-        panel.refresh()
-        self._announce_event(
-            "import_export",
-            _("Imported %d items from %s") % (len(new_items), path.name),
+        description = _("Importing tracks from %s…") % path.name
+        self._run_item_loader(
+            description=description,
+            worker=lambda entries=entries: self._create_items_from_m3u_entries(entries),
+            on_complete=lambda items, panel=panel, filename=path.name: self._finalize_import_playlist(panel, items, filename),
         )
 
     def _parse_m3u(self, path: Path) -> list[dict[str, Any]]:
@@ -773,23 +777,36 @@ class MainFrame(wx.Frame):
         return entries
 
     def _on_export_playlist(self, _event: wx.CommandEvent) -> None:
-        panel = self._get_current_music_panel()
+        panel = self._get_current_playlist_panel()
         if panel is None:
             self._announce_event("playlist", _("Select a playlist first"))
             return
-
-        dialog = wx.FileDialog(
-            self,
-            message=_("Save playlist"),
-            wildcard=_("M3U playlists (*.m3u)|*.m3u|All files|*.*"),
-            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
-        )
-        if dialog.ShowModal() != wx.ID_OK:
-            dialog.Destroy()
+        if isinstance(panel, NewsPlaylistPanel):
+            result = panel.prompt_save_service()
+            if result:
+                self._announce_event(
+                    "import_export",
+                    _("Saved news service to %s") % result.name,
+                )
+            return
+        if not isinstance(panel, PlaylistPanel):
+            self._announce_event("playlist", _("Active playlist does not support export"))
             return
 
-        path = Path(dialog.GetPath())
+        dialog = FileSelectionDialog(
+            self,
+            title=_("Save playlist"),
+            message=_("Save playlist"),
+            wildcard=_("M3U playlists (*.m3u)|*.m3u|All files|*.*"),
+            style=wx.FD_SAVE,
+        )
+        result = dialog.ShowModal()
+        selected_paths = dialog.get_paths() if result == wx.ID_OK else []
         dialog.Destroy()
+        if result != wx.ID_OK or not selected_paths:
+            return
+
+        path = Path(selected_paths[0])
 
         try:
             lines = ["#EXTM3U"]
@@ -855,35 +872,20 @@ class MainFrame(wx.Frame):
         status = _("enabled") if self._auto_mix_enabled else _("disabled")
         self._announce_event("auto_mix", _("Auto mix %s") % status)
 
-    def _on_toggle_marker_mode(self, event: wx.CommandEvent) -> None:
-        if self._marker_mode_menu_item:
-            requested_state = self._marker_mode_menu_item.IsChecked()
-            if requested_state != self._marker_mode_enabled:
-                self._marker_mode_enabled = requested_state
+    def _on_toggle_selection_mode(self, event: wx.CommandEvent) -> None:
+        if self._selection_mode_menu_item:
+            requested_state = self._selection_mode_menu_item.IsChecked()
+            if requested_state != self._selection_mode_enabled:
+                self._selection_mode_enabled = requested_state
             else:
-                self._marker_mode_enabled = not self._marker_mode_enabled
-                self._marker_mode_menu_item.Check(self._marker_mode_enabled)
+                self._selection_mode_enabled = not self._selection_mode_enabled
+                self._selection_mode_menu_item.Check(self._selection_mode_enabled)
         else:
-            self._marker_mode_enabled = not self._marker_mode_enabled
-
-        if self._marker_mode_enabled:
-            marker_message = _("Marker mode enabled")
-            if self._marker_reference:
-                playlist_id, item_id = self._marker_reference
-                playlist = self._get_playlist_model(playlist_id)
-                item = playlist.get_item(item_id) if playlist else None
-                if playlist and item:
-                    marker_message = _("Marker mode enabled. Track %s in playlist %s.") % (
-                        item.title,
-                        playlist.name,
-                    )
-                else:
-                    marker_message = _("Marker mode enabled, no marked track available")
-            else:
-                marker_message = _("Marker mode enabled, no marked track available")
-            self._announce_event("marker", marker_message)
+            self._selection_mode_enabled = not self._selection_mode_enabled
+        if self._selection_mode_enabled:
+            self._announce_event("selection", _("Selection mode enabled"))
         else:
-            self._announce_event("marker", _("Marker mode disabled"))
+            self._announce_event("selection", _("Selection mode disabled"))
 
     def _on_toggle_loop_playback(self, _event: wx.CommandEvent) -> None:
         context = self._get_selected_context()
@@ -965,38 +967,17 @@ class MainFrame(wx.Frame):
             except Exception as exc:  # pylint: disable=broad-except
                 logger.debug("Failed to synchronise playback loop: %s", exc)
 
-    def _on_toggle_marker(self, playlist_id: str, item_id: str) -> None:
+    def _on_toggle_selection(self, playlist_id: str, item_id: str) -> None:
         playlist = self._get_playlist_model(playlist_id)
         if not playlist:
             return
-
-        current = self._marker_reference
-        if current and current == (playlist_id, item_id):
-            playlist.set_marker(None)
-            self._marker_reference = None
-            self._refresh_marker_display(playlist_id)
-            self._announce_event("marker", _("Marker removed"))
-            return
-
-        marker_item = playlist.get_item(item_id)
-        if marker_item is None:
-            return
-
-        if self._marker_reference:
-            old_playlist_id, old_item_id = self._marker_reference
-            if old_playlist_id != playlist_id:
-                old_playlist = self._get_playlist_model(old_playlist_id)
-                if old_playlist:
-                    old_playlist.set_marker(None)
-                    self._refresh_marker_display(old_playlist_id)
-
-        playlist.set_marker(item_id)
-        self._marker_reference = (playlist_id, item_id)
-        self._refresh_marker_display(playlist_id)
-        self._announce_event(
-            "marker",
-            _("Marker set on %s in playlist %s") % (marker_item.title, playlist.name),
-        )
+        selected = playlist.toggle_selection(item_id)
+        self._refresh_selection_display(playlist_id)
+        item = playlist.get_item(item_id)
+        if selected:
+            self._announce_event("selection", _("Track %s selected in playlist %s") % (item.title, playlist.name))
+        else:
+            self._announce_event("selection", _("Selection removed from %s") % item.title)
 
     def _on_loop_configure(self, playlist_id: str, item_id: str) -> None:
         panel = self._playlists.get(playlist_id)
@@ -1137,25 +1118,19 @@ class MainFrame(wx.Frame):
 
     def _start_next_from_playlist(self, panel: PlaylistPanel) -> bool:
         playlist = panel.model
-        marker_item_id = None
-        if self._marker_mode_enabled and self._marker_reference and self._marker_reference[0] == playlist.id:
-            marker_item_id = self._marker_reference[1]
-            if not playlist.get_item(marker_item_id):
-                self._marker_reference = None
-                marker_item_id = None
-                self._announce_event("marker", _("Marked track is not available"))
-            else:
-                playlist.reset_from(marker_item_id)
-        item = playlist.begin_next_item(marker_item_id)
+        preferred_item_id = None
+        if self._selection_mode_enabled:
+            preferred_item_id = playlist.next_selected_item_id()
+        item = playlist.begin_next_item(preferred_item_id)
         if not item:
             self._announce_event("playback_events", _("No scheduled tracks in playlist %s") % playlist.name)
             return False
         if self._start_playback(panel, item):
-            if self._marker_reference and self._marker_reference == (playlist.id, item.id):
-                playlist.set_marker(None)
-                self._marker_reference = None
-                self._refresh_marker_display(playlist.id)
-            status_message = _("Playing %s from playlist %s") % (item.title, playlist.name)
+            track_name = self._format_track_name(item)
+            if preferred_item_id and item.id == preferred_item_id:
+                playlist.clear_selection(item.id)
+                self._refresh_selection_display(playlist.id)
+            status_message = _("Playing %s from playlist %s") % (track_name, playlist.name)
             self._announce_event(
                 "playback_events",
                 status_message,
@@ -1174,15 +1149,10 @@ class MainFrame(wx.Frame):
         rotated_order = [ordered_ids[(start_index + offset) % page_count] for offset in range(page_count)]
 
         candidate_ids = rotated_order
-        if self._marker_mode_enabled:
-            marker_playlist_id = self._marker_reference[0] if self._marker_reference else None
-            if marker_playlist_id and marker_playlist_id in candidate_ids:
-                candidate_ids = [marker_playlist_id] + [pid for pid in candidate_ids if pid != marker_playlist_id]
-            elif marker_playlist_id:
-                self._marker_reference = None
-                self._announce_event("marker", _("Marked track is not available"))
-            else:
-                self._announce_event("marker", _("Marker mode enabled, no marked track available"))
+        if self._selection_mode_enabled:
+            prioritized = [pid for pid in candidate_ids if self._playlist_has_selection(pid)]
+            others = [pid for pid in candidate_ids if pid not in prioritized]
+            candidate_ids = prioritized + others
 
         for playlist_id in candidate_ids:
             panel = self._playlists.get(playlist_id)
@@ -1208,6 +1178,8 @@ class MainFrame(wx.Frame):
 
         panel, focus = self._active_news_panel()
         if panel:
+            if panel.activate_toolbar_control(focus):
+                return
             if panel.consume_space_shortcut():
                 return
             if panel.is_edit_control(focus):
@@ -1434,6 +1406,7 @@ class MainFrame(wx.Frame):
                 {
                     "path": str(item.path),
                     "title": item.title,
+                    "artist": item.artist,
                     "duration": item.duration_seconds,
                     "replay_gain_db": item.replay_gain_db,
                     "cue_in": item.cue_in_seconds,
@@ -1452,6 +1425,7 @@ class MainFrame(wx.Frame):
         item = self._playlist_factory.create_item(
             path=path,
             title=data.get("title", path.stem),
+            artist=data.get("artist"),
             duration_seconds=float(data.get("duration", 0.0)),
             replay_gain_db=data.get("replay_gain_db"),
             cue_in_seconds=data.get("cue_in"),
@@ -1469,7 +1443,6 @@ class MainFrame(wx.Frame):
             panel.refresh()
         else:
             panel.refresh(selection)
-        self._sync_marker_reference(panel.model)
         panel.focus_list()
 
     def _get_system_clipboard_paths(self) -> list[Path]:
@@ -1485,44 +1458,162 @@ class MainFrame(wx.Frame):
             clipboard.Close()
         return paths
 
-    def _collect_files_from_paths(self, paths: list[Path]) -> list[Path]:
+    def _collect_files_from_paths(self, paths: list[Path]) -> tuple[list[Path], int]:
         files: list[Path] = []
+        skipped = 0
         for path in paths:
             if path.is_file():
-                files.append(path)
+                if is_supported_audio_file(path):
+                    files.append(path)
+                else:
+                    skipped += 1
                 continue
             if path.is_dir():
                 try:
                     for file_path in sorted(path.rglob("*")):
                         if file_path.is_file():
-                            files.append(file_path)
+                            if is_supported_audio_file(file_path):
+                                files.append(file_path)
+                            else:
+                                skipped += 1
                 except Exception as exc:
                     logger.warning("Failed to enumerate %s: %s", path, exc)
-        return files
+        return files, skipped
+
+    def _metadata_worker_count(self, total: int) -> int:
+        if total <= 1:
+            return 1
+        cpu = os.cpu_count() or 4
+        return max(1, min(cpu, 8, total))
+
+    def _build_playlist_item(
+        self,
+        path: Path,
+        metadata: AudioMetadata,
+        *,
+        override_title: str | None = None,
+        override_artist: str | None = None,
+        override_duration: float | None = None,
+    ) -> PlaylistItem:
+        title = override_title or metadata.title or path.stem
+        artist = override_artist or metadata.artist
+        duration = override_duration if override_duration is not None else metadata.duration_seconds
+        return self._playlist_factory.create_item(
+            path=path,
+            title=title,
+            artist=artist,
+            duration_seconds=duration,
+            replay_gain_db=metadata.replay_gain_db,
+            cue_in_seconds=metadata.cue_in_seconds,
+            segue_seconds=metadata.segue_seconds,
+            overlap_seconds=metadata.overlap_seconds,
+            intro_seconds=metadata.intro_seconds,
+            loop_start_seconds=metadata.loop_start_seconds,
+            loop_end_seconds=metadata.loop_end_seconds,
+            loop_enabled=metadata.loop_enabled,
+        )
+
+    def _load_playlist_item(
+        self,
+        path: Path,
+        entry: dict[str, Any] | None = None,
+    ) -> PlaylistItem | None:
+        if not path.exists():
+            logger.warning("Playlist entry %s does not exist", path)
+            return None
+        try:
+            metadata: AudioMetadata = extract_metadata(path)
+        except Exception as exc:  # pylint: disable=broad-except
+            if entry is None:
+                logger.warning("Failed to read metadata from %s: %s", path, exc)
+                return None
+            logger.warning("Using fallback metadata for %s: %s", path, exc)
+            metadata = AudioMetadata(
+                title=entry.get("title") or path.stem,
+                duration_seconds=float(entry.get("duration") or 0.0),
+                artist=entry.get("artist"),
+            )
+        override_title = entry.get("title") if entry else None
+        override_artist = entry.get("artist") if entry else None
+        override_duration = None
+        if entry:
+            duration = entry.get("duration")
+            if duration is not None:
+                override_duration = float(duration or 0.0)
+        return self._build_playlist_item(
+            path,
+            metadata,
+            override_title=override_title,
+            override_artist=override_artist,
+            override_duration=override_duration,
+        )
 
     def _create_items_from_paths(self, file_paths: list[Path]) -> list[PlaylistItem]:
-        items: list[PlaylistItem] = []
-        for path in file_paths:
+        sources = [(path, None) for path in file_paths]
+        return self._load_items_from_sources(sources)
+
+    def _run_item_loader(
+        self,
+        *,
+        description: str,
+        worker: Callable[[], list[PlaylistItem]],
+        on_complete: Callable[[list[PlaylistItem]], None],
+    ) -> None:
+        busy = wx.BusyInfo(description, parent=self)
+        holder: dict[str, wx.BusyInfo | None] = {"busy": busy}
+
+        def task() -> None:
             try:
-                metadata: AudioMetadata = extract_metadata(path)
+                result = worker()
             except Exception as exc:  # pylint: disable=broad-except
-                logger.warning("Failed to read metadata from %s: %s", path, exc)
-                continue
-            item = self._playlist_factory.create_item(
-                path=path,
-                title=metadata.title,
-                duration_seconds=metadata.duration_seconds,
-                replay_gain_db=metadata.replay_gain_db,
-                cue_in_seconds=metadata.cue_in_seconds,
-                segue_seconds=metadata.segue_seconds,
-                overlap_seconds=metadata.overlap_seconds,
-                intro_seconds=metadata.intro_seconds,
-                loop_start_seconds=metadata.loop_start_seconds,
-                loop_end_seconds=metadata.loop_end_seconds,
-                loop_enabled=metadata.loop_enabled,
-            )
-            items.append(item)
-        return items
+                logger.exception("Failed to load playlist items: %s", exc)
+                result = []
+
+            def finish() -> None:
+                busy_obj = holder.pop("busy", None)
+                if busy_obj is not None:
+                    del busy_obj
+                on_complete(result)
+
+            wx.CallAfter(finish)
+
+        Thread(target=task, daemon=True).start()
+
+    def _create_items_from_m3u_entries(self, entries: list[dict[str, Any]]) -> list[PlaylistItem]:
+        sources = []
+        for entry in entries:
+            audio_path = Path(entry["path"])
+            sources.append((audio_path, entry))
+        return self._load_items_from_sources(sources)
+
+    def _load_items_from_sources(
+        self,
+        sources: list[tuple[Path, dict[str, Any] | None]],
+    ) -> list[PlaylistItem]:
+        if not sources:
+            return []
+        worker_count = self._metadata_worker_count(len(sources))
+        if worker_count <= 1:
+            items = [self._load_playlist_item(path, entry) for path, entry in sources]
+        else:
+            paths, entries = zip(*sources)
+            with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                items = list(executor.map(self._load_playlist_item, paths, entries))
+        return [item for item in items if item is not None]
+
+    def _finalize_import_playlist(self, panel: PlaylistPanel, new_items: list[PlaylistItem], filename: str) -> None:
+        playlist_id = panel.model.id
+        if playlist_id not in self._playlists or self._playlists.get(playlist_id) is not panel:
+            return
+        if not new_items:
+            self._announce_event("import_export", _("Playlist file did not contain supported tracks"))
+            return
+        panel.model.add_items(new_items)
+        panel.refresh()
+        self._announce_event(
+            "import_export",
+            _("Imported %d items from %s") % (len(new_items), filename),
+        )
 
     def _maybe_focus_playing_item(self, panel: PlaylistPanel, item_id: str) -> None:
         if not self._focus_playing_track:
@@ -1664,22 +1755,12 @@ class MainFrame(wx.Frame):
                 self._announce_intro_remaining(remaining)
             context.intro_alert_triggered = True
 
-    def _sync_marker_reference(self, model: PlaylistModel) -> None:
-        marker_item = next((item for item in model.items if item.is_marker), None)
-        if marker_item:
-            self._marker_reference = (model.id, marker_item.id)
-        elif self._marker_reference and self._marker_reference[0] == model.id:
-            self._marker_reference = None
-
     def _remove_item_from_playlist(
         self, panel: PlaylistPanel, model: PlaylistModel, index: int, *, refocus: bool = True
     ) -> PlaylistItem:
         item = model.items.pop(index)
-        was_marker = item.is_marker
-        if self._marker_reference == (model.id, item.id):
-            self._marker_reference = None
-            model.set_marker(None)
-        item.is_marker = was_marker
+        was_selected = item.is_selected
+        item.is_selected = was_selected
         if any(key == (model.id, item.id) for key in self._playback_contexts):
             self._stop_playlist_playback(model.id, mark_played=False, fade_duration=0.0)
         if refocus:
@@ -1785,35 +1866,69 @@ class MainFrame(wx.Frame):
 
         if self._clipboard_items:
             new_items = [self._create_item_from_serialized(data) for data in self._clipboard_items]
-        else:
-            clipboard_paths = self._get_system_clipboard_paths()
-            if not clipboard_paths:
-                self._announce_event("clipboard", _("Clipboard is empty"))
-                return
-            file_paths = self._collect_files_from_paths(clipboard_paths)
-            if not file_paths:
-                self._announce_event("clipboard", _("Clipboard does not contain files or folders"))
-                return
-            new_items = self._create_items_from_paths(file_paths)
-            if not new_items:
-                self._announce_event("clipboard", _("No supported audio files found on the clipboard"))
-                return
-
-        model.items[insert_at:insert_at] = new_items
-        if new_items:
-            insert_indices = list(range(insert_at, insert_at + len(new_items)))
-            selection = insert_indices
-        else:
-            selection = [index] if index is not None and index < len(model.items) else None
-        self._refresh_playlist_view(panel, selection)
-        if new_items:
-            count = len(new_items)
-            noun = _("track") if count == 1 else _("tracks")
-            self._announce_event("clipboard", _("Pasted %d %s") % (count, noun))
-            operation = InsertOperation(indices=list(insert_indices), items=list(new_items))
-            self._push_undo_action(model, operation)
-        else:
+            self._finalize_clipboard_paste(panel, model, new_items, insert_at, index, skipped_files=0)
             return
+
+        clipboard_paths = self._get_system_clipboard_paths()
+        if not clipboard_paths:
+            self._announce_event("clipboard", _("Clipboard is empty"))
+            return
+        file_paths, skipped = self._collect_files_from_paths(clipboard_paths)
+        if not file_paths:
+            if skipped:
+                self._announce_event("clipboard", _("Clipboard does not contain supported audio files"))
+            else:
+                self._announce_event("clipboard", _("Clipboard does not contain files or folders"))
+            return
+
+        description = _("Loading tracks from clipboard…")
+        self._run_item_loader(
+            description=description,
+            worker=lambda file_paths=file_paths: self._create_items_from_paths(file_paths),
+            on_complete=lambda items, panel=panel, model=model, insert_at=insert_at, anchor=index, skipped=skipped: self._finalize_clipboard_paste(
+                panel,
+                model,
+                items,
+                insert_at,
+                anchor,
+                skipped_files=skipped,
+            ),
+        )
+        return
+
+    def _finalize_clipboard_paste(
+        self,
+        panel: PlaylistPanel,
+        model: PlaylistModel,
+        items: list[PlaylistItem],
+        insert_at: int,
+        anchor_index: int | None,
+        *,
+        skipped_files: int,
+    ) -> None:
+        playlist_id = panel.model.id
+        if playlist_id not in self._playlists or self._playlists.get(playlist_id) is not panel:
+            return
+        if not items:
+            selection = [anchor_index] if anchor_index is not None and anchor_index < len(model.items) else None
+            self._refresh_playlist_view(panel, selection)
+            self._announce_event("clipboard", _("No supported audio files found on the clipboard"))
+            return
+
+        insert_at = max(0, min(insert_at, len(model.items)))
+        model.items[insert_at:insert_at] = items
+        insert_indices = list(range(insert_at, insert_at + len(items)))
+        self._refresh_playlist_view(panel, insert_indices)
+        count = len(items)
+        noun = _("track") if count == 1 else _("tracks")
+        self._announce_event("clipboard", _("Pasted %d %s") % (count, noun))
+        operation = InsertOperation(indices=list(insert_indices), items=list(items))
+        self._push_undo_action(model, operation)
+        if skipped_files:
+            noun = _("file") if skipped_files == 1 else _("files")
+            self._announce_event("clipboard", _("Skipped %d unsupported %s") % (skipped_files, noun))
+
+        return
 
     def _on_delete_selection(self, _event: wx.CommandEvent) -> None:
         context = self._get_selected_items()
@@ -1924,7 +2039,7 @@ class MainFrame(wx.Frame):
     def _get_busy_device_ids(self) -> set[str]:
         return {context.device_id for context in self._playback_contexts.values()}
 
-    def _refresh_marker_display(self, playlist_id: str) -> None:
+    def _refresh_selection_display(self, playlist_id: str) -> None:
         panel = self._playlists.get(playlist_id)
         if panel:
             panel.refresh()

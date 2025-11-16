@@ -74,7 +74,7 @@ PYTHONPATH=src python -m pytest
 - The CI bundle includes NVDA controller DLLs and the Windows `bass.dll` so speech and optional BASS playback work out of the box.
 - Scripts `scripts/auto_download.sh` and `scripts/download_latest_artifact.sh` (install via `scripts/install_hooks.sh`) keep the latest Windows artifact under `artifacts/` after each successful build.
 - For frozen Windows builds, bundle NVDA controller DLLs and optional BASS binaries alongside the executable.
-- Release notes live in `docs/releases/` (see `docs/releases/0.0.3.md` for the latest changes).
+- Release notes live in `docs/releases/` (see `docs/releases/0.0.5.md` for the latest changes).
 
 ### Roadmap highlights
 - Enhanced accessibility messages.
@@ -116,7 +116,7 @@ Wersja rozwojowa – odtwarzanie, wielokrotne sloty odtwarzaczy i narzędzia pę
    - `Narzędzia → Opcje…` udostępniają sterowanie fade, urządzeniem PFL, playlistami startowymi, językiem, trybem naprzemiennym i auto-usuwaniem.
    - W sekcji Startup playlists możesz dodać zarówno playlisty muzyczne, jak i newsowe, żeby po starcie Sary od razu otwierały się właściwe panele.
    - Menu `Edycja` udostępnia operacje schowka, `Alt+↑/↓` przenosi pozycje.
-   - Playlisty newsowe mają teraz przyciski „Wczytaj serwis…” / „Zapisz serwis…” (oraz skróty `Ctrl+O` / `Ctrl+S`) działające na plikach `.saranews`. Ten sam format obsługuje niezależna aplikacja `sara-news-editor`, która zapamiętuje ostatnio użyte urządzenie, pozwala wybrać kartę audio i odsłuchiwać klipy bez uruchamiania całej Sary.
+   - Playlisty newsowe mają przyciski „Wczytaj serwis…” / „Zapisz serwis…” (oraz skróty `Ctrl+O` / `Ctrl+S`) działające na plikach `.saranews`. Ten sam format obsługuje niezależna aplikacja `sara-news-editor`, która zapamiętuje ostatnio użyte urządzenie, pozwala wybrać kartę audio i odsłuchiwać klipy bez uruchamiania całej Sary.
    - `Ctrl+E` przełącza tryb edycji i odczytu; w trybie odczytu `H`/`Shift+H` skacze po nagłówkach, `C`/`Shift+C` po klipach, a Tab przenosi fokus na pasek narzędzi (w tym długość linii i urządzenie audio).
 
 Konfiguracja trafia do `config/settings.yaml`, ale wygodniej edytować ją z poziomu okna „Opcje…”. Pamiętaj o licencjach BASS przy użyciu komercyjnym.

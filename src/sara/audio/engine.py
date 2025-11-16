@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 from threading import Event, Lock, Thread, Timer, current_thread
 from typing import Callable, Dict, List, Optional, Protocol
+import warnings
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,13 @@ try:
     from pycaw.pycaw import AudioUtilities
 except ImportError:  # pragma: no cover - środowiska bez pycaw
     AudioUtilities = None
+else:  # pragma: no cover - tylko gdy pycaw obecny
+    warnings.filterwarnings(
+        "ignore",
+        message="COMError attempting to get property",
+        category=UserWarning,
+        module="pycaw.utils",
+    )
 
 try:
     import clr  # type: ignore

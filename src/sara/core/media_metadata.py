@@ -13,11 +13,31 @@ from mutagen.apev2 import APEv2, error as APEv2Error
 
 logger = logging.getLogger(__name__)
 
+SUPPORTED_AUDIO_EXTENSIONS = {
+    ".mp3",
+    ".wav",
+    ".flac",
+    ".ogg",
+    ".oga",
+    ".opus",
+    ".m4a",
+    ".aac",
+    ".aiff",
+    ".aif",
+    ".wma",
+    ".wv",
+}
+
+
+def is_supported_audio_file(path: Path) -> bool:
+    return path.suffix.lower() in SUPPORTED_AUDIO_EXTENSIONS
+
 
 @dataclass(slots=True)
 class AudioMetadata:
     title: str
     duration_seconds: float
+    artist: Optional[str] = None
     replay_gain_db: Optional[float] = None
     cue_in_seconds: Optional[float] = None
     segue_seconds: Optional[float] = None
@@ -218,12 +238,18 @@ def extract_metadata(path: Path) -> AudioMetadata:
     title = path.stem
     duration = 0.0
     replay_gain: Optional[float] = None
+    artist: Optional[str] = None
 
     audio = None
     try:
         audio = MutagenFile(path)
         if audio is None:
-            return AudioMetadata(title=title, duration_seconds=duration, replay_gain_db=_scan_ape_replay_gain(path))
+            return AudioMetadata(
+                title=title,
+                duration_seconds=duration,
+                artist=artist,
+                replay_gain_db=_scan_ape_replay_gain(path),
+            )
         if audio.tags:
             title_tag = audio.tags.get("TIT2") or audio.tags.get("title")
             if title_tag:
@@ -236,6 +262,17 @@ def extract_metadata(path: Path) -> AudioMetadata:
                         title = text
                 else:
                     title = str(title_tag)
+
+            artist_tag = audio.tags.get("TPE1") or audio.tags.get("artist")
+            if artist_tag:
+                if hasattr(artist_tag, "text"):
+                    text = artist_tag.text
+                    if isinstance(text, (list, tuple)) and text:
+                        artist = str(text[0])
+                    elif isinstance(text, str):
+                        artist = text
+                else:
+                    artist = str(artist_tag)
 
             gain_sources = [
                 audio.tags.get("REPLAYGAIN_TRACK_GAIN"),
@@ -356,6 +393,7 @@ def extract_metadata(path: Path) -> AudioMetadata:
     return AudioMetadata(
         title=title,
         duration_seconds=duration,
+        artist=artist,
         replay_gain_db=replay_gain,
         cue_in_seconds=cue,
         segue_seconds=segue,

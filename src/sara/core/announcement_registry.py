@@ -19,7 +19,7 @@ ANNOUNCEMENT_CATEGORIES: tuple[AnnouncementCategory, ...] = (
     AnnouncementCategory("playback_events", "Playback events"),
     AnnouncementCategory("playback_errors", "Playback errors"),
     AnnouncementCategory("loop", "Loop and intro notifications"),
-    AnnouncementCategory("marker", "Marker notifications"),
+    AnnouncementCategory("selection", "Selection notifications"),
     AnnouncementCategory("auto_mix", "Auto-mix announcements"),
     AnnouncementCategory("hotkeys", "Shortcut editor notifications"),
     AnnouncementCategory("clipboard", "Clipboard and move operations"),

@@ -56,8 +56,8 @@ def _register_defaults() -> None:
     )
     register_shortcut(
         "global",
-        "marker_mode_toggle",
-        label="Toggle marker mode",
+        "selection_mode_toggle",
+        label="Toggle selection mode",
         default="CTRL+SHIFT+ENTER",
     )
     register_shortcut(
