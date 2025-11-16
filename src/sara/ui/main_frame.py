@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event, Thread
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import wx
 
@@ -81,7 +81,7 @@ class MainFrame(wx.Frame):
             self._settings.save()
         self._playlists: Dict[str, PlaylistPanel] = {}
         self._playlist_wrappers: Dict[str, wx.Window] = {}
-        self._playlist_headers: Dict[str, wx.TextCtrl] = {}
+        self._playlist_headers: Dict[str, wx.StaticText] = {}
         self._playlist_titles: Dict[str, str] = {}
         self._playlist_order: list[str] = []
         self._current_panel_id: str | None = None
@@ -318,6 +318,8 @@ class MainFrame(wx.Frame):
                     )
         for playlist in existing_playlists:
             self.add_playlist(playlist)
+        if self._playlist_order:
+            wx.CallAfter(self._focus_playlist_panel, self._playlist_order[0])
 
     def _register_accessibility(self) -> None:
         # Placeholder: konfiguracje wx.Accessible zostaną dodane w przyszłych iteracjach
@@ -439,21 +441,15 @@ class MainFrame(wx.Frame):
         if saved_slots:
             model.set_output_slots(saved_slots)
 
-        container = wx.Panel(self._playlist_container)
+        container = wx.Panel(self._playlist_container, style=wx.TAB_TRAVERSAL)
         container.SetName(model.name)
 
-        header = wx.TextCtrl(
-            container,
-            value=model.name,
-            style=wx.TE_READONLY | wx.BORDER_NONE,
-        )
-        header.SetName(model.name)
-        header.SetBackgroundColour(container.GetBackgroundColour())
+        header = wx.StaticText(container, label=model.name)
         header_font = header.GetFont()
         header_font.MakeBold()
         header.SetFont(header_font)
-        header.SetEditable(False)
-        header.SetInsertionPoint(0)
+        header.SetName(model.name)
+        header.Bind(wx.EVT_LEFT_DOWN, lambda event, playlist_id=model.id: self._handle_focus_click(event, playlist_id))
 
         if model.kind is PlaylistKind.NEWS:
             panel = NewsPlaylistPanel(
@@ -478,13 +474,12 @@ class MainFrame(wx.Frame):
 
         column_sizer = wx.BoxSizer(wx.VERTICAL)
         column_sizer.Add(header, 0, wx.ALL | wx.EXPAND, 5)
-        column_sizer.Add(panel, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
+        column_sizer.Add(wx.StaticLine(container), 0, wx.LEFT | wx.RIGHT, 5)
+        column_sizer.Add(panel, 1, wx.EXPAND | wx.ALL, 5)
         container.SetSizer(column_sizer)
         container.SetMinSize((380, 320))
 
         container.Bind(wx.EVT_LEFT_DOWN, lambda event, playlist_id=model.id: self._handle_focus_click(event, playlist_id))
-        header.Bind(wx.EVT_LEFT_DOWN, lambda event, playlist_id=model.id: self._handle_focus_click(event, playlist_id))
-        header.Bind(wx.EVT_SET_FOCUS, lambda event, playlist_id=model.id: self._handle_header_focus(event, playlist_id))
 
         self._playlist_sizer.Add(container, 0, wx.EXPAND | wx.ALL, 8)
         self._playlist_container.Layout()
@@ -554,92 +549,6 @@ class MainFrame(wx.Frame):
         if announce:
             self._announce_event("playlist", _("Removed playlist %s") % title)
         return True
-
-
-class ManagePlaylistsDialog(wx.Dialog):
-    """Allow users to reorder and remove active playlists."""
-
-    KIND_LABELS = {
-        PlaylistKind.MUSIC: _("Music"),
-        PlaylistKind.NEWS: _("News"),
-    }
-
-    def __init__(self, parent: wx.Window, entries: list[tuple[str, str, PlaylistKind]]) -> None:
-        super().__init__(parent, title=_("Manage playlists"), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
-        self._entries: list[dict[str, Any]] = [
-            {"id": playlist_id, "name": name, "kind": kind} for playlist_id, name, kind in entries
-        ]
-        self._removed: list[str] = []
-
-        main_sizer = wx.BoxSizer(wx.VERTICAL)
-        label = wx.StaticText(self, label=_("Current playlists (top = first in sequence):"))
-        main_sizer.Add(label, 0, wx.ALL, 5)
-
-        self._list_box = wx.ListBox(self, style=wx.LB_SINGLE)
-        main_sizer.Add(self._list_box, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 5)
-
-        button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-        self._up_button = wx.Button(self, label=_("Move up"))
-        self._down_button = wx.Button(self, label=_("Move down"))
-        self._remove_button = wx.Button(self, label=_("Remove"))
-        button_sizer.Add(self._up_button, 0, wx.ALL, 5)
-        button_sizer.Add(self._down_button, 0, wx.ALL, 5)
-        button_sizer.Add(self._remove_button, 0, wx.ALL, 5)
-        main_sizer.Add(button_sizer, 0, wx.ALIGN_CENTER)
-
-        action_sizer = self.CreateSeparatedButtonSizer(wx.OK | wx.CANCEL)
-        if action_sizer:
-            main_sizer.Add(action_sizer, 0, wx.EXPAND | wx.ALL, 5)
-
-        self._up_button.Bind(wx.EVT_BUTTON, lambda _evt: self._move_entry(-1))
-        self._down_button.Bind(wx.EVT_BUTTON, lambda _evt: self._move_entry(1))
-        self._remove_button.Bind(wx.EVT_BUTTON, self._remove_entry)
-
-        self.SetSizer(main_sizer)
-        self.SetSize((420, 360))
-        self._refresh_list()
-
-    def _refresh_list(self) -> None:
-        self._list_box.Clear()
-        for entry in self._entries:
-            kind_label = self.KIND_LABELS.get(entry["kind"], "")
-            display = f"{entry['name']} ({kind_label})"
-            self._list_box.Append(display)
-        if self._entries:
-            self._list_box.SetSelection(0)
-
-    def _move_entry(self, offset: int) -> None:
-        selection = self._list_box.GetSelection()
-        if selection == wx.NOT_FOUND:
-            return
-        target = selection + offset
-        if target < 0 or target >= len(self._entries):
-            return
-        self._entries[selection], self._entries[target] = self._entries[target], self._entries[selection]
-        self._refresh_list()
-        self._list_box.SetSelection(target)
-
-    def _remove_entry(self, _event: wx.CommandEvent) -> None:
-        selection = self._list_box.GetSelection()
-        if selection == wx.NOT_FOUND:
-            return
-        if len(self._entries) <= 1:
-            wx.MessageBox(_("At least one playlist must remain."), _("Warning"), parent=self)
-            return
-        removed_entry = self._entries.pop(selection)
-        self._removed.append(removed_entry["id"])
-        self._refresh_list()
-        if self._entries:
-            self._list_box.SetSelection(min(selection, len(self._entries) - 1))
-
-    def get_result(self) -> Optional[dict[str, list[str]]]:
-        if not self._entries:
-            return None
-        return {
-            "order": [entry["id"] for entry in self._entries],
-            "removed": list(self._removed),
-        }
-
     @staticmethod
     def _format_track_name(item: PlaylistItem) -> str:
         return f"{item.artist} - {item.title}" if item.artist else item.title
@@ -748,15 +657,23 @@ class ManagePlaylistsDialog(wx.Dialog):
     def _on_new_playlist(self, event: wx.CommandEvent) -> None:
         self._create_playlist_dialog(event)
 
-    def _create_playlist_dialog(self, event: wx.CommandEvent) -> None:
+    def _create_playlist_dialog(self, _event: wx.CommandEvent) -> None:
+        self._prompt_new_playlist()
+
+    def _prompt_new_playlist(self) -> PlaylistModel | None:
         dialog = NewPlaylistDialog(self)
-        if dialog.ShowModal() == wx.ID_OK:
+        try:
+            if dialog.ShowModal() != wx.ID_OK:
+                return None
             model = self._playlist_factory.create_playlist(
                 dialog.playlist_name,
                 kind=dialog.playlist_kind,
             )
             self.add_playlist(model)
-        dialog.Destroy()
+            self._configure_playlist_devices(model.id)
+            return model
+        finally:
+            dialog.Destroy()
 
     def _on_add_tracks(self, event: wx.CommandEvent) -> None:
         panel = self._get_current_music_panel()
@@ -820,17 +737,29 @@ class ManagePlaylistsDialog(wx.Dialog):
             self._announce_event("playlist", _("Unable to remove playlist"))
 
     def _on_manage_playlists(self, _event: wx.CommandEvent) -> None:
-        entries: list[tuple[str, str, PlaylistKind]] = []
+        entries: list[dict[str, Any]] = []
         for playlist_id in self._playlist_order:
             panel = self._playlists.get(playlist_id)
             if not panel:
                 continue
             name = self._playlist_titles.get(playlist_id, panel.model.name)
-            entries.append((playlist_id, name, panel.model.kind))
+            entries.append(
+                {
+                    "id": playlist_id,
+                    "name": name,
+                    "kind": panel.model.kind,
+                    "slots": list(panel.model.get_configured_slots()),
+                }
+            )
         if not entries:
             self._announce_event("playlist", _("No playlists available"))
             return
-        dialog = ManagePlaylistsDialog(self, entries)
+        dialog = ManagePlaylistsDialog(
+            self,
+            entries,
+            create_callback=self._prompt_new_playlist,
+            configure_callback=self._configure_playlist_devices,
+        )
         try:
             if dialog.ShowModal() != wx.ID_OK:
                 return
@@ -846,40 +775,50 @@ class ManagePlaylistsDialog(wx.Dialog):
         if removed:
             self._announce_event("playlist", _("Removed %d playlists") % len(removed))
 
-    def _on_assign_device(self, event: wx.CommandEvent) -> None:
-        panel = self._get_current_music_panel()
+    def _on_assign_device(self, _event: wx.CommandEvent) -> None:
+        panel = self._get_current_playlist_panel()
         if panel is None:
             self._announce_event("playlist", _("Select a playlist first"))
             return
+        self._configure_playlist_devices(panel.model.id)
 
+    def _configure_playlist_devices(self, playlist_id: str) -> list[str | None] | None:
+        panel = self._playlists.get(playlist_id)
+        if panel is None:
+            return None
         devices = self._audio_engine.get_devices()
         if not devices:
             self._announce_event("device", _("No audio devices available"))
-            return
-
-        dialog = PlaylistDevicesDialog(self, devices=devices, slots=panel.model.get_configured_slots())
-        if dialog.ShowModal() == wx.ID_OK:
+            return None
+        model = panel.model
+        dialog = PlaylistDevicesDialog(self, devices=devices, slots=model.get_configured_slots())
+        try:
+            if dialog.ShowModal() != wx.ID_OK:
+                return None
             slots = dialog.get_slots()
-            panel.model.set_output_slots(slots)
-            self._persist_playlist_outputs(panel.model)
+        finally:
+            dialog.Destroy()
 
-            device_map = {device.id: device for device in devices}
-            assigned_names = [
-                device_map[device_id].name
-                for device_id in slots
-                if device_id and device_id in device_map
-            ]
-            if assigned_names:
-                self._announce_event(
-                    "playlist",
-                    f"Playlista {panel.model.name} przypisana do odtwarzaczy: {', '.join(assigned_names)}",
-                )
-            else:
-                self._announce_event(
-                    "playlist",
-                    _("Removed device assignments for playlist %s") % panel.model.name,
-                )
-        dialog.Destroy()
+        model.set_output_slots(slots)
+        self._persist_playlist_outputs(model)
+
+        device_map = {device.id: device for device in devices}
+        assigned_names = [
+            device_map[device_id].name
+            for device_id in slots
+            if device_id and device_id in device_map
+        ]
+        if assigned_names:
+            self._announce_event(
+                "playlist",
+                _("Playlist %s assigned to players: %s") % (model.name, ", ".join(assigned_names)),
+            )
+        else:
+            self._announce_event(
+                "playlist",
+                _("Removed device assignments for playlist %s") % model.name,
+            )
+        return slots
 
     def _on_import_playlist(self, event: wx.CommandEvent) -> None:
         panel = self._get_current_playlist_panel()
@@ -1537,15 +1476,7 @@ class ManagePlaylistsDialog(wx.Dialog):
         return None
 
     def _handle_focus_click(self, event: wx.MouseEvent, playlist_id: str) -> None:
-        header = self._playlist_headers.get(playlist_id)
-        if header:
-            header.SetFocus()
-        else:
-            self._on_playlist_focus(playlist_id)
-        event.Skip()
-
-    def _handle_header_focus(self, event: wx.FocusEvent, playlist_id: str) -> None:
-        self._on_playlist_focus(playlist_id)
+        self._focus_playlist_panel(playlist_id)
         event.Skip()
 
     def _on_playlist_focus(self, playlist_id: str) -> None:
@@ -2207,13 +2138,10 @@ class ManagePlaylistsDialog(wx.Dialog):
 
         for playlist_id, header in self._playlist_headers.items():
             is_active = playlist_id == self._current_panel_id
-            base_title = self._playlist_titles.get(playlist_id, header.GetValue())
-            if header.GetValue() != base_title:
-                header.ChangeValue(base_title)
+            base_title = self._playlist_titles.get(playlist_id, header.GetLabel())
+            if header.GetLabel() != base_title:
+                header.SetLabel(base_title)
             header.SetForegroundColour(active_text_colour if is_active else inactive_text_colour)
-            wrapper = self._playlist_wrappers.get(playlist_id)
-            if wrapper:
-                header.SetBackgroundColour(wrapper.GetBackgroundColour())
             header.Refresh()
 
         self._playlist_container.Refresh()
@@ -2449,3 +2377,179 @@ class ManagePlaylistsDialog(wx.Dialog):
 
     def _announce(self, message: str) -> None:
         self._announce_event("general", message)
+
+
+class ManagePlaylistsDialog(wx.Dialog):
+    """Allow users to reorder, remove, and configure active playlists."""
+
+    KIND_LABELS = {
+        PlaylistKind.MUSIC: _("Music"),
+        PlaylistKind.NEWS: _("News"),
+    }
+
+    def __init__(
+        self,
+        parent: wx.Window,
+        entries: list[dict[str, Any]],
+        *,
+        create_callback: Callable[[], PlaylistModel | None] | None = None,
+        configure_callback: Callable[[str], list[str | None] | None] | None = None,
+    ) -> None:
+        super().__init__(parent, title=_("Manage playlists"), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self._entries: list[dict[str, Any]] = [
+            {
+                "id": entry["id"],
+                "name": entry["name"],
+                "kind": entry["kind"],
+                "slots": list(entry.get("slots", [])),
+            }
+            for entry in entries
+        ]
+        self._removed: list[str] = []
+        self._create_callback = create_callback
+        self._configure_callback = configure_callback
+
+        main_sizer = wx.BoxSizer(wx.VERTICAL)
+        label = wx.StaticText(self, label=_("Current playlists (top = first in sequence):"))
+        main_sizer.Add(label, 0, wx.ALL, 5)
+
+        self._list_ctrl = wx.ListCtrl(self, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+        self._list_ctrl.InsertColumn(0, _("Name"))
+        self._list_ctrl.InsertColumn(1, _("Type"))
+        self._list_ctrl.InsertColumn(2, _("Players"))
+        main_sizer.Add(self._list_ctrl, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 5)
+
+        controls_row = wx.BoxSizer(wx.HORIZONTAL)
+        self._add_button = wx.Button(self, label=_("Add"))
+        self._configure_button = wx.Button(self, label=_("Configure players…"))
+        self._remove_button = wx.Button(self, label=_("Remove"))
+        controls_row.Add(self._add_button, 0, wx.ALL, 5)
+        controls_row.Add(self._configure_button, 0, wx.ALL, 5)
+        controls_row.Add(self._remove_button, 0, wx.ALL, 5)
+        main_sizer.Add(controls_row, 0, wx.ALIGN_LEFT)
+
+        move_row = wx.BoxSizer(wx.HORIZONTAL)
+        self._up_button = wx.Button(self, label=_("Move up"))
+        self._down_button = wx.Button(self, label=_("Move down"))
+        move_row.Add(self._up_button, 0, wx.ALL, 5)
+        move_row.Add(self._down_button, 0, wx.ALL, 5)
+        main_sizer.Add(move_row, 0, wx.ALIGN_LEFT)
+
+        action_sizer = self.CreateSeparatedButtonSizer(wx.OK | wx.CANCEL)
+        if action_sizer:
+            main_sizer.Add(action_sizer, 0, wx.EXPAND | wx.ALL, 5)
+
+        self._add_button.Bind(wx.EVT_BUTTON, self._add_entry)
+        self._remove_button.Bind(wx.EVT_BUTTON, self._remove_entry)
+        self._configure_button.Bind(wx.EVT_BUTTON, self._configure_entry)
+        self._up_button.Bind(wx.EVT_BUTTON, lambda _evt: self._move_entry(-1))
+        self._down_button.Bind(wx.EVT_BUTTON, lambda _evt: self._move_entry(1))
+        self._list_ctrl.Bind(wx.EVT_LIST_ITEM_SELECTED, lambda _evt: self._update_button_states())
+        self._list_ctrl.Bind(wx.EVT_LIST_ITEM_DESELECTED, lambda _evt: self._update_button_states())
+        self._list_ctrl.Bind(wx.EVT_LIST_ITEM_ACTIVATED, self._handle_activate)
+
+        self.SetSizer(main_sizer)
+        self.SetSize((520, 420))
+        self._refresh_list()
+
+    def _selected_index(self) -> int:
+        return self._list_ctrl.GetFirstSelected()
+
+    def _selected_entry(self) -> dict[str, Any] | None:
+        index = self._selected_index()
+        if index == wx.NOT_FOUND or index >= len(self._entries):
+            return None
+        return self._entries[index]
+
+    def _refresh_list(self, *, select_id: str | None = None) -> None:
+        self._list_ctrl.DeleteAllItems()
+        for entry in self._entries:
+            index = self._list_ctrl.InsertItem(self._list_ctrl.GetItemCount(), entry["name"])
+            kind_label = self.KIND_LABELS.get(entry["kind"], "")
+            self._list_ctrl.SetItem(index, 1, kind_label)
+            self._list_ctrl.SetItem(index, 2, self._format_slot_summary(entry.get("slots", [])))
+            self._list_ctrl.SetItemData(index, index)
+        for column in range(3):
+            self._list_ctrl.SetColumnWidth(column, wx.LIST_AUTOSIZE_USEHEADER)
+
+        selection_index = 0
+        if select_id:
+            for idx, entry in enumerate(self._entries):
+                if entry["id"] == select_id:
+                    selection_index = idx
+                    break
+        if self._entries:
+            self._list_ctrl.Select(selection_index)
+        self._update_button_states()
+
+    def _update_button_states(self) -> None:
+        selection = self._selected_index()
+        can_modify = selection != wx.NOT_FOUND
+        total = len(self._entries)
+        self._remove_button.Enable(can_modify and total > 1)
+        self._configure_button.Enable(can_modify and self._configure_callback is not None)
+        self._up_button.Enable(can_modify and selection > 0)
+        self._down_button.Enable(can_modify and selection != wx.NOT_FOUND and selection < total - 1)
+
+    def _move_entry(self, offset: int) -> None:
+        selection = self._selected_index()
+        if selection == wx.NOT_FOUND:
+            return
+        target = selection + offset
+        if target < 0 or target >= len(self._entries):
+            return
+        self._entries[selection], self._entries[target] = self._entries[target], self._entries[selection]
+        self._refresh_list(select_id=self._entries[target]["id"])
+
+    def _remove_entry(self, _event: wx.CommandEvent) -> None:
+        selection = self._selected_index()
+        if selection == wx.NOT_FOUND:
+            return
+        if len(self._entries) <= 1:
+            wx.MessageBox(_("At least one playlist must remain."), _("Warning"), parent=self)
+            return
+        removed_entry = self._entries.pop(selection)
+        self._removed.append(removed_entry["id"])
+        next_selection = None
+        if self._entries:
+            next_index = min(selection, len(self._entries) - 1)
+            next_selection = self._entries[next_index]["id"]
+        self._refresh_list(select_id=next_selection)
+
+    def _configure_entry(self, _event: wx.CommandEvent) -> None:
+        if not self._configure_callback:
+            return
+        entry = self._selected_entry()
+        if not entry:
+            return
+        slots = self._configure_callback(entry["id"])
+        if slots is None:
+            return
+        entry["slots"] = list(slots)
+        self._refresh_list(select_id=entry["id"])
+
+    def _handle_activate(self, _event: wx.ListEvent) -> None:
+        self._configure_entry(_event)
+
+    def get_result(self) -> Optional[dict[str, list[str]]]:
+        if not self._entries:
+            return None
+        return {
+            "order": [entry["id"] for entry in self._entries],
+            "removed": list(self._removed),
+        }
+
+    def _add_entry(self, _event: wx.CommandEvent) -> None:
+        if not self._create_callback:
+            return
+        model = self._create_callback()
+        if model is None:
+            return
+        self._entries.append(
+            {"id": model.id, "name": model.name, "kind": model.kind, "slots": list(model.get_configured_slots())}
+        )
+        self._refresh_list(select_id=model.id)
+
+    @staticmethod
+    def _format_slot_summary(slots: list[str | None]) -> str:
+        return str(sum(1 for slot in slots if slot))

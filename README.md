@@ -75,7 +75,7 @@ PYTHONPATH=src python -m pytest
 - The CI bundle includes NVDA controller DLLs and the Windows `bass.dll` so speech and optional BASS playback work out of the box.
 - Scripts `scripts/auto_download.sh` and `scripts/download_latest_artifact.sh` (install via `scripts/install_hooks.sh`) keep the latest Windows artifact under `artifacts/` after each successful build.
 - For frozen Windows builds, bundle NVDA controller DLLs and optional BASS binaries alongside the executable.
-- Release notes live in `docs/releases/` (see `docs/releases/0.0.6.md` for the latest changes).
+- Release notes live in `docs/releases/` (see `docs/releases/0.0.7.md` for the latest changes).
 
 ### Roadmap highlights
 - Enhanced accessibility messages.

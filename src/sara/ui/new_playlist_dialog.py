@@ -34,6 +34,7 @@ class NewPlaylistDialog(wx.Dialog):
 
         self.SetSizerAndFit(main_sizer)
         self.Bind(wx.EVT_BUTTON, self._on_ok, id=wx.ID_OK)
+        self._name_ctrl.SetFocus()
 
     @property
     def playlist_name(self) -> str:

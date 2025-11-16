@@ -39,7 +39,8 @@ class NewsPlaylistPanel(wx.Panel):
         on_line_length_change: Callable[[int], None] | None = None,
         on_line_length_apply: Callable[[], None] | None = None,
     ) -> None:
-        super().__init__(parent)
+        super().__init__(parent, style=wx.TAB_TRAVERSAL)
+        self.SetName(model.name)
         self.model = model
         self._get_line_length = get_line_length
         self._get_audio_devices = get_audio_devices
@@ -57,6 +58,21 @@ class NewsPlaylistPanel(wx.Panel):
         self._line_length_spin: wx.SpinCtrl | None = None
         self._line_length_apply: wx.Button | None = None
         self._caret_position: int = 0
+
+        self._title = model.name
+        self._edit_ctrl = wx.TextCtrl(
+            self,
+            style=wx.TE_MULTILINE | wx.TE_RICH2 | wx.TE_PROCESS_TAB,
+        )
+        self._edit_ctrl.SetValue(self.model.news_markdown or "")
+        self._edit_ctrl.Bind(wx.EVT_TEXT, self._on_text_changed)
+        self._edit_ctrl.Bind(wx.EVT_SET_FOCUS, self._notify_focus)
+        self._edit_ctrl.Bind(wx.EVT_CHAR_HOOK, self._handle_char_hook)
+
+        self._read_panel = scrolledpanel.ScrolledPanel(self, style=wx.BORDER_SIMPLE)
+        self._read_panel.SetupScrolling(scroll_x=False, scroll_y=True)
+        self._read_panel.Hide()
+        self._read_panel.Bind(wx.EVT_SET_FOCUS, self._notify_focus)
 
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         toolbar = wx.BoxSizer(wx.HORIZONTAL)
@@ -97,21 +113,6 @@ class NewsPlaylistPanel(wx.Panel):
         self._device_choice = wx.Choice(self)
         toolbar.Add(self._device_choice, 0, wx.ALIGN_CENTER_VERTICAL)
         main_sizer.Add(toolbar, 0, wx.EXPAND | wx.BOTTOM, 5)
-
-        self._title = model.name
-        self._edit_ctrl = wx.TextCtrl(
-            self,
-            style=wx.TE_MULTILINE | wx.TE_RICH2 | wx.TE_PROCESS_TAB,
-        )
-        self._edit_ctrl.SetValue(self.model.news_markdown or "")
-        self._edit_ctrl.Bind(wx.EVT_TEXT, self._on_text_changed)
-        self._edit_ctrl.Bind(wx.EVT_SET_FOCUS, self._notify_focus)
-        self._edit_ctrl.Bind(wx.EVT_CHAR_HOOK, self._handle_char_hook)
-
-        self._read_panel = scrolledpanel.ScrolledPanel(self, style=wx.BORDER_SIMPLE)
-        self._read_panel.SetupScrolling(scroll_x=False, scroll_y=True)
-        self._read_panel.Hide()
-        self._read_panel.Bind(wx.EVT_SET_FOCUS, self._notify_focus)
 
         main_sizer.Add(self._edit_ctrl, 1, wx.EXPAND)
         main_sizer.Add(self._read_panel, 1, wx.EXPAND)
@@ -219,9 +220,14 @@ class NewsPlaylistPanel(wx.Panel):
                     event.StopPropagation()
                     return
                 if keycode == wx.WXK_TAB and not event.ControlDown() and not event.AltDown():
-                    if self._focus_toolbar_from_text(backwards=event.ShiftDown()):
-                        event.StopPropagation()
-                        return
+                    if event.ShiftDown():
+                        self.Navigate(wx.NavigationKeyEvent.IsBackward)
+                    else:
+                        if self._focus_toolbar_from_text(backwards=False):
+                            event.StopPropagation()
+                            return
+                    event.StopPropagation()
+                    return
             event.Skip()
             return
 
@@ -230,8 +236,13 @@ class NewsPlaylistPanel(wx.Panel):
             return
 
         if keycode == wx.WXK_TAB and not event.ControlDown() and not event.AltDown():
-            flags = wx.NavigationKeyEvent.IsBackward if event.ShiftDown() else wx.NavigationKeyEvent.IsForward
-            self.Navigate(flags)
+            if event.ShiftDown():
+                self.Navigate(wx.NavigationKeyEvent.IsBackward)
+            else:
+                if self._focus_toolbar_from_text(backwards=False):
+                    event.StopPropagation()
+                    return
+            event.StopPropagation()
             return
 
         if event.ControlDown() and not event.AltDown() and keycode in (ord("V"), ord("v")):
@@ -399,29 +410,6 @@ class NewsPlaylistPanel(wx.Panel):
         if self._on_line_length_apply:
             self._on_line_length_apply()
 
-    def _toolbar_focusables(self) -> list[wx.Window]:
-        controls: list[wx.Window] = [
-            self._mode_button,
-            self._insert_button,
-            self._load_button,
-            self._save_button,
-        ]
-        if self._line_length_spin:
-            controls.append(self._line_length_spin)
-        if self._line_length_apply:
-            controls.append(self._line_length_apply)
-        controls.append(self._device_choice)
-        return [ctrl for ctrl in controls if ctrl and ctrl.IsShown() and ctrl.IsEnabled()]
-
-    def _focus_toolbar_from_text(self, *, backwards: bool) -> bool:
-        controls = self._toolbar_focusables()
-        if not controls:
-            return False
-        self._update_caret_from_read()
-        target = controls[-1] if backwards else controls[0]
-        target.SetFocus()
-        return True
-
     def activate_toolbar_control(self, window: wx.Window | None) -> bool:
         if window is None:
             return False
@@ -448,25 +436,10 @@ class NewsPlaylistPanel(wx.Panel):
             event.Skip()
             return
         if keycode == wx.WXK_TAB and not event.ControlDown() and not event.AltDown():
-            backwards = event.ShiftDown()
-            if self._move_within_toolbar(event.GetEventObject(), backwards=backwards):
+            if self._move_within_toolbar(event.GetEventObject(), backwards=event.ShiftDown()):
+                event.StopPropagation()
                 return
         event.Skip()
-
-    def _move_within_toolbar(self, current: wx.Window, *, backwards: bool) -> bool:
-        controls = self._toolbar_focusables()
-        if not controls:
-            return False
-        try:
-            index = controls.index(current)
-        except ValueError:
-            return False
-        if backwards:
-            next_index = (index - 1) % len(controls)
-        else:
-            next_index = (index + 1) % len(controls)
-        controls[next_index].SetFocus()
-        return True
 
     def get_selected_device_id(self) -> str | None:
         selection = self._device_choice.GetSelection()
@@ -492,6 +465,64 @@ class NewsPlaylistPanel(wx.Panel):
     def _update_caret_from_read(self) -> None:
         if self._read_text_ctrl:
             self._caret_position = self._read_text_ctrl.GetInsertionPoint()
+
+    def _toolbar_focusables(self) -> list[wx.Window]:
+        controls: list[wx.Window] = [
+            self._mode_button,
+            self._insert_button,
+            self._load_button,
+            self._save_button,
+        ]
+        if self._line_length_spin:
+            controls.append(self._line_length_spin)
+        if self._line_length_apply:
+            controls.append(self._line_length_apply)
+        controls.append(self._device_choice)
+        return [ctrl for ctrl in controls if ctrl and ctrl.IsShown() and ctrl.IsEnabled()]
+
+    def _focus_toolbar_from_text(self, *, backwards: bool) -> bool:
+        controls = self._toolbar_focusables()
+        if not controls:
+            return False
+        self._update_caret_from_read()
+        target = controls[-1] if backwards else controls[0]
+        target.SetFocus()
+        return True
+
+    def _move_within_toolbar(self, current: wx.Window, *, backwards: bool) -> bool:
+        controls = self._toolbar_focusables()
+        if not controls:
+            return False
+        try:
+            index = controls.index(current)
+        except ValueError:
+            return False
+        if backwards:
+            if index > 0:
+                controls[index - 1].SetFocus()
+                return True
+            if self._focus_content_area():
+                return True
+            self.Navigate(wx.NavigationKeyEvent.IsBackward)
+            return True
+        if index < len(controls) - 1:
+            controls[index + 1].SetFocus()
+            return True
+        flags = wx.NavigationKeyEvent.IsForward
+        self.Navigate(flags)
+        return True
+
+    def _focus_content_area(self) -> bool:
+        if self._mode == "edit":
+            self._edit_ctrl.SetFocus()
+            return True
+        if self._mode == "read":
+            if self._read_text_ctrl:
+                self._read_text_ctrl.SetFocus()
+                return True
+            self._read_panel.SetFocus()
+            return True
+        return False
 
     def focus_default(self) -> None:
         """Set focus to the active control depending on mode."""
@@ -673,8 +704,13 @@ class NewsPlaylistPanel(wx.Panel):
                 event.StopPropagation()
                 return
         if keycode == wx.WXK_TAB and not event.ControlDown() and not event.AltDown():
-            flags = wx.NavigationKeyEvent.IsBackward if event.ShiftDown() else wx.NavigationKeyEvent.IsForward
-            self.Navigate(flags)
+            if event.ShiftDown():
+                self.Navigate(wx.NavigationKeyEvent.IsBackward)
+            else:
+                if self._focus_toolbar_from_text(backwards=False):
+                    event.StopPropagation()
+                    return
+            event.StopPropagation()
             return
         event.Skip()
 
