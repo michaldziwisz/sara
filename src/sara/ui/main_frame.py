@@ -635,10 +635,6 @@ class ManagePlaylistsDialog(wx.Dialog):
             "removed": list(self._removed),
         }
 
-
-# Backwards compatibility for entry points referencing old methods
-ManagePlaylistsDialog  # to silence linters
-
     @staticmethod
     def _format_track_name(item: PlaylistItem) -> str:
         return f"{item.artist} - {item.title}" if item.artist else item.title
