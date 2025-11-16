@@ -79,7 +79,6 @@ class MainFrame(wx.Frame):
         set_language(self._settings.get_language())
         if not self._settings.config_path.exists():
             self._settings.save()
-        self._on_new_playlist = self._create_playlist_dialog
         self._playlists: Dict[str, PlaylistPanel] = {}
         self._playlist_wrappers: Dict[str, wx.Window] = {}
         self._playlist_headers: Dict[str, wx.TextCtrl] = {}
@@ -129,6 +128,8 @@ class MainFrame(wx.Frame):
         self._focus_lock: Dict[str, bool] = {}
         self._intro_alert_players: list[Tuple[Player, Path]] = []
 
+        self._ensure_legacy_hooks()
+
         self.CreateStatusBar()
         self.SetStatusText(_("Ready"))
         wx.ToolTip.Enable(False)
@@ -139,6 +140,10 @@ class MainFrame(wx.Frame):
         self._register_accessibility()
         self._configure_accelerators()
         self._global_shortcut_blocked = False
+
+    def _ensure_legacy_hooks(self) -> None:
+        if not hasattr(self, "_on_new_playlist"):
+            self._on_new_playlist = self._create_playlist_dialog  # type: ignore[attr-defined]
 
     def _create_menu_bar(self) -> None:
         menu_bar = wx.MenuBar()
