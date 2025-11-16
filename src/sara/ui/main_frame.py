@@ -79,6 +79,7 @@ class MainFrame(wx.Frame):
         set_language(self._settings.get_language())
         if not self._settings.config_path.exists():
             self._settings.save()
+        self._on_new_playlist = self._create_playlist_dialog
         self._playlists: Dict[str, PlaylistPanel] = {}
         self._playlist_wrappers: Dict[str, wx.Window] = {}
         self._playlist_headers: Dict[str, wx.TextCtrl] = {}
@@ -633,6 +634,10 @@ class ManagePlaylistsDialog(wx.Dialog):
             "order": [entry["id"] for entry in self._entries],
             "removed": list(self._removed),
         }
+
+
+# Backwards compatibility for entry points referencing old methods
+ManagePlaylistsDialog  # to silence linters
 
     @staticmethod
     def _format_track_name(item: PlaylistItem) -> str:
