@@ -27,6 +27,7 @@ SARA is a wxPython-based automation suite for radio stations. It provides multip
    - Startup playlists in Options can now include both music and news panels, so you can reopen newsroom scripts automatically at launch.
    - Edit menu provides standard clipboard actions, move items with `Alt+↑/↓`.
    - News playlists expose `Load service…` / `Save service…` buttons (and `Ctrl+O` / `Ctrl+S`) to import/export `.saranews` files. The same format is available in the standalone `sara-news-editor` app, which remembers the last device you picked and lets newsroom staff preview clips without launching the full SARA UI.
+   - Press `Ctrl+E` to toggle between edit and read-only mode; in read-only you can use `H`/`Shift+H` to jump headings, `C`/`Shift+C` to jump audio clips, and Tab to reach the toolbar (device chooser, line length, Apply).
 
 You can also paste straight from the system clipboard: copy audio files or folders in the Explorer, then press `Ctrl+V` in a playlist — SARA will expand folders, extract metadata, and insert tracks in place.
 
@@ -59,6 +60,11 @@ PYTHONPATH=src python -m pytest
 - `.saranews` import/export plus a standalone News Editor (`sara-news-editor`) with persistent audio-device selection for preparing services outside the studio.
 - Options dialog for fade, PFL device, startup playlists, language, alternate play, auto-remove.
 - Screen-reader announcements (NVDA) and coverage in the test suite.
+
+#### News playlists
+- **Edit mode (`Ctrl+E`):** plain Markdown editor with `Ctrl+V` clipboard paste (files/folders or `[[audio:path]]` placeholders). Use the toolbar buttons to load/save `.saranews` packages or insert audio from the system clipboard.
+- **Read-only mode (`Ctrl+E` again):** the text is wrapped to the configured line length; `H`/`Shift+H` jumps between headings, `C`/`Shift+C` between audio markers, `Enter`/`Space` plays the clip under the caret, and Tab moves focus to the toolbar (Load/Save, line length spinner, Apply, device selector).
+- **Standalone editor (`sara-news-editor`):** shares the same panel, stores its configuration in `config/news_editor.yaml` next to the executable, remembers the last device, and lets newsroom staff edit `.saranews` files without running the full SARA UI.
 
 ### Packaging & release
 - Ensure locale and vendor binaries are included (`MANIFEST.in`, `pyproject.toml`).
@@ -111,6 +117,7 @@ Wersja rozwojowa – odtwarzanie, wielokrotne sloty odtwarzaczy i narzędzia pę
    - W sekcji Startup playlists możesz dodać zarówno playlisty muzyczne, jak i newsowe, żeby po starcie Sary od razu otwierały się właściwe panele.
    - Menu `Edycja` udostępnia operacje schowka, `Alt+↑/↓` przenosi pozycje.
    - Playlisty newsowe mają teraz przyciski „Wczytaj serwis…” / „Zapisz serwis…” (oraz skróty `Ctrl+O` / `Ctrl+S`) działające na plikach `.saranews`. Ten sam format obsługuje niezależna aplikacja `sara-news-editor`, która zapamiętuje ostatnio użyte urządzenie, pozwala wybrać kartę audio i odsłuchiwać klipy bez uruchamiania całej Sary.
+   - `Ctrl+E` przełącza tryb edycji i odczytu; w trybie odczytu `H`/`Shift+H` skacze po nagłówkach, `C`/`Shift+C` po klipach, a Tab przenosi fokus na pasek narzędzi (w tym długość linii i urządzenie audio).
 
 Konfiguracja trafia do `config/settings.yaml`, ale wygodniej edytować ją z poziomu okna „Opcje…”. Pamiętaj o licencjach BASS przy użyciu komercyjnym.
 
@@ -136,6 +143,11 @@ PYTHONPATH=src python -m pytest
 - Import/eksport plików `.saranews` oraz niezależny News Editor (`sara-news-editor`) z zapamiętywaniem urządzenia audio do przygotowywania serwisów.
 - Opcje: fade, PFL, playlisty startowe, język interfejsu, tryb naprzemienny, auto-usuwanie.
 - Komunikaty dostępności (NVDA) i testy pokrywające kluczowe moduły.
+
+#### Playlisty newsowe – szczegóły
+- **Tryb edycji (`Ctrl+E`):** zwykły edytor Markdown z wklejaniem `Ctrl+V` (pliki/foldery lub tokeny `[[audio:ścieżka]]`). Paski „Wczytaj/Zapisz/Wstaw audio” obsługują format `.saranews`.
+- **Tryb tylko do odczytu (`Ctrl+E` ponownie):** tekst zawija się do zadanego limitu, `H`/`Shift+H` przechodzi po nagłówkach, `C`/`Shift+C` po klipach audio, `Enter`/`Spacja` odtwarza bieżący klip, a Tab przechodzi do paska narzędzi (w tym spinnera długości linii, przycisku Apply i wyboru urządzenia).
+- **Samodzielny edytor (`sara-news-editor`):** korzysta z tego samego panelu, zapisuje konfigurację w `config/news_editor.yaml` obok aplikacji, pamięta ostatnie urządzenie audio i pozwala przygotować serwis bez uruchamiania głównej Sary.
 
 ### Pakowanie i dystrybucja
 - Dopilnuj, by pliki lokalizacyjne i binaria NVDA/BASS trafiały do pakietu (zob. `MANIFEST.in`, `pyproject.toml`).
