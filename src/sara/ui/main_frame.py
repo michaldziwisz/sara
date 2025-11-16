@@ -20,7 +20,13 @@ from sara.core.app_state import AppState, PlaylistFactory
 from sara.core.config import SettingsManager
 from sara.core.i18n import gettext as _, set_language
 from sara.core.hotkeys import HotkeyAction
-from sara.core.media_metadata import AudioMetadata, extract_metadata, is_supported_audio_file, save_loop_metadata
+from sara.core.media_metadata import (
+    AudioMetadata,
+    extract_metadata,
+    is_supported_audio_file,
+    save_loop_metadata,
+    save_mix_metadata,
+)
 from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistKind, PlaylistModel
 from sara.core.shortcuts import get_shortcut
 from sara.ui.undo import InsertOperation, MoveOperation, RemoveOperation, UndoAction
@@ -29,6 +35,7 @@ from sara.ui.playlist_panel import PlaylistPanel
 from sara.ui.news_playlist_panel import NewsPlaylistPanel
 from sara.ui.playlist_devices_dialog import PlaylistDevicesDialog
 from sara.ui.loop_dialog import LoopDialog
+from sara.ui.mix_point_dialog import MixPointEditorDialog
 from sara.ui.options_dialog import OptionsDialog
 from sara.ui.shortcut_editor_dialog import ShortcutEditorDialog
 from sara.ui.shortcut_utils import format_shortcut_display, parse_shortcut
@@ -467,6 +474,7 @@ class MainFrame(wx.Frame):
                 model=model,
                 on_focus=self._on_playlist_focus,
                 on_loop_configure=self._on_loop_configure,
+                 on_mix_configure=self._on_mix_points_configure,
                 on_toggle_selection=self._on_toggle_selection,
                 on_selection_change=self._on_playlist_selection_change,
             )
@@ -1126,9 +1134,9 @@ class MainFrame(wx.Frame):
             initial_start=item.loop_start_seconds,
             initial_end=item.loop_end_seconds,
             enable_loop=item.loop_enabled,
-            on_preview=lambda start, end: self._start_loop_preview(panel.model, item, start, end),
+            on_preview=lambda start, end: self._start_pfl_preview(item, start, loop_range=(start, end)),
             on_loop_update=lambda start, end: self._update_loop_preview(item, start, end),
-            on_preview_stop=self._stop_loop_preview,
+            on_preview_stop=self._stop_pfl_preview,
         )
 
         try:
@@ -1157,14 +1165,71 @@ class MainFrame(wx.Frame):
                     panel.refresh()
         finally:
             dialog.Destroy()
-            self._stop_loop_preview()
+            self._stop_pfl_preview()
+
+    def _on_mix_points_configure(self, playlist_id: str, item_id: str) -> None:
+        panel = self._playlists.get(playlist_id)
+        if panel is None:
+            return
+        item = next((track for track in panel.model.items if track.id == item_id), None)
+        if item is None:
+            return
+
+        dialog = MixPointEditorDialog(
+            self,
+            title=_("Mix points – %s") % item.title,
+            duration_seconds=item.duration_seconds,
+            cue_in_seconds=item.cue_in_seconds,
+            intro_seconds=item.intro_seconds,
+            outro_seconds=item.outro_seconds,
+            segue_seconds=item.segue_seconds,
+            overlap_seconds=item.overlap_seconds,
+            on_preview=lambda position: self._start_pfl_preview(item, max(0.0, position)),
+            on_stop_preview=self._stop_pfl_preview,
+        )
+
+        try:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            result = dialog.get_result()
+        finally:
+            dialog.Destroy()
+            self._stop_pfl_preview()
+
+        mix_values = {
+            "cue_in": result.get("cue"),
+            "intro": result.get("intro"),
+            "outro": result.get("outro"),
+            "segue": result.get("segue"),
+            "overlap": result.get("overlap"),
+        }
+
+        item.cue_in_seconds = mix_values["cue_in"]
+        item.intro_seconds = mix_values["intro"]
+        item.outro_seconds = mix_values["outro"]
+        item.segue_seconds = mix_values["segue"]
+        item.overlap_seconds = mix_values["overlap"]
+
+        if not save_mix_metadata(
+            item.path,
+            cue_in=item.cue_in_seconds,
+            intro=item.intro_seconds,
+            outro=item.outro_seconds,
+            segue=item.segue_seconds,
+            overlap=item.overlap_seconds,
+        ):
+            self._announce_event("pfl", _("Failed to update mix metadata"))
+        else:
+            self._announce_event("pfl", _("Updated mix points for %s") % item.title)
+
+        panel.refresh()
 
     def _start_playback(self, panel: PlaylistPanel, item: PlaylistItem) -> bool:
         playlist = panel.model
         key = (playlist.id, item.id)
 
         # stop any preview playback before starting actual playback
-        self._stop_loop_preview()
+        self._stop_pfl_preview()
 
         if not item.path.exists():
             item.status = PlaylistItemStatus.PENDING
@@ -1388,6 +1453,11 @@ class MainFrame(wx.Frame):
             if not self._auto_mix_state.get(key):
                 target = item.segue_seconds
                 overlap = item.overlap_seconds
+                if target is None and item.outro_seconds is not None:
+                    cue_offset = item.cue_in_seconds or 0.0
+                    relative_outro = item.outro_seconds - cue_offset
+                    if relative_outro >= 0.0:
+                        target = relative_outro
                 default_overlap = overlap if overlap and overlap > 0 else self._fade_duration
                 if target is None and item.effective_duration_seconds > 0 and default_overlap:
                     target = max(0.0, item.effective_duration_seconds - default_overlap)
@@ -1538,6 +1608,7 @@ class MainFrame(wx.Frame):
                     "segue": item.segue_seconds,
                     "overlap": item.overlap_seconds,
                     "intro": item.intro_seconds,
+                    "outro": item.outro_seconds,
                     "loop_start": item.loop_start_seconds,
                     "loop_end": item.loop_end_seconds,
                     "loop_enabled": item.loop_enabled,
@@ -1557,6 +1628,7 @@ class MainFrame(wx.Frame):
             segue_seconds=data.get("segue"),
             overlap_seconds=data.get("overlap"),
             intro_seconds=data.get("intro"),
+            outro_seconds=data.get("outro"),
             loop_start_seconds=data.get("loop_start"),
             loop_end_seconds=data.get("loop_end"),
             loop_enabled=bool(data.get("loop_enabled")),
@@ -1633,6 +1705,7 @@ class MainFrame(wx.Frame):
             segue_seconds=metadata.segue_seconds,
             overlap_seconds=metadata.overlap_seconds,
             intro_seconds=metadata.intro_seconds,
+            outro_seconds=metadata.outro_seconds,
             loop_start_seconds=metadata.loop_start_seconds,
             loop_end_seconds=metadata.loop_end_seconds,
             loop_enabled=metadata.loop_enabled,
@@ -2212,7 +2285,7 @@ class MainFrame(wx.Frame):
     def _cancel_active_playback(self, playlist_id: str, mark_played: bool = False) -> None:
         self._stop_playlist_playback(playlist_id, mark_played=mark_played, fade_duration=0.0)
 
-    def _stop_loop_preview(self, *, wait: bool = True) -> None:
+    def _stop_pfl_preview(self, *, wait: bool = True) -> None:
         if not self._preview_context:
             return
         context = self._preview_context
@@ -2235,15 +2308,21 @@ class MainFrame(wx.Frame):
     def _reload_pfl_device(self) -> None:
         new_device = self._settings.get_pfl_device()
         if new_device != self._pfl_device_id:
-            self._stop_loop_preview()
+            self._stop_pfl_preview()
         self._pfl_device_id = new_device
 
-    def _start_loop_preview(self, playlist: PlaylistModel, item: PlaylistItem, start: float, end: float) -> bool:
-        if end <= start:
+    def _start_pfl_preview(
+        self,
+        item: PlaylistItem,
+        start: float,
+        *,
+        loop_range: tuple[float, float] | None = None,
+    ) -> bool:
+        if loop_range is not None and loop_range[1] <= loop_range[0]:
             self._announce_event("loop", _("Loop end must be greater than start"))
             return False
 
-        self._stop_loop_preview(wait=True)
+        self._stop_pfl_preview(wait=True)
 
         pfl_device_id = self._pfl_device_id or self._settings.get_pfl_device()
         if not pfl_device_id:
@@ -2276,7 +2355,10 @@ class MainFrame(wx.Frame):
             player.set_progress_callback(None)
             player.set_gain_db(item.replay_gain_db)
             finished_event = player.play(item.id + ":preview", str(item.path), start_seconds=start)
-            player.set_loop(start, end)
+            if loop_range:
+                player.set_loop(loop_range[0], loop_range[1])
+            else:
+                player.set_loop(None, None)
         except Exception as exc:  # pylint: disable=broad-except
             self._announce_event("pfl", _("Preview error: %s") % exc)
             try:

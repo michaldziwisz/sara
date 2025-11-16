@@ -20,6 +20,7 @@ class PlaylistPanel(wx.Panel):
         model: PlaylistModel,
         on_focus: Callable[[str], None] | None = None,
         on_loop_configure: Callable[[str, str], None] | None = None,
+        on_mix_configure: Callable[[str, str], None] | None = None,
         on_toggle_selection: Callable[[str, str], None] | None = None,
         on_selection_change: Callable[[str, list[int]], None] | None = None,
     ):
@@ -28,6 +29,7 @@ class PlaylistPanel(wx.Panel):
         self.model = model
         self._on_focus = on_focus
         self._on_loop_configure = on_loop_configure
+        self._on_mix_configure = on_mix_configure
         self._on_toggle_selection = on_toggle_selection
         self._on_selection_change = on_selection_change
         self._active = False
@@ -201,6 +203,16 @@ class PlaylistPanel(wx.Panel):
 
             self.Bind(wx.EVT_MENU, _trigger_loop, id=int(loop_id))
 
+        if self._on_mix_configure:
+            mix_id = wx.NewIdRef()
+            menu.Append(mix_id, _("&Mix points…"))
+
+            def _trigger_mix(_evt: wx.CommandEvent) -> None:
+                self._notify_focus()
+                self._on_mix_configure(self.model.id, item.id)
+
+            self.Bind(wx.EVT_MENU, _trigger_mix, id=int(mix_id))
+
         if self._on_toggle_selection:
             toggle_id = wx.NewIdRef()
             toggle_label = _("&Select for playback") if not item.is_selected else _("Remove &selection")
@@ -214,10 +226,13 @@ class PlaylistPanel(wx.Panel):
 
         if not menu.GetMenuItemCount():
             event.Skip()
+            menu.Destroy()
             return
 
-        self.PopupMenu(menu)
-        menu.Destroy()
+        try:
+            self.PopupMenu(menu)
+        finally:
+            menu.Destroy()
 
     def _handle_key_down(self, event: wx.KeyEvent) -> None:
         if not self._handle_selection_key_event(event):

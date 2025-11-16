@@ -44,6 +44,7 @@ class AudioMetadata:
     segue_seconds: Optional[float] = None
     overlap_seconds: Optional[float] = None
     intro_seconds: Optional[float] = None
+    outro_seconds: Optional[float] = None
     loop_start_seconds: Optional[float] = None
     loop_end_seconds: Optional[float] = None
     loop_enabled: bool = False
@@ -52,6 +53,11 @@ class AudioMetadata:
 LOOP_START_TAG = "SARA_LOOP_START"
 LOOP_END_TAG = "SARA_LOOP_END"
 LOOP_ENABLED_TAG = "SARA_LOOP_ENABLED"
+CUE_IN_TAG = "SARA_CUE_IN"
+INTRO_TAG = "SARA_INTRO_END"
+OUTRO_TAG = "SARA_OUTRO_START"
+SEGUE_TAG = "SARA_SEGUE_START"
+OVERLAP_TAG = "SARA_OVERLAP_DURATION"
 
 
 def _parse_replay_gain(value: Optional[str]) -> Optional[float]:
@@ -230,6 +236,83 @@ def save_loop_metadata(
         return False
 
 
+def save_mix_metadata(
+    path: Path,
+    *,
+    cue_in: Optional[float],
+    intro: Optional[float],
+    outro: Optional[float],
+    segue: Optional[float],
+    overlap: Optional[float],
+) -> bool:
+    """Persist cue/intro/outro/segue/overlap markers in APEv2 tags."""
+
+    file_path = str(path)
+    tags: APEv2 | None = None
+    existing = False
+
+    try:
+        audio = MutagenFile(file_path)
+    except Exception:  # pylint: disable=broad-except
+        audio = None
+
+    if audio is not None and isinstance(getattr(audio, "tags", None), APEv2):
+        tags = audio.tags  # type: ignore[assignment]
+        existing = True
+
+    mix_keys = {
+        CUE_IN_TAG,
+        INTRO_TAG,
+        OUTRO_TAG,
+        SEGUE_TAG,
+        OVERLAP_TAG,
+    }
+
+    if tags is None:
+        try:
+            tags = APEv2(file_path)
+            existing = True
+        except APEv2Error:
+            tags = APEv2()
+            existing_items = _read_ape_tags(path)
+            for key, value in existing_items.items():
+                if key in mix_keys:
+                    continue
+                tags[key] = value
+
+    if tags is None:
+        logger.warning("Unable to initialise APE tags for %s", path)
+        return False
+
+    updates = {
+        CUE_IN_TAG: cue_in,
+        INTRO_TAG: intro,
+        OUTRO_TAG: outro,
+        SEGUE_TAG: segue,
+        OVERLAP_TAG: overlap,
+    }
+
+    try:
+        modified = False
+        for key, value in updates.items():
+            if value is None:
+                if key in tags:
+                    try:
+                        tags.pop(key)
+                    except KeyError:
+                        pass
+                    modified = True
+                continue
+            tags[key] = f"{value:.3f}"
+            modified = True
+        if modified or existing:
+            tags.save(file_path)
+        return True
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning("Failed to update mix tags for %s: %s", path, exc)
+        return False
+
+
 def extract_metadata(path: Path) -> AudioMetadata:
     """Return track metadata (title, duration, ReplayGain in dB).
 
@@ -250,6 +333,7 @@ def extract_metadata(path: Path) -> AudioMetadata:
                 duration_seconds=duration,
                 artist=artist,
                 replay_gain_db=_scan_ape_replay_gain(path),
+                outro_seconds=None,
             )
         if audio.tags:
             title_tag = audio.tags.get("TIT2") or audio.tags.get("title")
@@ -316,6 +400,7 @@ def extract_metadata(path: Path) -> AudioMetadata:
     segue = None
     overlap = None
     intro = None
+    outro = None
 
     def _parse_numeric_tokens(values, assume_ms=True):
         for value in values:
@@ -344,7 +429,14 @@ def extract_metadata(path: Path) -> AudioMetadata:
             txxx_list = []
         if txxx_list:
             lookup = {getattr(tag, "desc", "").lower(): tag for tag in txxx_list if getattr(tag, "desc", None)}
-            for key, target in (("cue", "cue"), ("cue in", "cue"), ("segue", "segue"), ("overlap", "overlap"), ("intro", "intro")):
+            for key, target in (
+                ("cue", "cue"),
+                ("cue in", "cue"),
+                ("segue", "segue"),
+                ("overlap", "overlap"),
+                ("intro", "intro"),
+                ("outro", "outro"),
+            ):
                 tag = lookup.get(key)
                 if tag:
                     value = _parse_numeric_tokens(tag.text)
@@ -357,6 +449,25 @@ def extract_metadata(path: Path) -> AudioMetadata:
                             overlap = value
                         elif key == "intro":
                             intro = value
+                        elif key == "outro":
+                            outro = value
+
+    def _read_sara_tag(tag: str) -> Optional[float]:
+        text = _scan_ape_value(path, tag)
+        if text:
+            return _parse_numeric_tokens([text], assume_ms=False)
+        return None
+
+    if cue is None:
+        cue = _read_sara_tag(CUE_IN_TAG)
+    if segue is None:
+        segue = _read_sara_tag(SEGUE_TAG)
+    if overlap is None:
+        overlap = _read_sara_tag(OVERLAP_TAG)
+    if intro is None:
+        intro = _read_sara_tag(INTRO_TAG)
+    if outro is None:
+        outro = _read_sara_tag(OUTRO_TAG)
 
     if cue is None:
         for candidate in ("Cue", "CueDB", "CueIn"):
@@ -386,6 +497,13 @@ def extract_metadata(path: Path) -> AudioMetadata:
                 intro = _parse_numeric_tokens([text])
                 if intro is not None:
                     break
+    if outro is None:
+        for candidate in ("Outro", "OutroDB"):
+            text = _scan_ape_value(path, candidate)
+            if text:
+                outro = _parse_numeric_tokens([text])
+                if outro is not None:
+                    break
 
     loop_start, loop_end, loop_enabled = _scan_loop_values(path)
     if loop_start is None or loop_end is None:
@@ -400,6 +518,7 @@ def extract_metadata(path: Path) -> AudioMetadata:
         segue_seconds=segue,
         overlap_seconds=overlap,
         intro_seconds=intro,
+        outro_seconds=outro,
         loop_start_seconds=loop_start,
         loop_end_seconds=loop_end,
         loop_enabled=loop_enabled,
