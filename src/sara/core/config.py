@@ -33,6 +33,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "add_tracks": "CTRL+D",
             "assign_device": "CTRL+SHIFT+D",
             "import": "CTRL+O",
+            "remove": "CTRL+DELETE",
+            "manage": "CTRL+SHIFT+DELETE",
             "export": "CTRL+S",
             "exit": "ALT+F4",
         },
