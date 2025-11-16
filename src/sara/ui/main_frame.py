@@ -740,6 +740,9 @@ class ManagePlaylistsDialog(wx.Dialog):
         self._focus_lock[playlist_id] = True
 
     def _on_new_playlist(self, event: wx.CommandEvent) -> None:
+        self._create_playlist_dialog(event)
+
+    def _create_playlist_dialog(self, event: wx.CommandEvent) -> None:
         dialog = NewPlaylistDialog(self)
         if dialog.ShowModal() == wx.ID_OK:
             model = self._playlist_factory.create_playlist(
