@@ -98,6 +98,18 @@ def _register_defaults() -> None:
     )
     register_shortcut(
         "playlist_menu",
+        "remove",
+        label="Playlist menu: remove playlist",
+        default="CTRL+DELETE",
+    )
+    register_shortcut(
+        "playlist_menu",
+        "manage",
+        label="Playlist menu: manage playlists",
+        default="CTRL+SHIFT+DELETE",
+    )
+    register_shortcut(
+        "playlist_menu",
         "export",
         label="Playlist menu: export playlist",
         default="CTRL+S",
