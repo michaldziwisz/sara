@@ -36,9 +36,13 @@ def test_begin_next_item_prefers_selected_item():
     assert playlist.items[0].status is PlaylistItemStatus.PENDING
 
     playlist.items[1].status = PlaylistItemStatus.PLAYED
+    playlist.items[1].current_position = 75.0
+
     next_item = playlist.begin_next_item(selected_id)
 
-    assert next_item is playlist.items[0]
+    assert next_item is playlist.items[1]
+    assert playlist.items[1].status is PlaylistItemStatus.PLAYING
+    assert playlist.items[1].current_position == 0.0
 
 
 def test_begin_next_item_resumes_paused_selection():

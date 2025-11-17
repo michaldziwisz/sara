@@ -56,12 +56,6 @@ def _register_defaults() -> None:
     )
     register_shortcut(
         "global",
-        "selection_mode_toggle",
-        label="Toggle selection mode",
-        default="CTRL+SHIFT+ENTER",
-    )
-    register_shortcut(
-        "global",
         "loop_playback_toggle",
         label="Toggle track looping",
         default="CTRL+SHIFT+L",

@@ -351,6 +351,7 @@ class SoundDevicePlayer:
             self._stop_event = Event()
             self._pause_event = Event()
             self._finished_event = Event()
+            stop_event = self._stop_event
             self._current_item = playlist_item_id
             self._path = path
             self._samplerate = samplerate
@@ -381,7 +382,7 @@ class SoundDevicePlayer:
                             **stream_kwargs,
                         ) as stream:
                             block = 4096
-                            while not self._stop_event.is_set():
+                            while stop_event is not None and not stop_event.is_set():
                                 if self._pause_event.is_set():
                                     time.sleep(0.05)
                                     continue
@@ -437,7 +438,7 @@ class SoundDevicePlayer:
                     except Exception as exc:  # pylint: disable=broad-except
                         logger.error("Błąd odtwarzania sounddevice: %s", exc)
                     finally:
-                        should_notify = not self._stop_event.is_set() if self._stop_event else True
+                        should_notify = not stop_event.is_set() if stop_event else True
                         current_item = self._current_item
                         self._position = 0
                         if self._finished_event:

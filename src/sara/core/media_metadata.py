@@ -58,6 +58,7 @@ INTRO_TAG = "SARA_INTRO_END"
 OUTRO_TAG = "SARA_OUTRO_START"
 SEGUE_TAG = "SARA_SEGUE_START"
 OVERLAP_TAG = "SARA_OVERLAP_DURATION"
+REPLAYGAIN_TRACK_GAIN_TAG = "REPLAYGAIN_TRACK_GAIN"
 
 
 def _parse_replay_gain(value: Optional[str]) -> Optional[float]:
@@ -310,6 +311,58 @@ def save_mix_metadata(
         return True
     except Exception as exc:  # pylint: disable=broad-except
         logger.warning("Failed to update mix tags for %s: %s", path, exc)
+        return False
+
+
+def save_replay_gain_metadata(path: Path, gain_db: Optional[float]) -> bool:
+    """Persist ReplayGain track gain (compatible with SPL) in APE tags."""
+
+    file_path = str(path)
+    tags: APEv2 | None = None
+    existing = False
+
+    try:
+        audio = MutagenFile(file_path)
+    except Exception:  # pylint: disable=broad-except
+        audio = None
+
+    if audio is not None and isinstance(getattr(audio, "tags", None), APEv2):
+        tags = audio.tags  # type: ignore[assignment]
+        existing = True
+
+    if tags is None:
+        try:
+            tags = APEv2(file_path)
+            existing = True
+        except APEv2Error:
+            tags = APEv2()
+            existing_items = _read_ape_tags(path)
+            for key, value in existing_items.items():
+                if key == REPLAYGAIN_TRACK_GAIN_TAG:
+                    continue
+                tags[key] = value
+
+    if tags is None:
+        logger.warning("Unable to initialise APE tags for %s", path)
+        return False
+
+    try:
+        modified = False
+        if gain_db is None:
+            if REPLAYGAIN_TRACK_GAIN_TAG in tags:
+                try:
+                    tags.pop(REPLAYGAIN_TRACK_GAIN_TAG)
+                except KeyError:
+                    pass
+                modified = True
+        else:
+            tags[REPLAYGAIN_TRACK_GAIN_TAG] = f"{gain_db:+.2f} dB"
+            modified = True
+        if modified or existing:
+            tags.save(file_path)
+        return True
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning("Failed to update ReplayGain tags for %s: %s", path, exc)
         return False
 
 

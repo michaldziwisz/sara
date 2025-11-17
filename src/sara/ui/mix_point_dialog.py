@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
+from threading import Thread
 from typing import Callable, Dict, Optional
 import time
 
 import wx
 
 from sara.core.i18n import gettext as _
+from sara.core.loudness import LoudnessStandard, analyze_loudness, find_bs1770gain
+from sara.ui.speech import speak_text
 
 
 @dataclass
@@ -38,8 +42,14 @@ class MixPointEditorDialog(wx.Dialog):
         outro_seconds: float | None,
         segue_seconds: float | None,
         overlap_seconds: float | None,
-        on_preview: Callable[[float], bool],
+        on_preview: Callable[[float, tuple[float, float] | None], bool],
         on_stop_preview: Callable[[], None],
+        track_path: Path,
+        initial_replay_gain: float | None,
+        on_replay_gain_update: Callable[[float | None], None] | None = None,
+        loop_start_seconds: float | None = None,
+        loop_end_seconds: float | None = None,
+        loop_enabled: bool = False,
     ) -> None:
         super().__init__(parent, title=title, style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._duration = max(0.0, duration_seconds)
@@ -54,6 +64,17 @@ class MixPointEditorDialog(wx.Dialog):
         self._on_preview = on_preview
         self._on_stop_preview = on_stop_preview
         self._preview_active = False
+        self._track_path = track_path
+        self._current_replay_gain = initial_replay_gain
+        self._on_replay_gain_update = on_replay_gain_update
+        self._normalizing = False
+        self._loop_start = loop_start_seconds or 0.0
+        self._loop_end = loop_end_seconds if loop_end_seconds is not None else max(self._loop_start + 0.1, 0.1)
+        if self._loop_end <= self._loop_start:
+            self._loop_end = self._loop_start + 0.1
+        loop_defined = loop_start_seconds is not None and loop_end_seconds is not None
+        self._loop_start_defined = loop_defined
+        self._loop_end_defined = loop_defined
 
         self._position_slider = wx.Slider(
             self,
@@ -110,7 +131,9 @@ class MixPointEditorDialog(wx.Dialog):
             label=_(
                 "Shortcuts: A/S/Z = move back (5s/1s/0.1s), "
                 "F/G/C = move forward (1s/5s/0.1s), D = play/pause, "
-                "Q = preview from start, W = preview last 20s, X = capture current point."
+                "Q = preview from start, W = preview last 20s, X = capture point, "
+                "Z/C fine-tune active point, "
+                "V = preview active point, Shift+V = preview loop end, Alt+V = preview loop."
             ),
         )
         info.Wrap(520)
@@ -188,6 +211,24 @@ class MixPointEditorDialog(wx.Dialog):
             mode="duration",
             allow_assign=True,
         )
+        self._create_point_row(
+            list_sizer,
+            key="loop_start",
+            label=_("Loop start"),
+            value=self._loop_start,
+            mode="absolute",
+            allow_assign=True,
+            checked=self._loop_start_defined,
+        )
+        self._create_point_row(
+            list_sizer,
+            key="loop_end",
+            label=_("Loop end"),
+            value=self._loop_end,
+            mode="absolute",
+            allow_assign=True,
+            checked=self._loop_end_defined,
+        )
         points_box.Add(list_sizer, 1, wx.EXPAND | wx.ALL, 4)
 
         help_text = wx.StaticText(
@@ -199,7 +240,50 @@ class MixPointEditorDialog(wx.Dialog):
         )
         help_text.Wrap(520)
         points_box.Add(help_text, 0, wx.ALL | wx.EXPAND, 4)
+        self._loop_preview_button = wx.Button(self, label=_("Preview loop (Alt+V)"))
+        points_box.Add(self._loop_preview_button, 0, wx.ALL | wx.ALIGN_RIGHT, 4)
         main_sizer.Add(points_box, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 8)
+
+        normalization_box = wx.StaticBoxSizer(wx.StaticBox(self, label=_("Loudness normalization")), wx.VERTICAL)
+        gain_row = wx.BoxSizer(wx.HORIZONTAL)
+        gain_row.Add(wx.StaticText(self, label=_("Current ReplayGain:")), 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 4)
+        self._replay_gain_display = wx.TextCtrl(
+            self,
+            value=self._format_replay_gain_text(),
+            style=wx.TE_READONLY | wx.BORDER_SIMPLE,
+        )
+        self._replay_gain_display.SetBackgroundColour(self.GetBackgroundColour())
+        self._replay_gain_display.SetName(_("Current ReplayGain value"))
+        gain_row.Add(self._replay_gain_display, 1, wx.ALIGN_CENTER_VERTICAL)
+        normalization_box.Add(gain_row, 0, wx.ALL | wx.EXPAND, 4)
+        choices = [
+            _("EBU R128 (-23 LUFS)"),
+            _("ATSC A/85 (-24 LUFS)"),
+        ]
+        self._standard_radio = wx.RadioBox(
+            self,
+            label=_("Target standard"),
+            choices=choices,
+            majorDimension=1,
+            style=wx.RA_SPECIFY_ROWS,
+        )
+        normalization_box.Add(self._standard_radio, 0, wx.ALL, 4)
+        self._normalize_button = wx.Button(self, label=_("Normalize (bs1770gain)"))
+        self._normalize_button.Bind(wx.EVT_BUTTON, self._handle_normalize)
+        normalization_box.Add(self._normalize_button, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 4)
+        self._normalize_status = wx.TextCtrl(
+            self,
+            value="",
+            style=wx.TE_READONLY | wx.TE_MULTILINE | wx.BORDER_SIMPLE,
+        )
+        self._normalize_status.SetBackgroundColour(self.GetBackgroundColour())
+        self._normalize_status.SetName(_("Loudness analysis status"))
+        self._normalize_status.SetMinSize((-1, 60))
+        normalization_box.Add(self._normalize_status, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 4)
+        self._replay_gain_display.MoveBeforeInTabOrder(self._standard_radio)
+        self._normalize_status.MoveAfterInTabOrder(self._normalize_button)
+        self._set_loudness_status(self._initial_loudness_status())
+        main_sizer.Add(normalization_box, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 8)
 
         # dialog buttons
         button_sizer = self.CreateSeparatedButtonSizer(wx.OK | wx.CANCEL)
@@ -218,11 +302,12 @@ class MixPointEditorDialog(wx.Dialog):
         value: Optional[float],
         mode: str,
         allow_assign: bool,
+        checked: Optional[bool] = None,
     ) -> None:
         row_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         checkbox = wx.CheckBox(self, label=self._format_point_label(label, value))
-        checkbox.SetValue(value is not None)
+        checkbox.SetValue((value is not None) if checked is None else checked)
         spin = wx.SpinCtrlDouble(
             self,
             min=0.0,
@@ -237,6 +322,8 @@ class MixPointEditorDialog(wx.Dialog):
             spin.SetValue(float(value))
         else:
             spin.SetValue(0.0)
+
+        if not checkbox.GetValue():
             spin.Enable(False)
             if assign_button:
                 assign_button.Enable(False)
@@ -264,8 +351,8 @@ class MixPointEditorDialog(wx.Dialog):
             mode=mode,
             base_label=label,
         )
-        spin.Bind(wx.EVT_SPINCTRLDOUBLE, lambda _evt, row_key=key: self._update_point_label(row_key))
-        spin.Bind(wx.EVT_TEXT, lambda _evt, row_key=key: self._update_point_label(row_key))
+        spin.Bind(wx.EVT_SPINCTRLDOUBLE, lambda _evt, row_key=key: self._handle_spin_edit(row_key))
+        spin.Bind(wx.EVT_TEXT, lambda _evt, row_key=key: self._handle_spin_edit(row_key))
         self._point_order.append(key)
 
         container.Add(row_sizer, 0, wx.EXPAND | wx.ALL, 2)
@@ -292,29 +379,36 @@ class MixPointEditorDialog(wx.Dialog):
         self._nudge_forward_small.Bind(wx.EVT_BUTTON, lambda _evt: self._nudge_position(1.0))
         self._nudge_forward_large.Bind(wx.EVT_BUTTON, lambda _evt: self._nudge_position(5.0))
         self.Bind(wx.EVT_BUTTON, self._handle_ok, id=wx.ID_OK)
+        self._loop_preview_button.Bind(wx.EVT_BUTTON, self._handle_loop_preview)
 
     def _install_shortcuts(self) -> None:
-        actions: list[tuple[str, Callable[[], None]]] = [
-            ("A", lambda: self._nudge_position(-5.0)),
-            ("S", lambda: self._nudge_position(-1.0)),
-            ("F", lambda: self._nudge_position(1.0)),
-            ("G", lambda: self._nudge_position(5.0)),
-            ("Z", lambda: self._nudge_position(-self._FINE_STEP, assign=True)),
-            ("C", lambda: self._nudge_position(self._FINE_STEP, assign=True)),
-            ("D", self._toggle_preview),
-            ("Q", lambda: self._start_preview_from(0.0)),
-            ("W", lambda: self._start_preview_from(max(0.0, (self._duration or 0.0) - self._DEFAULT_JUMP_SECONDS))),
-            ("X", self._assign_active_point),
-            ("V", self._preview_active_point),
-        ]
         entries: list[tuple[int, int, int]] = []
 
-        for letter, handler in actions:
+        def bind(letter: str, handler: Callable[[], None], *, flags: int = wx.ACCEL_NORMAL) -> None:
             cmd_id = wx.NewIdRef()
-            keycode = ord(letter)
-            for flags in (wx.ACCEL_NORMAL, wx.ACCEL_SHIFT):
-                entries.append((flags, keycode, int(cmd_id)))
+            entries.append((flags, ord(letter), int(cmd_id)))
             self.Bind(wx.EVT_MENU, lambda _evt, fn=handler: fn(), id=int(cmd_id))
+
+        def bind_with_shift(letter: str, handler: Callable[[], None]) -> None:
+            bind(letter, handler, flags=wx.ACCEL_NORMAL)
+            bind(letter, handler, flags=wx.ACCEL_SHIFT)
+
+        bind_with_shift("A", lambda: self._nudge_position(-5.0))
+        bind_with_shift("S", lambda: self._nudge_position(-1.0))
+        bind_with_shift("F", lambda: self._nudge_position(1.0))
+        bind_with_shift("G", lambda: self._nudge_position(5.0))
+        bind("Z", lambda: self._nudge_position(-self._FINE_STEP, assign=True), flags=wx.ACCEL_NORMAL)
+        bind("C", lambda: self._nudge_position(self._FINE_STEP, assign=True), flags=wx.ACCEL_NORMAL)
+        bind("X", self._assign_active_point, flags=wx.ACCEL_NORMAL)
+        bind_with_shift("D", self._toggle_preview)
+        bind_with_shift("Q", lambda: self._start_preview_from(0.0))
+        bind_with_shift(
+            "W",
+            lambda: self._start_preview_from(max(0.0, (self._duration or 0.0) - self._DEFAULT_JUMP_SECONDS)),
+        )
+        bind("V", self._preview_active_point, flags=wx.ACCEL_NORMAL)
+        bind("V", lambda: self._preview_loop_endpoint(is_start=False), flags=wx.ACCEL_SHIFT)
+        bind("V", self._preview_loop_range, flags=wx.ACCEL_ALT)
 
         accel = wx.AcceleratorTable(entries)
         self.SetAcceleratorTable(accel)
@@ -344,7 +438,7 @@ class MixPointEditorDialog(wx.Dialog):
             event.Skip()
             return
         if keycode == wx.WXK_SPACE:
-            self._toggle_preview()
+            event.Skip()
             return
         modifiers = event.GetModifiers()
         if keycode == wx.WXK_HOME:
@@ -376,7 +470,9 @@ class MixPointEditorDialog(wx.Dialog):
     # region preview helpers
 
     def _start_preview(self) -> None:
-        self._play_from(self._current_position())
+        loop_range = self._current_loop_range()
+        start = loop_range[0] if loop_range else self._current_position()
+        self._play_from(start, loop_range)
 
     def _toggle_preview(self) -> None:
         if self._preview_active:
@@ -388,8 +484,8 @@ class MixPointEditorDialog(wx.Dialog):
         self._set_position(seconds, restart_preview=False)
         self._play_from(max(0.0, min(seconds, self._duration if self._duration > 0 else seconds)))
 
-    def _play_from(self, seconds: float) -> None:
-        if self._on_preview(seconds):
+    def _play_from(self, seconds: float, loop_range: tuple[float, float] | None = None) -> None:
+        if self._on_preview(seconds, loop_range):
             self._preview_anchor_seconds = seconds
             self._preview_anchor_started = time.perf_counter()
             self._current_cursor_seconds = seconds
@@ -413,8 +509,9 @@ class MixPointEditorDialog(wx.Dialog):
 
     # region mix point helpers
 
-    def _assign_from_current(self, key: str) -> None:
-        position = self._current_position()
+    def _assign_from_current(self, key: str, position: float | None = None) -> None:
+        if position is None:
+            position = self._current_position()
         row = self._rows[key]
         if row.mode == "duration":
             value = max(0.0, self._duration - position)
@@ -425,11 +522,122 @@ class MixPointEditorDialog(wx.Dialog):
             row.checkbox.SetValue(True)
             self._toggle_point(key)
 
-    def _assign_active_point(self) -> None:
+    def _assign_active_point(self, *, position: float | None = None) -> None:
         key = self._ensure_active_row()
         if not key:
             return
-        self._assign_from_current(key)
+        self._assign_from_current(key, position=position)
+        if key in {"loop_start", "loop_end"}:
+            self._ensure_loop_consistency()
+
+    def _loop_rows(self) -> tuple[_MixPointRow, _MixPointRow] | None:
+        start_row = self._rows.get("loop_start")
+        end_row = self._rows.get("loop_end")
+        if start_row is None or end_row is None:
+            return None
+        return start_row, end_row
+
+    def _handle_loop_preview(self, _event: wx.Event) -> None:
+        self._start_loop_preview(show_error=True)
+
+    def _preview_loop_range(self) -> None:
+        self._start_loop_preview(show_error=False)
+
+    def _start_loop_preview(self, *, show_error: bool) -> None:
+        loop_range = self._current_loop_range()
+        if not loop_range:
+            if show_error:
+                wx.MessageBox(_("Set valid loop start and end first."), _("Error"), parent=self)
+            else:
+                wx.Bell()
+            return
+        self._set_position(loop_range[0])
+        self._play_from(loop_range[0], loop_range)
+
+    def _current_loop_range(self) -> tuple[float, float] | None:
+        rows = self._loop_rows()
+        if not rows:
+            return None
+        start_row, end_row = rows
+        if not (start_row.checkbox.GetValue() and end_row.checkbox.GetValue()):
+            return None
+        start = float(start_row.spin.GetValue())
+        end = float(end_row.spin.GetValue())
+        if end <= start:
+            return None
+        return start, end
+
+    def _format_replay_gain_text(self) -> str:
+        if self._current_replay_gain is None:
+            return _("not set")
+        return _("{gain:+.2f} dB").format(gain=self._current_replay_gain)
+
+    def _update_replay_gain_display(self) -> None:
+        if hasattr(self, "_replay_gain_display"):
+            self._replay_gain_display.ChangeValue(self._format_replay_gain_text())
+
+    def _initial_loudness_status(self) -> str:
+        if self._current_replay_gain is None:
+            return _("ReplayGain not measured yet")
+        return _("Existing ReplayGain: {gain:+.2f} dB").format(gain=self._current_replay_gain)
+
+    def _handle_normalize(self, _event: wx.CommandEvent) -> None:
+        if self._normalizing:
+            return
+        if find_bs1770gain() is None:
+            wx.MessageBox(
+                _("bs1770gain is not available. Install it and ensure it is on PATH."),
+                _("Error"),
+                parent=self,
+            )
+            return
+        self._normalizing = True
+        self._normalize_button.Enable(False)
+        self._set_loudness_status(_("Analyzing loudness…"))
+        Thread(target=self._normalization_worker, daemon=True).start()
+
+    def _normalization_worker(self) -> None:
+        try:
+            standard = self._selected_standard()
+            measurement = analyze_loudness(self._track_path, standard=standard)
+            target = -23.0 if standard is LoudnessStandard.EBU else -24.0
+            gain = target - measurement.integrated_lufs
+        except Exception as exc:  # pylint: disable=broad-except
+            wx.CallAfter(self._on_normalize_error, str(exc))
+        else:
+            wx.CallAfter(self._on_normalize_success, gain, measurement.integrated_lufs)
+
+    def _on_normalize_success(self, gain_db: float, measured_lufs: float) -> None:
+        self._normalizing = False
+        self._normalize_button.Enable(True)
+        self._current_replay_gain = gain_db
+        self._update_replay_gain_display()
+        self._set_loudness_status(
+            _("Measured {lufs:.2f} LUFS, applied gain {gain:+.2f} dB").format(
+                lufs=measured_lufs,
+                gain=gain_db,
+            ),
+            speak=True,
+        )
+        if self._on_replay_gain_update:
+            self._on_replay_gain_update(gain_db)
+
+    def _on_normalize_error(self, message: str) -> None:
+        self._normalizing = False
+        self._normalize_button.Enable(True)
+        self._set_loudness_status(message, speak=True)
+        wx.MessageBox(message or _("Normalization failed"), _("Error"), parent=self)
+
+    def _set_loudness_status(self, message: str, *, speak: bool = False) -> None:
+        if hasattr(self, "_normalize_status"):
+            self._normalize_status.ChangeValue(message)
+        if speak and message:
+            speak_text(message)
+
+    def _selected_standard(self) -> LoudnessStandard:
+        if self._standard_radio.GetSelection() == 1:
+            return LoudnessStandard.ATSC
+        return LoudnessStandard.EBU
 
     def _format_point_label(self, base: str, value: Optional[float]) -> str:
         if value is None:
@@ -441,18 +649,69 @@ class MixPointEditorDialog(wx.Dialog):
         value = float(row.spin.GetValue()) if row.checkbox.GetValue() else None
         row.checkbox.SetLabel(self._format_point_label(row.base_label, value))
 
+    def _handle_spin_edit(self, key: str) -> None:
+        self._update_point_label(key)
+        if key in {"loop_start", "loop_end"}:
+            self._ensure_loop_consistency()
+
     def _toggle_point(self, key: str) -> None:
         row = self._rows[key]
         self._active_row_key = key
         enabled = row.checkbox.GetValue()
-        row.spin.Enable(enabled)
-        if row.assign_button:
-            row.assign_button.Enable(enabled)
+        self._set_row_enabled(row, enabled)
         self._update_point_label(key)
+        if key in {"loop_start", "loop_end"}:
+            self._handle_loop_toggle(key, enabled)
 
     def _set_active_row(self, key: str) -> None:
         self._active_row_key = key
         self._update_point_label(key)
+
+    def _set_row_enabled(self, row: _MixPointRow, enabled: bool) -> None:
+        row.spin.Enable(enabled)
+        if row.assign_button:
+            row.assign_button.Enable(enabled)
+
+    def _handle_loop_toggle(self, key: str, enabled: bool) -> None:
+        rows = self._loop_rows()
+        if not rows:
+            return
+        start_row, end_row = rows
+        if key == "loop_start":
+            if not enabled and end_row.checkbox.GetValue():
+                end_row.checkbox.SetValue(False)
+                self._set_row_enabled(end_row, False)
+                self._update_point_label("loop_end")
+            else:
+                self._ensure_loop_consistency()
+        elif key == "loop_end":
+            if enabled and not start_row.checkbox.GetValue():
+                start_row.checkbox.SetValue(True)
+                self._set_row_enabled(start_row, True)
+                self._update_point_label("loop_start")
+            if not enabled:
+                return
+            self._ensure_loop_consistency()
+
+    def _ensure_loop_consistency(self) -> None:
+        rows = self._loop_rows()
+        if not rows:
+            return
+        start_row, end_row = rows
+        if not start_row.checkbox.GetValue():
+            if end_row.checkbox.GetValue():
+                end_row.checkbox.SetValue(False)
+                self._set_row_enabled(end_row, False)
+                self._update_point_label("loop_end")
+            return
+        if not end_row.checkbox.GetValue():
+            return
+        start_val = float(start_row.spin.GetValue())
+        end_val = float(end_row.spin.GetValue())
+        if end_val <= start_val:
+            adjusted = start_val + self._FINE_STEP
+            end_row.spin.SetValue(adjusted)
+            self._update_point_label("loop_end")
 
     def _preview_active_point(self) -> None:
         key = self._ensure_active_row()
@@ -469,6 +728,24 @@ class MixPointEditorDialog(wx.Dialog):
         elif row.mode == "duration":
             start = max(0.0, (self._duration or 0.0) - value)
         self._start_preview_from(start)
+
+    def _preview_loop_endpoint(self, *, is_start: bool) -> None:
+        rows = self._loop_rows()
+        if not rows:
+            wx.Bell()
+            return
+        start_row, end_row = rows
+        target_row = start_row if is_start else end_row
+        if not target_row.checkbox.GetValue():
+            wx.Bell()
+            return
+        target_value = float(target_row.spin.GetValue())
+        if not is_start:
+            start_value = float(start_row.spin.GetValue())
+            if target_value <= start_value:
+                wx.Bell()
+                return
+        self._start_preview_from(target_value)
 
     def _handle_checkbox_navigation(self, event: wx.KeyEvent, key: str) -> None:
         keycode = event.GetKeyCode()
@@ -556,7 +833,7 @@ class MixPointEditorDialog(wx.Dialog):
                 reference = max(0.0, (self._duration or 0.0) - reference)
             target = reference + delta
             self._set_position(target, restart_preview=True)
-            self._assign_active_point()
+            self._assign_active_point(position=target)
             return
         self._set_position(self._current_position() + delta, restart_preview=True)
 
@@ -595,4 +872,10 @@ class MixPointEditorDialog(wx.Dialog):
             elif row.mode == "duration":
                 results[key] = max(0.0, value)
 
+        loop_range = self._current_loop_range()
+        results["loop"] = {
+            "enabled": bool(loop_range),
+            "start": loop_range[0] if loop_range else None,
+            "end": loop_range[1] if loop_range else None,
+        }
         return results

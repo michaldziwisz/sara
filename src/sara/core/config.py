@@ -20,14 +20,13 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "news": {
         "line_length": 30,
     },
-        "shortcuts": {
-            "global": {
-                "play_next": "SPACE",
-                "auto_mix_toggle": "CTRL+SHIFT+M",
-                "selection_mode_toggle": "CTRL+SHIFT+ENTER",
-                "loop_playback_toggle": "CTRL+SHIFT+L",
-                "loop_info": "CTRL+ALT+SHIFT+L",
-            },
+    "shortcuts": {
+        "global": {
+            "play_next": "SPACE",
+            "auto_mix_toggle": "CTRL+SHIFT+M",
+            "loop_playback_toggle": "CTRL+SHIFT+L",
+            "loop_info": "CTRL+ALT+SHIFT+L",
+        },
         "playlist_menu": {
             "new": "CTRL+N",
             "add_tracks": "CTRL+D",
@@ -133,10 +132,6 @@ class SettingsManager:
             .get(scope, {})
         )
         normalized = {key: str(value).upper() for key, value in user_values.items() if isinstance(value, (str, int))}
-        if scope == "global" and "selection_mode_toggle" not in normalized:
-            legacy = user_values.get("marker_mode_toggle")
-            if isinstance(legacy, (str, int)):
-                normalized["selection_mode_toggle"] = str(legacy).upper()
         defaults.update(normalized)
         return defaults
 

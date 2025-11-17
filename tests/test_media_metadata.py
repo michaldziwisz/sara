@@ -1,9 +1,12 @@
 from pathlib import Path
 
+from pytest import approx
+
 from sara.core.media_metadata import (
     extract_metadata,
     is_supported_audio_file,
     save_mix_metadata,
+    save_replay_gain_metadata,
 )
 
 
@@ -64,3 +67,20 @@ def test_mix_metadata_removal(tmp_path) -> None:
     assert metadata.outro_seconds is None
     assert metadata.segue_seconds is None
     assert metadata.overlap_seconds is None
+
+
+def test_save_replay_gain_metadata(tmp_path) -> None:
+    target = tmp_path / "gain.wav"
+    target.write_bytes(b"\x00")
+    assert save_replay_gain_metadata(target, 4.25)
+    metadata = extract_metadata(target)
+    assert metadata.replay_gain_db == approx(4.25, abs=1e-3)
+
+
+def test_clear_replay_gain_metadata(tmp_path) -> None:
+    target = tmp_path / "gain_clear.wav"
+    target.write_bytes(b"\x00")
+    save_replay_gain_metadata(target, -3.0)
+    assert save_replay_gain_metadata(target, None)
+    metadata = extract_metadata(target)
+    assert metadata.replay_gain_db is None

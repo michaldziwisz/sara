@@ -26,6 +26,7 @@ from sara.core.media_metadata import (
     is_supported_audio_file,
     save_loop_metadata,
     save_mix_metadata,
+    save_replay_gain_metadata,
 )
 from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistKind, PlaylistModel
 from sara.core.shortcuts import get_shortcut
@@ -34,7 +35,6 @@ from sara.ui.new_playlist_dialog import NewPlaylistDialog
 from sara.ui.playlist_panel import PlaylistPanel
 from sara.ui.news_playlist_panel import NewsPlaylistPanel
 from sara.ui.playlist_devices_dialog import PlaylistDevicesDialog
-from sara.ui.loop_dialog import LoopDialog
 from sara.ui.mix_point_dialog import MixPointEditorDialog
 from sara.ui.options_dialog import OptionsDialog
 from sara.ui.shortcut_editor_dialog import ShortcutEditorDialog
@@ -101,7 +101,6 @@ class MainFrame(wx.Frame):
         self._add_tracks_id = wx.NewIdRef()
         self._assign_device_id = wx.NewIdRef()
         self._auto_mix_toggle_id = wx.NewIdRef()
-        self._selection_mode_toggle_id = wx.NewIdRef()
         self._loop_playback_toggle_id = wx.NewIdRef()
         self._loop_info_id = wx.NewIdRef()
         self._remove_playlist_id = wx.NewIdRef()
@@ -122,8 +121,6 @@ class MainFrame(wx.Frame):
         self._preview_context: PreviewContext | None = None
         self._auto_mix_enabled: bool = False
         self._auto_mix_state: Dict[tuple[str, str], bool] = {}
-        self._selection_mode_enabled: bool = False
-        self._selection_mode_menu_item: wx.MenuItem | None = None
         self._alternate_play_next: bool = self._settings.get_alternate_play_next()
         self._auto_remove_played: bool = self._settings.get_auto_remove_played()
         self._focus_playing_track: bool = self._settings.get_focus_playing_track()
@@ -134,6 +131,7 @@ class MainFrame(wx.Frame):
         self._redo_stack: list[UndoAction] = []
         self._focus_lock: Dict[str, bool] = {}
         self._intro_alert_players: list[Tuple[Player, Path]] = []
+        self._last_started_item_id: Dict[str, str | None] = {}
 
         self._ensure_legacy_hooks()
 
@@ -194,17 +192,6 @@ class MainFrame(wx.Frame):
 
         tools_menu = wx.Menu()
         options_id = wx.NewIdRef()
-        selection_item = self._append_shortcut_menu_item(
-            tools_menu,
-            self._selection_mode_toggle_id,
-            _("&Selection mode"),
-            "global",
-            "selection_mode_toggle",
-            check=True,
-        )
-        selection_item.Check(self._selection_mode_enabled)
-        self._selection_mode_menu_item = selection_item
-
         self._append_shortcut_menu_item(
             tools_menu,
             self._loop_playback_toggle_id,
@@ -236,7 +223,6 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self._on_remove_playlist, id=self._remove_playlist_id)
         self.Bind(wx.EVT_MENU, self._on_manage_playlists, id=self._manage_playlists_id)
         self.Bind(wx.EVT_MENU, self._on_options, id=int(options_id))
-        self.Bind(wx.EVT_MENU, self._on_toggle_selection_mode, id=int(self._selection_mode_toggle_id))
         self.Bind(wx.EVT_MENU, self._on_toggle_loop_playback, id=int(self._loop_playback_toggle_id))
         self.Bind(wx.EVT_MENU, self._on_loop_info, id=int(self._loop_info_id))
         self.Bind(wx.EVT_MENU, self._on_edit_shortcuts, id=int(self._shortcut_editor_id))
@@ -383,10 +369,6 @@ class MainFrame(wx.Frame):
         add_entry("global", "auto_mix_toggle", auto_mix_id)
         self.Bind(wx.EVT_MENU, self._on_toggle_auto_mix, id=auto_mix_id)
 
-        selection_id = int(self._selection_mode_toggle_id)
-        add_entry("global", "selection_mode_toggle", selection_id)
-        self.Bind(wx.EVT_MENU, self._on_toggle_selection_mode, id=selection_id)
-
         add_entry("global", "loop_playback_toggle", int(self._loop_playback_toggle_id))
         add_entry("global", "loop_info", int(self._loop_info_id))
 
@@ -473,8 +455,7 @@ class MainFrame(wx.Frame):
                 container,
                 model=model,
                 on_focus=self._on_playlist_focus,
-                on_loop_configure=self._on_loop_configure,
-                 on_mix_configure=self._on_mix_points_configure,
+                on_mix_configure=self._on_mix_points_configure,
                 on_toggle_selection=self._on_toggle_selection,
                 on_selection_change=self._on_playlist_selection_change,
             )
@@ -497,6 +478,7 @@ class MainFrame(wx.Frame):
         self._playlist_wrappers[model.id] = container
         self._playlist_headers[model.id] = header
         self._playlist_titles[model.id] = model.name
+        self._last_started_item_id.setdefault(model.id, None)
         if model.id not in self._playlist_order:
             self._playlist_order.append(model.id)
         if self._current_panel_id is None:
@@ -511,7 +493,9 @@ class MainFrame(wx.Frame):
 
     def _playlist_has_selection(self, playlist_id: str) -> bool:
         model = self._get_playlist_model(playlist_id)
-        return model.has_selected_items() if model else False
+        if not model:
+            return False
+        return any(item.is_selected for item in model.items)
 
     def _apply_playlist_order(self, order: list[str]) -> None:
         filtered = [playlist_id for playlist_id in order if playlist_id in self._playlists]
@@ -553,6 +537,7 @@ class MainFrame(wx.Frame):
         self._playlist_container.FitInside()
         self._auto_mix_state = {key: value for key, value in self._auto_mix_state.items() if key[0] != playlist_id}
         self._playback_contexts = {key: value for key, value in self._playback_contexts.items() if key[0] != playlist_id}
+        self._last_started_item_id.pop(playlist_id, None)
         self._apply_playlist_order(self._playlist_order)
         if announce:
             self._announce_event("playlist", _("Removed playlist %s") % title)
@@ -1012,21 +997,11 @@ class MainFrame(wx.Frame):
             self._auto_mix_state.clear()
         status = _("enabled") if self._auto_mix_enabled else _("disabled")
         self._announce_event("auto_mix", _("Auto mix %s") % status)
-
-    def _on_toggle_selection_mode(self, event: wx.CommandEvent) -> None:
-        if self._selection_mode_menu_item:
-            requested_state = self._selection_mode_menu_item.IsChecked()
-            if requested_state != self._selection_mode_enabled:
-                self._selection_mode_enabled = requested_state
-            else:
-                self._selection_mode_enabled = not self._selection_mode_enabled
-                self._selection_mode_menu_item.Check(self._selection_mode_enabled)
-        else:
-            self._selection_mode_enabled = not self._selection_mode_enabled
-        if self._selection_mode_enabled:
-            self._announce_event("selection", _("Selection mode enabled"))
-        else:
-            self._announce_event("selection", _("Selection mode disabled"))
+        if self._auto_mix_enabled:
+            panel = self._get_current_music_panel()
+            if panel is not None and self._get_playback_context(panel.model.id) is None:
+                if not self._start_next_from_playlist(panel, ignore_ui_selection=False, advance_focus=False):
+                    self._announce_event("playback_events", _("No scheduled tracks available"))
 
     def _on_toggle_loop_playback(self, _event: wx.CommandEvent) -> None:
         context = self._get_selected_context()
@@ -1057,6 +1032,13 @@ class MainFrame(wx.Frame):
             if remaining is not None:
                 self._announce_intro_remaining(remaining)
         panel.refresh()
+
+    def _apply_replay_gain(self, item: PlaylistItem, gain_db: float | None) -> None:
+        item.replay_gain_db = gain_db
+        if not save_replay_gain_metadata(item.path, gain_db):
+            self._announce_event("pfl", _("Failed to update ReplayGain metadata"))
+        else:
+            self._announce_event("pfl", _("Updated ReplayGain for %s") % item.title)
 
     def _on_loop_info(self, _event: wx.CommandEvent) -> None:
         context = self._get_selected_context()
@@ -1109,63 +1091,27 @@ class MainFrame(wx.Frame):
                 logger.debug("Failed to synchronise playback loop: %s", exc)
 
     def _on_toggle_selection(self, playlist_id: str, item_id: str) -> None:
+        if self._auto_mix_enabled:
+            self._announce_event("selection", _("Disable auto mix to queue specific tracks"))
+            return
         playlist = self._get_playlist_model(playlist_id)
         if not playlist:
             return
         selected = playlist.toggle_selection(item_id)
-        self._refresh_selection_display(playlist_id)
+        panel = self._playlists.get(playlist_id)
+        if panel is not None:
+            try:
+                index = next(idx for idx, track in enumerate(panel.model.items) if track.id == item_id)
+            except StopIteration:
+                indices = None
+            else:
+                indices = [index]
+            panel.refresh(indices, focus=bool(indices))
         item = playlist.get_item(item_id)
         if selected:
             self._announce_event("selection", _("Track %s selected in playlist %s") % (item.title, playlist.name))
         else:
             self._announce_event("selection", _("Selection removed from %s") % item.title)
-
-    def _on_loop_configure(self, playlist_id: str, item_id: str) -> None:
-        panel = self._playlists.get(playlist_id)
-        if panel is None:
-            return
-        item = next((track for track in panel.model.items if track.id == item_id), None)
-        if item is None:
-            return
-
-        dialog = LoopDialog(
-            self,
-            duration_seconds=item.duration_seconds,
-            initial_start=item.loop_start_seconds,
-            initial_end=item.loop_end_seconds,
-            enable_loop=item.loop_enabled,
-            on_preview=lambda start, end: self._start_pfl_preview(item, start, loop_range=(start, end)),
-            on_loop_update=lambda start, end: self._update_loop_preview(item, start, end),
-            on_preview_stop=self._stop_pfl_preview,
-        )
-
-        try:
-            if dialog.ShowModal() == wx.ID_OK:
-                if dialog.was_cleared():
-                    item.clear_loop()
-                    if not save_loop_metadata(item.path, None, None):
-                        self._announce_event("loop", _("Failed to update loop metadata"))
-                    self._apply_loop_setting_to_playback(playlist_id=playlist_id, item_id=item.id)
-                    panel.refresh()
-                    self._announce_event("loop", _("Loop removed from %s") % item.title)
-                else:
-                    enabled, start, end = dialog.get_result()
-                    try:
-                        item.set_loop(start, end)
-                    except ValueError as exc:
-                        self._announce_event("loop", str(exc))
-                        return
-
-                    item.loop_enabled = bool(enabled)
-
-                    if not save_loop_metadata(item.path, start, end, item.loop_enabled):
-                        self._announce_event("loop", _("Failed to update loop metadata"))
-
-                    self._apply_loop_setting_to_playback(playlist_id=playlist_id, item_id=item.id)
-                    panel.refresh()
-        finally:
-            dialog.Destroy()
-            self._stop_pfl_preview()
 
     def _on_mix_points_configure(self, playlist_id: str, item_id: str) -> None:
         panel = self._playlists.get(playlist_id)
@@ -1184,8 +1130,18 @@ class MainFrame(wx.Frame):
             outro_seconds=item.outro_seconds,
             segue_seconds=item.segue_seconds,
             overlap_seconds=item.overlap_seconds,
-            on_preview=lambda position: self._start_pfl_preview(item, max(0.0, position)),
+            on_preview=lambda position, loop_range=None: self._start_pfl_preview(
+                item,
+                max(0.0, position),
+                loop_range=loop_range,
+            ),
             on_stop_preview=self._stop_pfl_preview,
+            track_path=item.path,
+            initial_replay_gain=item.replay_gain_db,
+            on_replay_gain_update=lambda gain, item=item: self._apply_replay_gain(item, gain),
+            loop_start_seconds=item.loop_start_seconds,
+            loop_end_seconds=item.loop_end_seconds,
+            loop_enabled=item.loop_enabled,
         )
 
         try:
@@ -1223,6 +1179,27 @@ class MainFrame(wx.Frame):
             self._announce_event("pfl", _("Updated mix points for %s") % item.title)
 
         panel.refresh()
+
+        loop_info = result.get("loop") or {}
+        loop_defined = bool(loop_info.get("enabled"))
+        loop_start = loop_info.get("start")
+        loop_end = loop_info.get("end")
+        if loop_defined and loop_start is not None and loop_end is not None and loop_end > loop_start:
+            try:
+                item.set_loop(loop_start, loop_end)
+            except ValueError as exc:
+                self._announce_event("loop", str(exc))
+            else:
+                if not save_loop_metadata(item.path, loop_start, loop_end, item.loop_enabled):
+                    self._announce_event("loop", _("Failed to update loop metadata"))
+                self._apply_loop_setting_to_playback(playlist_id=playlist_id, item_id=item.id)
+                panel.refresh()
+        else:
+            if item.has_loop() or item.loop_enabled:
+                item.clear_loop()
+                save_loop_metadata(item.path, None, None)
+                self._apply_loop_setting_to_playback(playlist_id=playlist_id, item_id=item.id)
+                panel.refresh()
 
     def _start_playback(self, panel: PlaylistPanel, item: PlaylistItem) -> bool:
         playlist = panel.model
@@ -1314,20 +1291,64 @@ class MainFrame(wx.Frame):
             self._announce_event("loop", _("Loop playing"))
         return True
 
-    def _start_next_from_playlist(self, panel: PlaylistPanel) -> bool:
+    def _start_next_from_playlist(
+        self,
+        panel: PlaylistPanel,
+        *,
+        ignore_ui_selection: bool = False,
+        advance_focus: bool = True,
+    ) -> bool:
         playlist = panel.model
-        preferred_item_id = None
-        if self._selection_mode_enabled:
-            preferred_item_id = playlist.next_selected_item_id()
+        if not playlist.items:
+            self._announce_event("playlist", _("Playlist %s is empty") % playlist.name)
+            return False
+
+        consumed_model_selection = False
+        preferred_item_id = playlist.next_selected_item_id()
+        play_index: int | None = None
+
+        used_ui_selection = False
+
+        if preferred_item_id:
+            consumed_model_selection = True
+            play_index = self._index_of_item(playlist, preferred_item_id)
+        else:
+            if not ignore_ui_selection:
+                selected_indices = panel.get_selected_indices()
+            else:
+                selected_indices = []
+            if selected_indices:
+                play_index = selected_indices[0]
+                used_ui_selection = True
+            elif not ignore_ui_selection:
+                focus_index = panel.get_focused_index()
+                if focus_index != wx.NOT_FOUND:
+                    play_index = focus_index
+                    used_ui_selection = True
+                else:
+                    play_index = self._derive_next_play_index(playlist)
+            else:
+                play_index = self._derive_next_play_index(playlist)
+            if play_index is not None and 0 <= play_index < len(playlist.items):
+                preferred_item_id = playlist.items[play_index].id
+            else:
+                preferred_item_id = None
+
         item = playlist.begin_next_item(preferred_item_id)
         if not item:
             self._announce_event("playback_events", _("No scheduled tracks in playlist %s") % playlist.name)
             return False
+
         if self._start_playback(panel, item):
+            self._last_started_item_id[playlist.id] = item.id
             track_name = self._format_track_name(item)
-            if preferred_item_id and item.id == preferred_item_id:
+            if consumed_model_selection and item.id == preferred_item_id:
                 playlist.clear_selection(item.id)
                 self._refresh_selection_display(playlist.id)
+            if advance_focus and not consumed_model_selection and not used_ui_selection:
+                next_focus = self._derive_next_play_index(playlist)
+                if next_focus is not None and 0 <= next_focus < len(playlist.items):
+                    panel.select_index(next_focus, focus=False)
             status_message = _("Playing %s from playlist %s") % (track_name, playlist.name)
             self._announce_event(
                 "playback_events",
@@ -1336,6 +1357,26 @@ class MainFrame(wx.Frame):
             )
             return True
         return False
+
+    def _derive_next_play_index(self, playlist: PlaylistModel) -> int | None:
+        if not playlist.items:
+            return None
+        last_id = self._last_started_item_id.get(playlist.id)
+        if not last_id:
+            return 0
+        last_index = self._index_of_item(playlist, last_id)
+        if last_index is None:
+            return 0
+        return (last_index + 1) % len(playlist.items)
+
+    @staticmethod
+    def _index_of_item(playlist: PlaylistModel, item_id: str | None) -> int | None:
+        if not item_id:
+            return None
+        for idx, entry in enumerate(playlist.items):
+            if entry.id == item_id:
+                return idx
+        return None
 
     def _play_next_alternate(self) -> bool:
         ordered_ids = [playlist_id for playlist_id in self._playlist_order if playlist_id in self._playlists]
@@ -1346,13 +1387,7 @@ class MainFrame(wx.Frame):
         start_index = self._current_index % page_count
         rotated_order = [ordered_ids[(start_index + offset) % page_count] for offset in range(page_count)]
 
-        candidate_ids = rotated_order
-        if self._selection_mode_enabled:
-            prioritized = [pid for pid in candidate_ids if self._playlist_has_selection(pid)]
-            others = [pid for pid in candidate_ids if pid not in prioritized]
-            candidate_ids = prioritized + others
-
-        for playlist_id in candidate_ids:
+        for playlist_id in rotated_order:
             panel = self._playlists.get(playlist_id)
             if panel is None:
                 continue
@@ -1448,7 +1483,10 @@ class MainFrame(wx.Frame):
         self._maybe_focus_playing_item(panel, item_id)
         self._consider_intro_alert(panel, item, context_entry, seconds)
 
-        if self._auto_mix_enabled:
+        queued_selection = self._playlist_has_selection(playlist_id)
+        mix_enabled = self._auto_mix_enabled or queued_selection
+
+        if mix_enabled:
             key = (playlist_id, item_id)
             if not self._auto_mix_state.get(key):
                 target = item.segue_seconds
@@ -1465,6 +1503,14 @@ class MainFrame(wx.Frame):
                     progress = seconds - (item.cue_in_seconds or 0.0)
                     if progress >= target:
                         self._auto_mix_state[key] = True
+                        next_started = self._start_next_from_playlist(
+                            panel,
+                            ignore_ui_selection=self._auto_mix_enabled,
+                            advance_focus=False,
+                        )
+                        if not next_started:
+                            self._auto_mix_state[key] = False
+                            return
                         try:
                             if default_overlap and default_overlap > 0:
                                 context_entry.player.fade_out(default_overlap)
@@ -1472,8 +1518,6 @@ class MainFrame(wx.Frame):
                                 context_entry.player.stop()
                         except Exception as exc:  # pylint: disable=broad-except
                             logger.warning("Auto mix fade out failed: %s", exc)
-                        if not self._start_next_from_playlist(panel):
-                            self._auto_mix_state[key] = False
 
     def _on_playlist_hotkey(self, event: wx.CommandEvent) -> None:
         action = self._action_by_id.get(event.GetId())
@@ -1814,7 +1858,7 @@ class MainFrame(wx.Frame):
         )
 
     def _maybe_focus_playing_item(self, panel: PlaylistPanel, item_id: str) -> None:
-        if not self._focus_playing_track:
+        if not self._focus_playing_track or self._auto_mix_enabled:
             return
         playlist_id = panel.model.id
         if self._focus_lock.get(playlist_id):
@@ -1959,6 +2003,7 @@ class MainFrame(wx.Frame):
         item = model.items.pop(index)
         was_selected = item.is_selected
         item.is_selected = was_selected
+        self._forget_last_started_item(model.id, item.id)
         if any(key == (model.id, item.id) for key in self._playback_contexts):
             self._stop_playlist_playback(model.id, mark_played=False, fade_duration=0.0)
         if refocus:
@@ -1984,6 +2029,10 @@ class MainFrame(wx.Frame):
         else:
             self._refresh_playlist_view(panel, None)
         return removed
+
+    def _forget_last_started_item(self, playlist_id: str, item_id: str) -> None:
+        if self._last_started_item_id.get(playlist_id) == item_id:
+            self._last_started_item_id[playlist_id] = None
 
     def _push_undo_action(self, model: PlaylistModel, operation) -> None:
         self._undo_stack.append(UndoAction(model.id, operation))

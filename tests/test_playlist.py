@@ -58,3 +58,14 @@ def test_clear_selection_resets_flags() -> None:
     playlist.clear_selection()
 
     assert all(not item.is_selected for item in items)
+
+
+def test_begin_next_item_replays_played_preferred_track() -> None:
+    played = _make_item("a", status=PlaylistItemStatus.PLAYED)
+    playlist = PlaylistModel(id="pl", name="Test", items=[played])
+
+    result = playlist.begin_next_item(played.id)
+
+    assert result is played
+    assert played.status is PlaylistItemStatus.PLAYING
+    assert played.current_position == 0.0

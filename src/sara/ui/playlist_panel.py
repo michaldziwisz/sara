@@ -19,7 +19,6 @@ class PlaylistPanel(wx.Panel):
         parent: wx.Window,
         model: PlaylistModel,
         on_focus: Callable[[str], None] | None = None,
-        on_loop_configure: Callable[[str, str], None] | None = None,
         on_mix_configure: Callable[[str, str], None] | None = None,
         on_toggle_selection: Callable[[str, str], None] | None = None,
         on_selection_change: Callable[[str, list[int]], None] | None = None,
@@ -28,7 +27,6 @@ class PlaylistPanel(wx.Panel):
         self.SetName(model.name)
         self.model = model
         self._on_focus = on_focus
-        self._on_loop_configure = on_loop_configure
         self._on_mix_configure = on_mix_configure
         self._on_toggle_selection = on_toggle_selection
         self._on_selection_change = on_selection_change
@@ -160,6 +158,9 @@ class PlaylistPanel(wx.Panel):
             index = self._list_ctrl.GetNextItem(index, wx.LIST_NEXT_ALL, wx.LIST_STATE_SELECTED)
         return indices
 
+    def get_focused_index(self) -> int:
+        return self._list_ctrl.GetFocusedItem()
+
     def set_selection(self, indices: list[int], *, focus: bool = True) -> None:
         count = self._list_ctrl.GetItemCount()
         valid_indices = [index for index in indices if 0 <= index < count]
@@ -190,19 +191,6 @@ class PlaylistPanel(wx.Panel):
         item = self.model.items[item_index]
         menu = wx.Menu()
 
-        if self._on_loop_configure:
-            loop_id = wx.NewIdRef()
-            label = _("&Loop…")
-            if item.has_loop():
-                label = _("&Loop… (set)")
-            menu.Append(loop_id, label)
-
-            def _trigger_loop(_evt: wx.CommandEvent) -> None:
-                self._notify_focus()
-                self._on_loop_configure(self.model.id, item.id)
-
-            self.Bind(wx.EVT_MENU, _trigger_loop, id=int(loop_id))
-
         if self._on_mix_configure:
             mix_id = wx.NewIdRef()
             menu.Append(mix_id, _("&Mix points…"))
@@ -220,6 +208,8 @@ class PlaylistPanel(wx.Panel):
 
             def _trigger_selection(_evt: wx.CommandEvent) -> None:
                 self._notify_focus()
+                self.set_selection([item_index], focus=True)
+                self._list_ctrl.Focus(item_index)
                 self._on_toggle_selection(self.model.id, item.id)
 
             self.Bind(wx.EVT_MENU, _trigger_selection, id=int(toggle_id))
@@ -235,18 +225,30 @@ class PlaylistPanel(wx.Panel):
             menu.Destroy()
 
     def _handle_key_down(self, event: wx.KeyEvent) -> None:
+        if self._handle_navigation_key(event):
+            return
         if not self._handle_selection_key_event(event):
             event.Skip()
 
     def _handle_char_hook(self, event: wx.KeyEvent) -> None:
+        if self._handle_navigation_key(event):
+            return
         if not self._handle_selection_key_event(event):
             event.Skip()
 
     def _handle_char(self, event: wx.KeyEvent) -> None:
+        if self._handle_navigation_key(event):
+            return
         if not self._handle_selection_key_event(event):
             event.Skip()
 
     def _handle_list_key_down(self, event: wx.ListEvent) -> None:
+        key_code = event.GetKeyCode()
+        if key_code in (wx.WXK_UP, wx.WXK_DOWN) and not wx.GetKeyState(wx.WXK_SHIFT) and not wx.GetKeyState(wx.WXK_CONTROL) and not wx.GetKeyState(wx.WXK_ALT):
+            delta = -1 if key_code == wx.WXK_UP else 1
+            if self._move_focus_by_delta(delta):
+                event.Skip(False)
+                return
         if not self._handle_selection_key_event(event):
             event.Skip()
 
@@ -279,6 +281,35 @@ class PlaylistPanel(wx.Panel):
             self._trigger_selection_toggle(event.GetIndex())
         event.Skip()
 
+    def _handle_navigation_key(self, event: wx.KeyEvent) -> bool:
+        key_code = event.GetKeyCode()
+        if key_code not in (wx.WXK_UP, wx.WXK_DOWN):
+            return False
+        if event.ControlDown() or event.AltDown() or event.MetaDown() or event.ShiftDown():
+            return False
+        delta = -1 if key_code == wx.WXK_UP else 1
+        handled = self._move_focus_by_delta(delta)
+        if handled:
+            event.StopPropagation()
+            event.Skip(False)
+        return handled
+
+    def _move_focus_by_delta(self, delta: int) -> bool:
+        count = self._list_ctrl.GetItemCount()
+        if count == 0:
+            return False
+        current = self._list_ctrl.GetFocusedItem()
+        if current == wx.NOT_FOUND:
+            selected = self.get_selected_indices()
+            current = selected[0] if selected else 0
+        target = max(0, min(count - 1, current + delta))
+        if target == current:
+            return True
+        self.set_selection([target])
+        self._list_ctrl.Focus(target)
+        self._list_ctrl.EnsureVisible(target)
+        return True
+
     def _suppress_tooltip(self, event: wx.Event) -> None:
         if hasattr(event, "SetToolTip"):
             event.SetToolTip(None)
@@ -289,4 +320,5 @@ class PlaylistPanel(wx.Panel):
             return
         item = self.model.items[index]
         self._notify_focus()
+        self._list_ctrl.Focus(index)
         self._on_toggle_selection(self.model.id, item.id)
