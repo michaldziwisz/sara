@@ -1,68 +1,1317 @@
+#
 msgid ""
 msgstr ""
 "Project-Id-Version: SARA\n"
+"Report-Msgid-Bugs-To: EMAIL@ADDRESS\n"
+"POT-Creation-Date: 2025-11-17 16:44+0100\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: en <LL@li.org>\n"
 "Language: en\n"
 "MIME-Version: 1.0\n"
-"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Type: text/plain; charset=utf-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"Generated-By: Babel 2.17.0\n"
 
-msgid "Choose how many players to use and assign audio devices."
-msgstr "Choose how many players to use and assign audio devices."
+#: src/sara/news_editor_app.py:25
+msgid "SARA News Editor"
+msgstr "SARA News Editor"
 
-msgid "Choose which announcements should be spoken by the screen reader."
-msgstr "Choose which announcements should be spoken by the screen reader."
+#: src/sara/news_editor_app.py:30
+msgid "News service"
+msgstr "News service"
 
+#: src/sara/news_editor_app.py:55
+msgid "(Select playback device)"
+msgstr "Playback events"
+
+#: src/sara/news_editor_app.py:83 src/sara/ui/main_frame.py:556
+#, python-format
+msgid "Audio file %s does not exist"
+msgstr "Audio file %s does not exist"
+
+#: src/sara/news_editor_app.py:83 src/sara/news_editor_app.py:87
+#: src/sara/news_editor_app.py:94 src/sara/news_editor_app.py:99
+#: src/sara/news_editor_app.py:104 src/sara/ui/mix_point_dialog.py:550
+#: src/sara/ui/mix_point_dialog.py:590 src/sara/ui/mix_point_dialog.py:629
+#: src/sara/ui/new_playlist_dialog.py:50
+#: src/sara/ui/news_playlist_panel.py:296
+#: src/sara/ui/news_playlist_panel.py:387 src/sara/ui/options_dialog.py:84
+#: src/sara/ui/shortcut_editor_dialog.py:106
+msgid "Error"
+msgstr "Error"
+
+#: src/sara/news_editor_app.py:87 src/sara/ui/main_frame.py:561
+msgid "Select a playback device first"
+msgstr "Select a playback device first"
+
+#: src/sara/news_editor_app.py:94 src/sara/ui/main_frame.py:566
+#, python-format
+msgid "Device %s is not available"
+msgstr "Device %s is not available"
+
+#: src/sara/news_editor_app.py:99
+#, python-format
+msgid "Unable to open device: %s"
+msgstr "Unable to open device: %s"
+
+#: src/sara/news_editor_app.py:104
+#, python-format
+msgid "Failed to play clip: %s"
+msgstr "Failed to play clip: %s"
+
+#: src/sara/ui/file_selection_dialog.py:27
+msgid "All files|*.*"
+msgstr "All files|*.*"
+
+#: src/sara/ui/file_selection_dialog.py:31
+msgid "Select files"
+msgstr "Select files"
+
+#: src/sara/ui/file_selection_dialog.py:52
+msgid "Location:"
+msgstr "Location:"
+
+#: src/sara/ui/file_selection_dialog.py:60
+msgid "Filter:"
+msgstr "Filter:"
+
+#: src/sara/ui/file_selection_dialog.py:71 src/sara/ui/main_frame.py:2548
+#: src/sara/ui/options_dialog.py:169
+msgid "Name"
+msgstr "Name"
+
+#: src/sara/ui/file_selection_dialog.py:72 src/sara/ui/main_frame.py:2549
+#: src/sara/ui/options_dialog.py:170
+msgid "Type"
+msgstr "Type"
+
+#: src/sara/ui/file_selection_dialog.py:73
+msgid "Size"
+msgstr "Size"
+
+#: src/sara/ui/file_selection_dialog.py:81
+msgid "File name:"
+msgstr "File name:"
+
+#: src/sara/ui/file_selection_dialog.py:105
+#: src/sara/ui/file_selection_dialog.py:111
+msgid "All files"
+msgstr "All files"
+
+#: src/sara/ui/file_selection_dialog.py:108
+msgid "Files"
+msgstr "Files"
+
+#: src/sara/ui/file_selection_dialog.py:128
+msgid "Computer"
+msgstr "Computer"
+
+#: src/sara/ui/file_selection_dialog.py:154
+msgid "File"
+msgstr "File"
+
+#: src/sara/ui/file_selection_dialog.py:156
+msgid "Folder"
+msgstr "Folder"
+
+#: src/sara/ui/file_selection_dialog.py:158
+msgid "Drive"
+msgstr "Drive"
+
+#: src/sara/ui/file_selection_dialog.py:160
+msgid "Parent folder"
+msgstr "Parent folder"
+
+#: src/sara/ui/file_selection_dialog.py:262
+msgid "Enter a file name."
+msgstr "Enter a file name."
+
+#: src/sara/ui/file_selection_dialog.py:262
+#: src/sara/ui/file_selection_dialog.py:278
+#: src/sara/ui/file_selection_dialog.py:281 src/sara/ui/main_frame.py:2640
+msgid "Warning"
+msgstr "Warning"
+
+#: src/sara/ui/file_selection_dialog.py:269
+msgid "File exists. Overwrite?"
+msgstr "File exists. Overwrite?"
+
+#: src/sara/ui/file_selection_dialog.py:270
+msgid "Confirm overwrite"
+msgstr "Confirm overwrite"
+
+#: src/sara/ui/file_selection_dialog.py:278
+msgid "Select at least one file."
+msgstr "Select at least one file."
+
+#: src/sara/ui/file_selection_dialog.py:281
+msgid "Some files do not exist."
+msgstr "Some files do not exist."
+
+#: src/sara/ui/main_frame.py:139
+msgid "Ready"
+msgstr "Ready"
+
+#: src/sara/ui/main_frame.py:159 src/sara/ui/main_frame.py:160
+msgid "&New playlist"
+msgstr "&New playlist"
+
+#: src/sara/ui/main_frame.py:161 src/sara/ui/main_frame.py:162
+msgid "Add &tracks…"
+msgstr "Add &tracks…"
+
+#: src/sara/ui/main_frame.py:163 src/sara/ui/main_frame.py:164
+msgid "Assign &audio device…"
+msgstr "Assign &audio device…"
+
+#: src/sara/ui/main_frame.py:165 src/sara/ui/main_frame.py:166
+msgid "&Import playlist"
+msgstr "&Import playlist"
+
+#: src/sara/ui/main_frame.py:168 src/sara/ui/main_frame.py:170
+msgid "&Remove playlist"
+msgstr "&Remove playlist"
+
+#: src/sara/ui/main_frame.py:169 src/sara/ui/main_frame.py:171
+msgid "Manage &playlists…"
+msgstr "Manage &playlists…"
+
+#: src/sara/ui/main_frame.py:173 src/sara/ui/main_frame.py:174
+msgid "&Export playlist…"
+msgstr "&Export playlist…"
+
+#: src/sara/ui/main_frame.py:175 src/sara/ui/main_frame.py:176
+msgid "E&xit"
+msgstr "E&xit"
+
+#: src/sara/ui/main_frame.py:177
+msgid "&Playlist"
+msgstr "&Playlist"
+
+#: src/sara/ui/main_frame.py:180
+msgid "&Undo"
+msgstr "&Undo"
+
+#: src/sara/ui/main_frame.py:181
+msgid "Re&do"
+msgstr "Re&do"
+
+#: src/sara/ui/main_frame.py:183
+msgid "Cu&t"
+msgstr "Cu&t"
+
+#: src/sara/ui/main_frame.py:184
+msgid "&Copy"
+msgstr "&Copy"
+
+#: src/sara/ui/main_frame.py:185
+msgid "&Paste"
+msgstr "&Paste"
+
+#: src/sara/ui/main_frame.py:187
+msgid "&Delete"
+msgstr "&Delete"
+
+#: src/sara/ui/main_frame.py:189
+msgid "Move &up"
+msgstr "Move &up"
+
+#: src/sara/ui/main_frame.py:190
+msgid "Move &down"
+msgstr "Move &down"
+
+#: src/sara/ui/main_frame.py:191
+msgid "&Edit"
+msgstr "&Edit"
+
+#: src/sara/ui/main_frame.py:198
+msgid "Toggle track &loop"
+msgstr "Toggle track &loop"
+
+#: src/sara/ui/main_frame.py:206
+msgid "Loop &information"
+msgstr "Loop &information"
+
+#: src/sara/ui/main_frame.py:211
+msgid "Edit &shortcuts…"
+msgstr "Edit &shortcuts…"
+
+#: src/sara/ui/main_frame.py:212
+msgid "&Options…"
+msgstr "&Options…"
+
+#: src/sara/ui/main_frame.py:213
+msgid "&Tools"
+msgstr "&Tools"
+
+#: src/sara/ui/main_frame.py:305
+#, python-format
+msgid "No playlists available. Use %s to add a new playlist."
+msgstr "No playlists available. Use %s to add a new playlist."
+
+#: src/sara/ui/main_frame.py:310
+msgid "No playlists available. Use the Playlist menu to add one."
+msgstr "No playlists available. Use the Playlist menu to add one."
+
+#: src/sara/ui/main_frame.py:489
+#, python-format
+msgid "Playlist %s added"
+msgstr "Playlist %s added"
+
+#: src/sara/ui/main_frame.py:543
+#, python-format
+msgid "Removed playlist %s"
+msgstr "Removed playlist %s"
+
+#: src/sara/ui/main_frame.py:550
+msgid "(use global/PFL device)"
+msgstr "(use global/PFL device)"
+
+#: src/sara/ui/main_frame.py:571
+#, python-format
+msgid "Failed to play audio clip: %s"
+msgstr "Failed to play audio clip: %s"
+
+#: src/sara/ui/main_frame.py:617 src/sara/ui/main_frame.py:748
+#: src/sara/ui/main_frame.py:1409
+msgid "No playlists available"
+msgstr "No playlists available"
+
+#: src/sara/ui/main_frame.py:674 src/sara/ui/main_frame.py:774
+#: src/sara/ui/main_frame.py:819 src/sara/ui/main_frame.py:908
+#: src/sara/ui/main_frame.py:1429 src/sara/ui/main_frame.py:1529
+#: src/sara/ui/main_frame.py:1615
+msgid "Select a playlist first"
+msgstr "Select a playlist first"
+
+#: src/sara/ui/main_frame.py:678
+msgid ""
+"Audio files (*.mp3;*.wav;*.flac;*.ogg)|*.mp3;*.wav;*.flac;*.ogg|All "
+"files|*.*"
+msgstr ""
+"Audio files (*.mp3;*.wav;*.flac;*.ogg)|*.mp3;*.wav;*.flac;*.ogg|All "
+"files|*.*"
+
+#: src/sara/ui/main_frame.py:681
+msgid "Select audio files"
+msgstr "Select audio files"
+
+#: src/sara/ui/main_frame.py:692 src/sara/ui/main_frame.py:707
+msgid "No tracks were added"
+msgstr "No tracks were added"
+
+#: src/sara/ui/main_frame.py:695
+#, python-format
+msgid "Loading %d selected tracks…"
+msgstr "Loading %d selected tracks…"
+
+#: src/sara/ui/main_frame.py:712
+#, python-format
+msgid "Added %d tracks to playlist %s"
+msgstr "Added %d tracks to playlist %s"
+
+#: src/sara/ui/main_frame.py:718
+msgid "No playlist selected"
+msgstr "No playlist selected"
+
+#: src/sara/ui/main_frame.py:720
+msgid "playlist"
+msgstr "playlist"
+
+#: src/sara/ui/main_frame.py:722
+#, python-format
+msgid "Remove playlist %s?"
+msgstr "Remove playlist %s?"
+
+#: src/sara/ui/main_frame.py:723
+msgid "Confirm removal"
+msgstr "Confirm removal"
+
+#: src/sara/ui/main_frame.py:730
+msgid "Unable to remove playlist"
+msgstr "Unable to remove playlist"
+
+#: src/sara/ui/main_frame.py:769
+#, python-format
+msgid "Removed %d playlists"
+msgstr "Removed %d playlists"
+
+#: src/sara/ui/main_frame.py:784 src/sara/ui/main_frame.py:1237
+msgid "No audio devices available"
+msgstr "No audio devices available"
+
+#: src/sara/ui/main_frame.py:807
+#, python-format
+msgid "Playlist %s assigned to players: %s"
+msgstr "Playlist %s assigned to players: %s"
+
+#: src/sara/ui/main_frame.py:812
+#, python-format
+msgid "Removed device assignments for playlist %s"
+msgstr "Removed device assignments for playlist %s"
+
+#: src/sara/ui/main_frame.py:826
+#, python-format
+msgid "Imported news service from %s"
+msgstr "Imported news service from %s"
+
+#: src/sara/ui/main_frame.py:830
+msgid "Active playlist does not support import"
+msgstr "Active playlist does not support import"
+
+#: src/sara/ui/main_frame.py:835
+msgid "Import playlist"
+msgstr "Import playlist"
+
+#: src/sara/ui/main_frame.py:836
+msgid "Select playlist"
+msgstr "Select playlist"
+
+#: src/sara/ui/main_frame.py:837 src/sara/ui/main_frame.py:926
+msgid "M3U playlists (*.m3u)|*.m3u|All files|*.*"
+msgstr "M3U playlists (*.m3u)|*.m3u|All files|*.*"
+
+#: src/sara/ui/main_frame.py:851
+#, python-format
+msgid "Failed to import playlist: %s"
+msgstr "Failed to import playlist: %s"
+
+#: src/sara/ui/main_frame.py:855
+msgid "Playlist file is empty"
+msgstr "Playlist file is empty"
+
+#: src/sara/ui/main_frame.py:858
+#, python-format
+msgid "Importing tracks from %s…"
+msgstr "Importing tracks from %s…"
+
+#: src/sara/ui/main_frame.py:873
+#, python-format
+msgid "Failed to read playlist file: %s"
+msgstr "Failed to read playlist file: %s"
+
+#: src/sara/ui/main_frame.py:915
+#, python-format
+msgid "Saved news service to %s"
+msgstr "Saved news service to %s"
+
+#: src/sara/ui/main_frame.py:919
+msgid "Active playlist does not support export"
+msgstr "Active playlist does not support export"
+
+#: src/sara/ui/main_frame.py:924 src/sara/ui/main_frame.py:925
+msgid "Save playlist"
+msgstr "Save playlist"
+
+#: src/sara/ui/main_frame.py:945
+#, python-format
+msgid "Failed to save playlist: %s"
+msgstr "Failed to save playlist: %s"
+
+#: src/sara/ui/main_frame.py:948
+#, python-format
+msgid "Playlist saved to %s"
+msgstr "Playlist saved to %s"
+
+#: src/sara/ui/main_frame.py:972
+msgid "Language change will apply after restarting the application."
+msgstr "Language change will apply after restarting the application."
+
+#: src/sara/ui/main_frame.py:973
+msgid "Information"
+msgstr "Information"
+
+#: src/sara/ui/main_frame.py:991
+msgid "Keyboard shortcuts saved"
+msgstr "Keyboard shortcuts saved"
+
+#: src/sara/ui/main_frame.py:998 src/sara/ui/main_frame.py:1028
+msgid "enabled"
+msgstr "enabled"
+
+#: src/sara/ui/main_frame.py:998 src/sara/ui/main_frame.py:1028
+#: src/sara/ui/main_frame.py:1057
+msgid "disabled"
+msgstr "disabled"
+
+#: src/sara/ui/main_frame.py:999
+#, python-format
+msgid "Auto mix %s"
+msgstr "Auto mix %s"
+
+#: src/sara/ui/main_frame.py:1004 src/sara/ui/main_frame.py:1424
+#: src/sara/ui/main_frame.py:1433
+msgid "No scheduled tracks available"
+msgstr "No scheduled tracks available"
+
+#: src/sara/ui/main_frame.py:1013 src/sara/ui/main_frame.py:1050
+msgid "No track selected"
+msgstr "No track selected"
+
+#: src/sara/ui/main_frame.py:1018 src/sara/ui/main_frame.py:1060
+msgid "Track has no loop defined"
+msgstr "Track has no loop defined"
+
+#: src/sara/ui/main_frame.py:1024 src/sara/ui/main_frame.py:1194
+msgid "Failed to update loop metadata"
+msgstr "Failed to update loop metadata"
+
+#: src/sara/ui/main_frame.py:1029
+#, python-format
+msgid "Track looping %s"
+msgstr "Track looping %s"
+
+#: src/sara/ui/main_frame.py:1039
+msgid "Failed to update ReplayGain metadata"
+msgstr "Failed to update ReplayGain metadata"
+
+#: src/sara/ui/main_frame.py:1041
+#, python-format
+msgid "Updated ReplayGain for %s"
+msgstr "Updated ReplayGain for %s"
+
+#: src/sara/ui/main_frame.py:1057
+msgid "active"
+msgstr "active"
+
+#: src/sara/ui/main_frame.py:1058
+#, python-format
+msgid "Loop from %.2f to %.2f seconds, looping %s"
+msgstr "Loop from %.2f to %.2f seconds, looping %s"
+
+#: src/sara/ui/main_frame.py:1066
+#, python-brace-format
+msgid "Intro length: {seconds:.1f} seconds"
+msgstr "Intro length: {seconds:.1f} seconds"
+
+#: src/sara/ui/main_frame.py:1068
+msgid "Intro not defined"
+msgstr "Intro not defined"
+
+#: src/sara/ui/main_frame.py:1095
+msgid "Disable auto mix to queue specific tracks"
+msgstr "Disable auto mix to queue specific tracks"
+
+#: src/sara/ui/main_frame.py:1112
+#, python-format
+msgid "Track %s selected in playlist %s"
+msgstr "Track %s selected in playlist %s"
+
+#: src/sara/ui/main_frame.py:1114
+#, python-format
+msgid "Selection removed from %s"
+msgstr "Selection removed from %s"
+
+#: src/sara/ui/main_frame.py:1126
+#, python-format
+msgid "Mix points – %s"
+msgstr "Mix points – %s"
+
+#: src/sara/ui/main_frame.py:1177
+msgid "Failed to update mix metadata"
+msgstr "Failed to update mix metadata"
+
+#: src/sara/ui/main_frame.py:1179
+#, python-format
+msgid "Updated mix points for %s"
+msgstr "Updated mix points for %s"
+
+#: src/sara/ui/main_frame.py:1215
+#, python-format
+msgid "File %s does not exist"
+msgstr "File %s does not exist"
+
+#: src/sara/ui/main_frame.py:1262
+#, python-format
+msgid "Playback error: %s"
+msgstr "Playback errors"
+
+#: src/sara/ui/main_frame.py:1291
+msgid "Loop playing"
+msgstr "Loop playing"
+
+#: src/sara/ui/main_frame.py:1303
+#, python-format
+msgid "Playlist %s is empty"
+msgstr "Playlist %s is empty"
+
+#: src/sara/ui/main_frame.py:1339
+#, python-format
+msgid "No scheduled tracks in playlist %s"
+msgstr "No scheduled tracks in playlist %s"
+
+#: src/sara/ui/main_frame.py:1352
+#, python-format
+msgid "Playing %s from playlist %s"
+msgstr "Playing %s from playlist %s"
+
+#: src/sara/ui/main_frame.py:1456
+#, python-format
+msgid "Removed played track %s"
+msgstr "Removed played track %s"
+
+#: src/sara/ui/main_frame.py:1467
+#, python-format
+msgid "Player stop error: %s"
+msgstr "Playback errors"
+
+#: src/sara/ui/main_frame.py:1469
+#, python-format
+msgid "Finished %s"
+msgstr "Finished %s"
+
+#: src/sara/ui/main_frame.py:1539
+msgid "No active playback for this playlist"
+msgstr "No active playback for this playlist"
+
+#: src/sara/ui/main_frame.py:1549
+#, python-format
+msgid "Pause error: %s"
+msgstr "Playback errors"
+
+#: src/sara/ui/main_frame.py:1567
+#, python-format
+msgid "Playlist %s finished track with fade out"
+msgstr "Playlist %s finished track with fade out"
+
+#: src/sara/ui/main_frame.py:1623
+msgid "Playlist is empty"
+msgstr "Playlist is empty"
+
+#: src/sara/ui/main_frame.py:1637
+msgid "No tracks selected"
+msgstr "No tracks selected"
+
+#: src/sara/ui/main_frame.py:1851
+msgid "Playlist file did not contain supported tracks"
+msgstr "Playlist file did not contain supported tracks"
+
+#: src/sara/ui/main_frame.py:1857
+#, python-format
+msgid "Imported %d items from %s"
+msgstr "Imported %d items from %s"
+
+#: src/sara/ui/main_frame.py:1902
+#, python-brace-format
+msgid "Intro remaining: {seconds:.0f} seconds"
+msgstr "Intro remaining: {seconds:.0f} seconds"
+
+#: src/sara/ui/main_frame.py:2060
+msgid "Undo paste"
+msgstr "Undo paste"
+
+#: src/sara/ui/main_frame.py:2060
+msgid "Redo paste"
+msgstr "Redo paste"
+
+#: src/sara/ui/main_frame.py:2062
+msgid "Undo delete"
+msgstr "Undo delete"
+
+#: src/sara/ui/main_frame.py:2062
+msgid "Redo delete"
+msgstr "Redo delete"
+
+#: src/sara/ui/main_frame.py:2064
+msgid "Undo move"
+msgstr "Undo move"
+
+#: src/sara/ui/main_frame.py:2064
+msgid "Redo move"
+msgstr "Redo move"
+
+#: src/sara/ui/main_frame.py:2066
+msgid "Undo operation"
+msgstr "Clipboard and move operations"
+
+#: src/sara/ui/main_frame.py:2066
+msgid "Redo operation"
+msgstr "Redo operation"
+
+#: src/sara/ui/main_frame.py:2077 src/sara/ui/main_frame.py:2094
+#: src/sara/ui/main_frame.py:2171 src/sara/ui/main_frame.py:2190
+#: src/sara/ui/main_frame.py:2216
+msgid "track"
+msgstr "track"
+
+#: src/sara/ui/main_frame.py:2077 src/sara/ui/main_frame.py:2094
+#: src/sara/ui/main_frame.py:2171 src/sara/ui/main_frame.py:2190
+#: src/sara/ui/main_frame.py:2216
+msgid "tracks"
+msgstr "tracks"
+
+#: src/sara/ui/main_frame.py:2080
+#, python-format
+msgid "Copied %d %s from playlist %s"
+msgstr "Copied %d %s from playlist %s"
+
+#: src/sara/ui/main_frame.py:2095
+#, python-format
+msgid "Cut %d %s"
+msgstr "Cut %d %s"
+
+#: src/sara/ui/main_frame.py:2119
+msgid "Clipboard does not contain supported audio files"
+msgstr "Clipboard does not contain supported audio files"
+
+#: src/sara/ui/main_frame.py:2121
+msgid "Clipboard does not contain files or folders"
+msgstr "Clipboard does not contain files or folders"
+
+#: src/sara/ui/main_frame.py:2124
+msgid "Loading tracks from clipboard…"
+msgstr "Loading tracks from clipboard…"
+
+#: src/sara/ui/main_frame.py:2144
+msgid "Clipboard is empty"
+msgstr "Clipboard is empty"
+
+#: src/sara/ui/main_frame.py:2163
+msgid "No supported audio files found on the clipboard"
+msgstr "No supported audio files found on the clipboard"
+
+#: src/sara/ui/main_frame.py:2172
+#, python-format
+msgid "Pasted %d %s"
+msgstr "Pasted %d %s"
+
+#: src/sara/ui/main_frame.py:2176
+msgid "file"
+msgstr "file"
+
+#: src/sara/ui/main_frame.py:2176
+msgid "files"
+msgstr "files"
+
+#: src/sara/ui/main_frame.py:2177
+#, python-format
+msgid "Skipped %d unsupported %s"
+msgstr "Skipped %d unsupported %s"
+
+#: src/sara/ui/main_frame.py:2191
+#, python-format
+msgid "Deleted %d %s"
+msgstr "Deleted %d %s"
+
+#: src/sara/ui/main_frame.py:2206
+msgid "up"
+msgstr "up"
+
+#: src/sara/ui/main_frame.py:2206
+msgid "down"
+msgstr "down"
+
+#: src/sara/ui/main_frame.py:2207
+#, python-format
+msgid "Cannot move further %s"
+msgstr "Cannot move further %s"
+
+#: src/sara/ui/main_frame.py:2214
+#, python-format
+msgid "Moved %s"
+msgstr "Moved %s"
+
+#: src/sara/ui/main_frame.py:2217
+#, python-format
+msgid "Moved %d %s"
+msgstr "Moved %d %s"
+
+#: src/sara/ui/main_frame.py:2227
+msgid "Nothing to undo"
+msgstr "Nothing to undo"
+
+#: src/sara/ui/main_frame.py:2231
+msgid "Unable to undo last operation"
+msgstr "Unable to undo last operation"
+
+#: src/sara/ui/main_frame.py:2238
+msgid "Nothing to redo"
+msgstr "Nothing to redo"
+
+#: src/sara/ui/main_frame.py:2242
+msgid "Unable to redo last operation"
+msgstr "Unable to redo last operation"
+
+#: src/sara/ui/main_frame.py:2371
+msgid "Loop end must be greater than start"
+msgstr "Loop end must be greater than start"
+
+#: src/sara/ui/main_frame.py:2378
+msgid "Configure a PFL device in Options"
+msgstr "Configure a PFL device in Options"
+
+#: src/sara/ui/main_frame.py:2386
+msgid "Selected PFL device is not available"
+msgstr "Selected PFL device is not available"
+
+#: src/sara/ui/main_frame.py:2391
+msgid "PFL device is currently in use"
+msgstr "PFL device is currently in use"
+
+#: src/sara/ui/main_frame.py:2398
+#, python-format
+msgid "Failed to prepare PFL preview: %s"
+msgstr "Failed to prepare PFL preview: %s"
+
+#: src/sara/ui/main_frame.py:2412 src/sara/ui/main_frame.py:2436
+#, python-format
+msgid "Preview error: %s"
+msgstr "Preview error: %s"
+
+#: src/sara/ui/main_frame.py:2459
+#, python-format
+msgid "No configured player for playlist %s is available"
+msgstr "No configured player for playlist %s is available"
+
+#: src/sara/ui/main_frame.py:2486
+#, python-format
+msgid "Unavailable devices for playlist %s: %s"
+msgstr "Unavailable devices for playlist %s: %s"
+
+#: src/sara/ui/main_frame.py:2517 src/sara/ui/options_dialog.py:256
+msgid "Music"
+msgstr "Music"
+
+#: src/sara/ui/main_frame.py:2518 src/sara/ui/options_dialog.py:256
+msgid "News"
+msgstr "News"
+
+#: src/sara/ui/main_frame.py:2529
+msgid "Manage playlists"
+msgstr "Manage playlists"
+
+#: src/sara/ui/main_frame.py:2544
+msgid "Current playlists (top = first in sequence):"
+msgstr "Current playlists (top = first in sequence):"
+
+#: src/sara/ui/main_frame.py:2550 src/sara/ui/options_dialog.py:171
+msgid "Players"
+msgstr "Playback errors"
+
+#: src/sara/ui/main_frame.py:2554
+msgid "Add"
+msgstr "Add"
+
+#: src/sara/ui/main_frame.py:2555 src/sara/ui/options_dialog.py:56
+msgid "Configure players…"
+msgstr "Configure players…"
+
+#: src/sara/ui/main_frame.py:2556 src/sara/ui/options_dialog.py:177
+msgid "Remove"
+msgstr "Remove"
+
+#: src/sara/ui/main_frame.py:2563
+msgid "Move up"
+msgstr "Move up"
+
+#: src/sara/ui/main_frame.py:2564
+msgid "Move down"
+msgstr "Move down"
+
+#: src/sara/ui/main_frame.py:2640
+msgid "At least one playlist must remain."
+msgstr "At least one playlist must remain."
+
+#: src/sara/ui/mix_point_dialog.py:96
+msgid "Play (Space)"
+msgstr "Play (Space)"
+
+#: src/sara/ui/mix_point_dialog.py:97
+msgid "Stop"
+msgstr "Stop"
+
+#: src/sara/ui/mix_point_dialog.py:98
+msgid "Start"
+msgstr "Start"
+
+#: src/sara/ui/mix_point_dialog.py:99 src/sara/ui/mix_point_dialog.py:174
+msgid "Cue in"
+msgstr "Cue in"
+
+#: src/sara/ui/mix_point_dialog.py:100
+msgid "End - 20 s"
+msgstr "End - 20 s"
+
+#: src/sara/ui/mix_point_dialog.py:101
+msgid "−1 s"
+msgstr "−1 s"
+
+#: src/sara/ui/mix_point_dialog.py:102
+msgid "−5 s"
+msgstr "−5 s"
+
+#: src/sara/ui/mix_point_dialog.py:103
+msgid "+1 s"
+msgstr "+1 s"
+
+#: src/sara/ui/mix_point_dialog.py:104
+msgid "+5 s"
+msgstr "+5 s"
+
+#: src/sara/ui/mix_point_dialog.py:132
+msgid ""
+"Shortcuts: A/S/Z = move back (5s/1s/0.1s), F/G/C = move forward "
+"(1s/5s/0.1s), D = play/pause, Q = preview from start, W = preview last 20s, "
+"X = capture point, Z/C fine-tune active point, V = preview active point, "
+"Shift+V = preview loop end, Alt+V = preview loop."
+msgstr ""
+"Shortcuts: A/S/Z = move back (5s/1s/0.1s), F/G/C = move forward "
+"(1s/5s/0.1s), D = play/pause, Q = preview from start, W = preview last 20s, "
+"X = capture point, Z/C fine-tune active point, V = preview active point, "
+"Shift+V = preview loop end, Alt+V = preview loop."
+
+#: src/sara/ui/mix_point_dialog.py:143
+msgid "Position"
+msgstr "Position"
+
+#: src/sara/ui/mix_point_dialog.py:168
+msgid "Mix points"
+msgstr "Mix points"
+
+#: src/sara/ui/mix_point_dialog.py:182
+msgid "Intro (absolute seconds)"
+msgstr "Intro (absolute seconds)"
+
+#: src/sara/ui/mix_point_dialog.py:190
+msgid "Outro (absolute seconds)"
+msgstr "Outro (absolute seconds)"
+
+#: src/sara/ui/mix_point_dialog.py:201
+msgid "Segue start (absolute time)"
+msgstr "Segue start (absolute time)"
+
+#: src/sara/ui/mix_point_dialog.py:209
+msgid "Overlap duration"
+msgstr "Overlap duration"
+
+#: src/sara/ui/mix_point_dialog.py:217
+msgid "Loop start"
+msgstr "Loop start"
+
+#: src/sara/ui/mix_point_dialog.py:226
+msgid "Loop end"
+msgstr "Loop end"
+
+#: src/sara/ui/mix_point_dialog.py:237
+msgid ""
+"When assigning overlap from the current position, the remaining tail "
+"duration (track end minus cursor) is used."
+msgstr ""
+"When assigning overlap from the current position, the remaining tail "
+"duration (track end minus cursor) is used."
+
+#: src/sara/ui/mix_point_dialog.py:243
+msgid "Preview loop (Alt+V)"
+msgstr "Preview loop (Alt+V)"
+
+#: src/sara/ui/mix_point_dialog.py:247
+msgid "Loudness normalization"
+msgstr "Loudness normalization"
+
+#: src/sara/ui/mix_point_dialog.py:249
+msgid "Current ReplayGain:"
+msgstr "Current ReplayGain:"
+
+#: src/sara/ui/mix_point_dialog.py:256
+msgid "Current ReplayGain value"
+msgstr "Current ReplayGain value"
+
+#: src/sara/ui/mix_point_dialog.py:260
+msgid "EBU R128 (-23 LUFS)"
+msgstr "EBU R128 (-23 LUFS)"
+
+#: src/sara/ui/mix_point_dialog.py:261
+msgid "ATSC A/85 (-24 LUFS)"
+msgstr "ATSC A/85 (-24 LUFS)"
+
+#: src/sara/ui/mix_point_dialog.py:265
+msgid "Target standard"
+msgstr "Target standard"
+
+#: src/sara/ui/mix_point_dialog.py:271
+msgid "Normalize (bs1770gain)"
+msgstr "Normalize (bs1770gain)"
+
+#: src/sara/ui/mix_point_dialog.py:280
+msgid "Loudness analysis status"
+msgstr "Loudness analysis status"
+
+#: src/sara/ui/mix_point_dialog.py:319
+msgid "Use current"
+msgstr "Use current"
+
+#: src/sara/ui/mix_point_dialog.py:339
+msgid "seconds"
+msgstr "seconds"
+
+#: src/sara/ui/mix_point_dialog.py:550
+msgid "Set valid loop start and end first."
+msgstr "Set valid loop start and end first."
+
+#: src/sara/ui/mix_point_dialog.py:572
+msgid "not set"
+msgstr "not set"
+
+#: src/sara/ui/mix_point_dialog.py:573
+#, python-brace-format
+msgid "{gain:+.2f} dB"
+msgstr "{gain:+.2f} dB"
+
+#: src/sara/ui/mix_point_dialog.py:581
+msgid "ReplayGain not measured yet"
+msgstr "ReplayGain not measured yet"
+
+#: src/sara/ui/mix_point_dialog.py:582
+#, python-brace-format
+msgid "Existing ReplayGain: {gain:+.2f} dB"
+msgstr "Existing ReplayGain: {gain:+.2f} dB"
+
+#: src/sara/ui/mix_point_dialog.py:589
+msgid "bs1770gain is not available. Install it and ensure it is on PATH."
+msgstr "bs1770gain is not available. Install it and ensure it is on PATH."
+
+#: src/sara/ui/mix_point_dialog.py:596
+msgid "Analyzing loudness…"
+msgstr "Analyzing loudness…"
+
+#: src/sara/ui/mix_point_dialog.py:616
+#, python-brace-format
+msgid "Measured {lufs:.2f} LUFS, applied gain {gain:+.2f} dB"
+msgstr "Measured {lufs:.2f} LUFS, applied gain {gain:+.2f} dB"
+
+#: src/sara/ui/mix_point_dialog.py:629
+msgid "Normalization failed"
+msgstr "Normalization failed"
+
+#: src/sara/ui/new_playlist_dialog.py:15
+msgid "New playlist"
+msgstr "New playlist"
+
+#: src/sara/ui/new_playlist_dialog.py:18 src/sara/ui/options_dialog.py:33
+msgid "Music playlist"
+msgstr "Music playlist"
+
+#: src/sara/ui/new_playlist_dialog.py:19 src/sara/ui/options_dialog.py:34
+msgid "News playlist"
+msgstr "News playlist"
+
+#: src/sara/ui/new_playlist_dialog.py:22 src/sara/ui/options_dialog.py:45
+msgid "Playlist type:"
+msgstr "Playlist type:"
+
+#: src/sara/ui/new_playlist_dialog.py:24 src/sara/ui/options_dialog.py:39
+msgid "Playlist name:"
+msgstr "Playlist management updates"
+
+#: src/sara/ui/new_playlist_dialog.py:25
+msgid "e.g. Morning"
+msgstr "e.g. Morning"
+
+#: src/sara/ui/new_playlist_dialog.py:50
+msgid "Enter a playlist name."
+msgstr "Enter a playlist name."
+
+#: src/sara/ui/news_playlist_panel.py:21
+msgid "News services (*.saranews)|*.saranews|All files|*.*"
+msgstr "News services (*.saranews)|*.saranews|All files|*.*"
+
+#: src/sara/ui/news_playlist_panel.py:80
+#: src/sara/ui/news_playlist_panel.py:270
+msgid "Switch to read mode"
+msgstr "Switch to read mode"
+
+#: src/sara/ui/news_playlist_panel.py:81
+msgid "Insert audio from clipboard"
+msgstr "Insert audio from clipboard"
+
+#: src/sara/ui/news_playlist_panel.py:82
+msgid "Load service…"
+msgstr "Load service…"
+
+#: src/sara/ui/news_playlist_panel.py:83
+msgid "Save service…"
+msgstr "Save service…"
+
+#: src/sara/ui/news_playlist_panel.py:90
+msgid "Line length:"
+msgstr "Line length:"
+
+#: src/sara/ui/news_playlist_panel.py:105
+msgid "Apply"
+msgstr "Apply"
+
+#: src/sara/ui/news_playlist_panel.py:110
+msgid "Playback device:"
+msgstr "Playback events"
+
+#: src/sara/ui/news_playlist_panel.py:278
+msgid "Switch to edit mode"
+msgstr "Switch to edit mode"
+
+#: src/sara/ui/news_playlist_panel.py:296
+msgid "Clipboard does not contain audio files."
+msgstr "Clipboard does not contain audio files."
+
+#: src/sara/ui/news_playlist_panel.py:311
+msgid "Load news service"
+msgstr "Load news service"
+
+#: src/sara/ui/news_playlist_panel.py:329
+#, python-format
+msgid "Failed to load news service: %s"
+msgstr "Failed to load news service: %s"
+
+#: src/sara/ui/news_playlist_panel.py:340
+msgid "Save news service"
+msgstr "Save news service"
+
+#: src/sara/ui/news_playlist_panel.py:368
+#, python-format
+msgid "Failed to save news service: %s"
+msgstr "Failed to save news service: %s"
+
+#: src/sara/ui/news_playlist_panel.py:653
+#, python-format
+msgid "(Audio clip: %s)"
+msgstr "(Audio clip: %s)"
+
+#: src/sara/ui/news_playlist_panel.py:665
+msgid "No content. Switch to edit mode to add text."
+msgstr "No content. Switch to edit mode to add text."
+
+#: src/sara/ui/news_playlist_panel.py:679
+#, python-format
+msgid "Play audio %d: %s"
+msgstr "Play audio %d: %s"
+
+#: src/sara/ui/options_dialog.py:29
+msgid "Startup playlist"
+msgstr "Startup playlist"
+
+#: src/sara/ui/options_dialog.py:77
+msgid "No players configured"
+msgstr "No players configured"
+
+#: src/sara/ui/options_dialog.py:78 src/sara/ui/options_dialog.py:317
+#: src/sara/ui/playlist_devices_dialog.py:92
+msgid "(none)"
+msgstr "(none)"
+
+#: src/sara/ui/options_dialog.py:79
+#, python-format
+msgid "Players: %s"
+msgstr "Players: %s"
+
+#: src/sara/ui/options_dialog.py:84
+msgid "Playlist name cannot be empty."
+msgstr "Playlist name cannot be empty."
+
+#: src/sara/ui/options_dialog.py:95
+msgid "Options"
+msgstr "Options"
+
+#: src/sara/ui/options_dialog.py:109
+msgid "Playback"
+msgstr "Playback events"
+
+#: src/sara/ui/options_dialog.py:110
+msgid "Default fade out (s):"
+msgstr "Default fade out (s):"
+
+#: src/sara/ui/options_dialog.py:121
+msgid "Alternate playlists with Space key"
+msgstr "Alternate playlists with Space key"
+
+#: src/sara/ui/options_dialog.py:128
+msgid "Automatically remove played tracks"
+msgstr "Automatically remove played tracks"
+
+#: src/sara/ui/options_dialog.py:134
+msgid "Intro alert (s):"
+msgstr "Intro alert notifications"
+
+#: src/sara/ui/options_dialog.py:143
+msgid "Interface language:"
+msgstr "Interface language:"
+
+#: src/sara/ui/options_dialog.py:145
+msgid "English"
+msgstr "English"
+
+#: src/sara/ui/options_dialog.py:145
+msgid "Polish"
+msgstr "Polish"
+
+#: src/sara/ui/options_dialog.py:158
+msgid "Pre-fader listen (PFL)"
+msgstr "Pre-fader listen (PFL)"
+
+#: src/sara/ui/options_dialog.py:160
+msgid "PFL device:"
+msgstr "PFL device:"
+
+#: src/sara/ui/options_dialog.py:167
+msgid "Startup playlists"
+msgstr "Startup playlists"
+
+#: src/sara/ui/options_dialog.py:175
+msgid "Add…"
+msgstr "Add…"
+
+#: src/sara/ui/options_dialog.py:176
+msgid "Edit…"
+msgstr "Edit…"
+
+#: src/sara/ui/options_dialog.py:184
+msgid "News playlists"
+msgstr "News playlists"
+
+#: src/sara/ui/options_dialog.py:188
+msgid "Read-mode line length (characters, 0 = unlimited):"
+msgstr "Read-mode line length (characters, 0 = unlimited):"
+
+#: src/sara/ui/options_dialog.py:198
 msgid "General"
 msgstr "General"
 
-msgid "Accessibility"
-msgstr "Accessibility"
-
+#: src/sara/ui/options_dialog.py:203
 msgid "Announcements"
 msgstr "Announcements"
 
-msgid "General status messages"
-msgstr "General status messages"
+#: src/sara/ui/options_dialog.py:207
+msgid "Choose which announcements should be spoken by the screen reader."
+msgstr "Choose which announcements should be spoken by the screen reader."
 
-msgid "Playlist management updates"
-msgstr "Playlist management updates"
+#: src/sara/ui/options_dialog.py:220
+msgid "Keep selection on currently playing track"
+msgstr "Keep selection on currently playing track"
 
-msgid "Import and export messages"
-msgstr "Import and export messages"
+#: src/sara/ui/options_dialog.py:227
+msgid "Accessibility"
+msgstr "Accessibility"
 
-msgid "Playback events"
-msgstr "Playback events"
+#: src/sara/ui/playlist_devices_dialog.py:25
+msgid "Playlist player configuration"
+msgstr "Playlist player configuration"
 
-msgid "Playback started"
-msgstr "Playback started"
+#: src/sara/ui/playlist_devices_dialog.py:32
+msgid "Choose how many players to use and assign audio devices."
+msgstr "Choose how many players to use and assign audio devices."
 
-msgid "Playback errors"
-msgstr "Playback errors"
+#: src/sara/ui/playlist_devices_dialog.py:36
+msgid "Number of players:"
+msgstr "Number of players:"
 
-msgid "Loop and intro notifications"
-msgstr "Loop and intro notifications"
+#: src/sara/ui/playlist_devices_dialog.py:90
+#, python-format
+msgid "Player %d"
+msgstr "Player %d"
 
-msgid "Marker notifications"
-msgstr "Marker notifications"
+#: src/sara/ui/playlist_devices_dialog.py:96
+msgid " (default)"
+msgstr " (default)"
 
-msgid "Auto-mix announcements"
-msgstr "Auto-mix announcements"
+#: src/sara/ui/playlist_panel.py:40
+msgid "Title"
+msgstr "Title"
 
-msgid "Shortcut editor notifications"
-msgstr "Shortcut editor notifications"
+#: src/sara/ui/playlist_panel.py:41
+msgid "Duration"
+msgstr "Duration"
 
-msgid "Clipboard and move operations"
-msgstr "Clipboard and move operations"
+#: src/sara/ui/playlist_panel.py:42
+msgid "Status"
+msgstr "Status"
 
-msgid "Undo/redo notifications"
-msgstr "Undo/redo notifications"
+#: src/sara/ui/playlist_panel.py:43
+msgid "Progress"
+msgstr "Progress"
 
-msgid "PFL and preview warnings"
-msgstr "PFL and preview warnings"
+#: src/sara/ui/playlist_panel.py:132
+#, python-format
+msgid "[selected] %s"
+msgstr "[selected] %s"
 
-msgid "Device availability warnings"
-msgstr "Device availability warnings"
+#: src/sara/ui/playlist_panel.py:138
+msgid " (loop)"
+msgstr " (loop)"
 
-msgid "Intro alert notifications"
-msgstr "Intro alert notifications"
+#: src/sara/ui/playlist_panel.py:196
+msgid "&Mix points…"
+msgstr "&Mix points…"
+
+#: src/sara/ui/playlist_panel.py:206
+msgid "&Select for playback"
+msgstr "&Select for playback"
+
+#: src/sara/ui/playlist_panel.py:206
+msgid "Remove &selection"
+msgstr "Remove &selection"
+
+#: src/sara/ui/shortcut_capture_dialog.py:24
+msgid "New shortcut"
+msgstr "New shortcut"
+
+#: src/sara/ui/shortcut_capture_dialog.py:30
+msgid "Press the desired key combination. Press Esc to cancel."
+msgstr "Press the desired key combination. Press Esc to cancel."
+
+#: src/sara/ui/shortcut_editor_dialog.py:28
+msgid "Keyboard shortcuts"
+msgstr "Keyboard shortcuts"
+
+#: src/sara/ui/shortcut_editor_dialog.py:41
+msgid "Scope"
+msgstr "Scope"
+
+#: src/sara/ui/shortcut_editor_dialog.py:42
+msgid "Action"
+msgstr "Action"
+
+#: src/sara/ui/shortcut_editor_dialog.py:43
+msgid "Shortcut"
+msgstr "Shortcut"
+
+#: src/sara/ui/shortcut_editor_dialog.py:47
+msgid "Change…"
+msgstr "Change…"
+
+#: src/sara/ui/shortcut_editor_dialog.py:48
+msgid "Restore default"
+msgstr "Restore default"
+
+#: src/sara/ui/shortcut_editor_dialog.py:106
+msgid "This shortcut is already assigned to another action."
+msgstr "This shortcut is already assigned to another action."
+
+#~ msgid "General status messages"
+#~ msgstr "General status messages"
+
+#~ msgid "Import and export messages"
+#~ msgstr "Import and export messages"
+
+#~ msgid "Playback started"
+#~ msgstr "Playback started"
+
+#~ msgid "Loop and intro notifications"
+#~ msgstr "Loop and intro notifications"
+
+#~ msgid "Marker notifications"
+#~ msgstr "Marker notifications"
+
+#~ msgid "Auto-mix announcements"
+#~ msgstr "Auto-mix announcements"
+
+#~ msgid "Shortcut editor notifications"
+#~ msgstr "Shortcut editor notifications"
+
+#~ msgid "Undo/redo notifications"
+#~ msgstr "Undo/redo notifications"
+
+#~ msgid "PFL and preview warnings"
+#~ msgstr "PFL and preview warnings"
+
+#~ msgid "Device availability warnings"
+#~ msgstr "Device availability warnings"
