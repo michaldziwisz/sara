@@ -1748,6 +1748,24 @@ class MainFrame(wx.Frame):
             clipboard.Close()
         return paths
 
+    def _set_system_clipboard_paths(self, paths: list[Path]) -> None:
+        clipboard = wx.TheClipboard
+        if not clipboard.Open():
+            return
+        try:
+            data = wx.FileDataObject()
+            added = False
+            for path in paths:
+                try:
+                    data.AddFile(str(path))
+                    added = True
+                except Exception:
+                    continue
+            if added:
+                clipboard.SetData(data)
+        finally:
+            clipboard.Close()
+
     def _collect_files_from_paths(self, paths: list[Path]) -> tuple[list[Path], int]:
         files: list[Path] = []
         skipped = 0
@@ -2158,6 +2176,9 @@ class MainFrame(wx.Frame):
         panel, model, selected = context
         items = [item for _, item in selected]
         self._clipboard_items = self._serialize_items(items)
+        existing_paths = [item.path for item in items if item.path.exists()]
+        if existing_paths:
+            self._set_system_clipboard_paths(existing_paths)
         count = len(items)
         noun = _("track") if count == 1 else _("tracks")
         self._announce_event(
@@ -2173,6 +2194,9 @@ class MainFrame(wx.Frame):
         panel, model, selected = context
         items = [item for _, item in selected]
         self._clipboard_items = self._serialize_items(items)
+        existing_paths = [item.path for item in items if item.path.exists()]
+        if existing_paths:
+            self._set_system_clipboard_paths(existing_paths)
         indices = sorted(index for index, _ in selected)
         removed_items = self._remove_items(panel, model, indices)
         count = len(items)
