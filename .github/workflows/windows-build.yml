@@ -56,6 +56,10 @@ jobs:
           if (Test-Path "$ffmpegPath\ffprobe.exe") { Copy-Item "$ffmpegPath\ffprobe.exe" dist\SARA\ -Force }
           if (Test-Path "$ffmpegPath\LICENSE.txt") { Copy-Item "$ffmpegPath\LICENSE.txt" dist\SARA\ffmpeg-LICENSE.txt -Force }
 
+      - name: Bundle bs1770gain loudness CLI
+        run: |
+          Copy-Item -Path src\sara\audio\vendor\windows\bs1770gain\* -Destination dist\SARA\ -Recurse -Force
+
       - name: Package NVDA add-on
         run: |
           $output = "dist\sara-silent-addon.nvda-addon"
