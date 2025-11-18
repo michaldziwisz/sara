@@ -26,6 +26,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "auto_mix_toggle": "CTRL+SHIFT+M",
             "loop_playback_toggle": "CTRL+SHIFT+L",
             "loop_info": "CTRL+ALT+SHIFT+L",
+            "track_remaining": "CTRL+ALT+T",
         },
         "playlist_menu": {
             "new": "CTRL+N",

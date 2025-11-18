@@ -66,6 +66,12 @@ def _register_defaults() -> None:
         label="Track loop information",
         default="CTRL+ALT+SHIFT+L",
     )
+    register_shortcut(
+        "global",
+        "track_remaining",
+        label="Track remaining time",
+        default="CTRL+ALT+T",
+    )
 
     register_shortcut("playlist", "play", label="Playlist: play", default="F1")
     register_shortcut("playlist", "pause", label="Playlist: pause", default="F2")

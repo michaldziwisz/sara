@@ -103,6 +103,7 @@ class MainFrame(wx.Frame):
         self._auto_mix_toggle_id = wx.NewIdRef()
         self._loop_playback_toggle_id = wx.NewIdRef()
         self._loop_info_id = wx.NewIdRef()
+        self._track_remaining_id = wx.NewIdRef()
         self._remove_playlist_id = wx.NewIdRef()
         self._manage_playlists_id = wx.NewIdRef()
         self._cut_id = wx.NewIdRef()
@@ -207,6 +208,13 @@ class MainFrame(wx.Frame):
             "global",
             "loop_info",
         )
+        self._append_shortcut_menu_item(
+            tools_menu,
+            self._track_remaining_id,
+            _("Track &remaining time"),
+            "global",
+            "track_remaining",
+        )
 
         tools_menu.Append(int(self._shortcut_editor_id), _("Edit &shortcuts…"))
         tools_menu.Append(int(options_id), _("&Options…"))
@@ -225,6 +233,7 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self._on_options, id=int(options_id))
         self.Bind(wx.EVT_MENU, self._on_toggle_loop_playback, id=int(self._loop_playback_toggle_id))
         self.Bind(wx.EVT_MENU, self._on_loop_info, id=int(self._loop_info_id))
+        self.Bind(wx.EVT_MENU, self._on_track_remaining, id=int(self._track_remaining_id))
         self.Bind(wx.EVT_MENU, self._on_edit_shortcuts, id=int(self._shortcut_editor_id))
         self.Bind(wx.EVT_MENU, self._on_undo, id=int(self._undo_id))
         self.Bind(wx.EVT_MENU, self._on_redo, id=int(self._redo_id))
@@ -371,6 +380,7 @@ class MainFrame(wx.Frame):
 
         add_entry("global", "loop_playback_toggle", int(self._loop_playback_toggle_id))
         add_entry("global", "loop_info", int(self._loop_info_id))
+        add_entry("global", "track_remaining", int(self._track_remaining_id))
 
         add_entry("playlist_menu", "new", wx.ID_NEW)
         add_entry("playlist_menu", "add_tracks", int(self._add_tracks_id))
@@ -412,6 +422,9 @@ class MainFrame(wx.Frame):
 
     def _handle_global_char_hook(self, event: wx.KeyEvent) -> None:
         keycode = event.GetKeyCode()
+        if self._should_handle_altgr_track_remaining(event, keycode):
+            self._on_track_remaining()
+            return
         if keycode == wx.WXK_F6:
             if self._cycle_playlist_focus(backwards=event.ShiftDown()):
                 return
@@ -421,6 +434,15 @@ class MainFrame(wx.Frame):
             event.StopPropagation()
             return
         event.Skip()
+
+    def _should_handle_altgr_track_remaining(self, event: wx.KeyEvent, keycode: int) -> bool:
+        altgr_flag = getattr(wx, "MOD_ALTGR", None)
+        if altgr_flag is None:
+            return False
+        if keycode not in (ord("T"), ord("t")):
+            return False
+        modifiers = event.GetModifiers()
+        return isinstance(modifiers, int) and bool(modifiers & altgr_flag)
 
     def add_playlist(self, model: PlaylistModel) -> None:
         for action, key in self._playlist_hotkey_defaults.items():
@@ -1069,6 +1091,31 @@ class MainFrame(wx.Frame):
 
         self._announce_event("loop", ". ".join(messages))
 
+    def _on_track_remaining(self, _event: wx.CommandEvent | None = None) -> None:
+        info = self._resolve_remaining_playback()
+        if info is None:
+            self._announce_event("playback_events", _("No active playback to report remaining time"))
+            return
+        playlist, item, remaining = info
+        if item.effective_duration_seconds <= 0:
+            self._announce_event("playback_events", _("Remaining time unavailable for %s") % item.title)
+            return
+        total_seconds = max(0, int(round(remaining)))
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        if hours:
+            time_text = f"{hours:d}:{minutes:02d}:{seconds:02d}"
+        else:
+            time_text = f"{minutes:02d}:{seconds:02d}"
+        message = _(
+            "Remaining time for %(track)s (%(playlist)s): %(time)s"
+        ) % {
+            "track": item.title,
+            "playlist": playlist.name,
+            "time": time_text,
+        }
+        self._announce_event("playback_events", message)
+
     def _apply_loop_setting_to_playback(self, *, playlist_id: str | None = None, item_id: str | None = None) -> None:
         for (pl_id, item_id_key), context in list(self._playback_contexts.items()):
             if playlist_id is not None and pl_id != playlist_id:
@@ -1224,8 +1271,8 @@ class MainFrame(wx.Frame):
             existing_context = self._get_playback_context(playlist.id)
             if existing_context:
                 existing_key, _existing = existing_context
-                auto_active = self._auto_mix_enabled and self._auto_mix_state.get(existing_key)
-                if not auto_active:
+                crossfade_active = bool(self._auto_mix_state.get(existing_key))
+                if not crossfade_active:
                     fade_seconds = self._fade_duration
                     self._stop_playlist_playback(playlist.id, mark_played=True, fade_duration=fade_seconds)
 
@@ -1884,6 +1931,42 @@ class MainFrame(wx.Frame):
                 panel.select_index(index)
                 self._focus_lock[playlist_id] = False
                 break
+
+    def _resolve_remaining_playback(self) -> tuple[PlaylistModel, PlaylistItem, float] | None:
+        candidate_ids: list[str] = []
+        panel = self._get_current_music_panel()
+        if panel:
+            candidate_ids.append(panel.model.id)
+        for playlist_id, _item_id in self._playback_contexts.keys():
+            if playlist_id not in candidate_ids:
+                candidate_ids.append(playlist_id)
+        for playlist_id in candidate_ids:
+            panel = self._playlists.get(playlist_id)
+            if not isinstance(panel, PlaylistPanel):
+                continue
+            item = self._active_playlist_item(panel.model)
+            if item is None:
+                continue
+            remaining = max(0.0, item.effective_duration_seconds - item.current_position)
+            return panel.model, item, remaining
+        return None
+
+    def _active_playlist_item(self, playlist: PlaylistModel) -> PlaylistItem | None:
+        playlist_keys = [key for key in self._playback_contexts.keys() if key[0] == playlist.id]
+        if not playlist_keys:
+            return None
+        last_started = self._last_started_item_id.get(playlist.id)
+        if last_started:
+            candidate_key = (playlist.id, last_started)
+            if candidate_key in self._playback_contexts:
+                item = playlist.get_item(last_started)
+                if item:
+                    return item
+        for key in reversed(list(playlist_keys)):
+            item = playlist.get_item(key[1])
+            if item:
+                return item
+        return None
 
     def _compute_intro_remaining(self, item: PlaylistItem, absolute_seconds: float | None = None) -> float | None:
         intro = item.intro_seconds
