@@ -436,13 +436,15 @@ class MainFrame(wx.Frame):
         event.Skip()
 
     def _should_handle_altgr_track_remaining(self, event: wx.KeyEvent, keycode: int) -> bool:
-        altgr_flag = getattr(wx, "MOD_ALTGR", None)
-        if altgr_flag is None:
-            return False
         if keycode not in (ord("T"), ord("t")):
             return False
         modifiers = event.GetModifiers()
-        return isinstance(modifiers, int) and bool(modifiers & altgr_flag)
+        altgr_flag = getattr(wx, "MOD_ALTGR", None)
+        if isinstance(modifiers, int) and altgr_flag and modifiers & altgr_flag:
+            return True
+        if event.AltDown() and event.ControlDown() and not event.MetaDown():
+            return True
+        return False
 
     def add_playlist(self, model: PlaylistModel) -> None:
         for action, key in self._playlist_hotkey_defaults.items():
