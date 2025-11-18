@@ -246,6 +246,14 @@ msgstr "Przełącz zapętlenie &utworu"
 msgid "Loop &information"
 msgstr "Informacja o &pętli"
 
+#: src/sara/ui/main_frame.py:214
+msgid "Track &remaining time"
+msgstr "Pozostały czas &utworu"
+
+#: src/sara/core/shortcuts.py:72
+msgid "Track remaining time"
+msgstr "Pozostały czas utworu"
+
 #: src/sara/ui/main_frame.py:211
 msgid "Edit &shortcuts…"
 msgstr "Edytuj &skróty…"
@@ -580,6 +588,20 @@ msgstr "Błąd zatrzymania playera: %s"
 #, python-format
 msgid "Finished %s"
 msgstr "Zakończono %s"
+
+#: src/sara/ui/main_frame.py:1099
+msgid "No active playback to report remaining time"
+msgstr "Brak aktywnego odtwarzania, aby podać pozostały czas"
+
+#: src/sara/ui/main_frame.py:1101
+#, python-format
+msgid "Remaining time unavailable for %s"
+msgstr "Pozostały czas niedostępny dla %s"
+
+#: src/sara/ui/main_frame.py:1113
+#, python-format
+msgid "Remaining time for %(track)s (%(playlist)s): %(time)s"
+msgstr "Pozostały czas utworu %(track)s (playlista %(playlist)s): %(time)s"
 
 #: src/sara/ui/main_frame.py:1539
 msgid "No active playback for this playlist"
