@@ -2,16 +2,34 @@
 
 from __future__ import annotations
 
-import ctypes
-import fnmatch
 import os
-import string
 from pathlib import Path
 from typing import Iterable
 
 import wx
 
 from sara.core.i18n import gettext as _
+from sara.ui.file_browser import FileBrowser, FileEntry
+
+
+def parse_file_wildcard(wildcard: str) -> list[tuple[str, list[str]]]:
+    parts = [part for part in wildcard.split("|") if part]
+    if len(parts) < 2:
+        return [( _("All files"), ["*.*"])]
+    filters: list[tuple[str, list[str]]] = []
+    for i in range(0, len(parts) - 1, 2):
+        desc = parts[i].strip() or _("Files")
+        pattern = parts[i + 1].strip() or "*.*"
+        filters.append((desc, [p.strip() for p in pattern.split(";") if p.strip()]))
+    return filters or [( _("All files"), ["*.*"])]
+
+
+def ensure_save_selection(current_path: Path | None, name_value: str | None) -> list[str]:
+    name = (name_value or "").strip()
+    if not name:
+        raise ValueError(_("Enter a file name."))
+    target_dir = current_path or Path.cwd()
+    return [str(target_dir / name)]
 
 
 class FileSelectionDialog(wx.Dialog):
@@ -27,6 +45,8 @@ class FileSelectionDialog(wx.Dialog):
         wildcard: str = _("All files|*.*"),
         style: int = wx.FD_OPEN,
         message: str | None = None,
+        start_path: Path | None = None,
+        file_browser: FileBrowser | None = None,
     ) -> None:
         super().__init__(parent, title=title or _("Select files"), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._style = style
@@ -34,14 +54,12 @@ class FileSelectionDialog(wx.Dialog):
         self._save_mode = bool(style & wx.FD_SAVE)
         self._require_existing = bool(style & wx.FD_FILE_MUST_EXIST)
         self._prompt_overwrite = bool(style & wx.FD_OVERWRITE_PROMPT)
-        self._filters = self._parse_wildcard(wildcard)
+        self._filters = parse_file_wildcard(wildcard)
         self._filter_choice: wx.Choice | None = None
-        self._entries: list[dict] = []
+        initial_path = start_path or FileSelectionDialog._last_path
+        self._browser = file_browser or FileBrowser(initial_path)
+        self._entries: list[FileEntry] = []
         self._selected_paths: list[str] = []
-        if FileSelectionDialog._last_path and FileSelectionDialog._last_path.exists():
-            self._current_path: Path | None = FileSelectionDialog._last_path
-        else:
-            self._current_path = Path.cwd() if Path.cwd().exists() else Path.home()
 
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         if message:
@@ -99,17 +117,6 @@ class FileSelectionDialog(wx.Dialog):
         self._refresh_entries()
 
     # ------------------------------------------------------------------ helpers
-    def _parse_wildcard(self, wildcard: str) -> list[tuple[str, list[str]]]:
-        parts = [part for part in wildcard.split("|") if part]
-        if len(parts) < 2:
-            return [( _("All files"), ["*.*"])]
-        filters: list[tuple[str, list[str]]] = []
-        for i in range(0, len(parts) - 1, 2):
-            desc = parts[i].strip() or _("Files")
-            pattern = parts[i + 1].strip() or "*.*"
-            filters.append((desc, [p.strip() for p in pattern.split(";") if p.strip()]))
-        return filters or [( _("All files"), ["*.*"])]
-
     def _active_patterns(self) -> list[str]:
         index = 0
         if self._filter_choice is not None:
@@ -122,34 +129,16 @@ class FileSelectionDialog(wx.Dialog):
         self._refresh_entries()
 
     def _refresh_entries(self) -> None:
-        entries: list[dict] = []
-        if self._current_path is None:
-            entries.extend(self._drive_entries())
-            path_text = _("Computer")
-        else:
-            path_text = str(self._current_path)
-            parent = self._current_path.parent
-            if parent != self._current_path:
-                entries.append({"name": "..", "path": parent, "type": "parent"})
-            try:
-                children = sorted(self._current_path.iterdir(), key=lambda item: (item.is_file(), item.name.lower()))
-            except (OSError, PermissionError):
-                children = []
-            for child in children:
-                if child.is_dir():
-                    entries.append({"name": child.name, "path": child, "type": "dir"})
-            patterns = self._active_patterns()
-            for child in children:
-                if child.is_file() and self._matches_filter(child.name, patterns):
-                    size = self._format_size(child.stat().st_size if child.exists() else 0)
-                    entries.append({"name": child.name, "path": child, "type": "file", "size": size})
-
+        patterns = self._active_patterns()
+        entries = self._browser.list_entries(patterns)
         self._entries = entries
+        current_path = self._browser.current_path()
+        path_text = str(current_path) if current_path else _("Computer")
         self._path_label.SetLabel(path_text)
         self._list_ctrl.DeleteAllItems()
         for index, entry in enumerate(entries):
-            item = self._list_ctrl.InsertItem(index, entry["name"])
-            entry_type = entry["type"]
+            item = self._list_ctrl.InsertItem(index, entry.name)
+            entry_type = entry.kind
             if entry_type == "file":
                 entry_label = _("File")
             elif entry_type == "dir":
@@ -160,45 +149,9 @@ class FileSelectionDialog(wx.Dialog):
                 entry_label = _("Parent folder")
             self._list_ctrl.SetItem(index, 1, entry_label)
             if entry_type == "file":
-                self._list_ctrl.SetItem(index, 2, entry.get("size", ""))
+                self._list_ctrl.SetItem(index, 2, entry.size_label)
         if entries:
             self._list_ctrl.Focus(0)
-
-    def _drive_entries(self) -> list[dict]:
-        entries: list[dict] = []
-        mask = 0
-        try:
-            mask = ctypes.windll.kernel32.GetLogicalDrives()
-        except Exception:
-            mask = 0
-        for offset, letter in enumerate(string.ascii_uppercase):
-            if mask & (1 << offset):
-                path = Path(f"{letter}:\\")
-                entries.append({"name": f"{letter}:\\", "path": path, "type": "drive"})
-        if not entries:
-            for letter in string.ascii_uppercase:
-                candidate = Path(f"{letter}:\\")
-                if candidate.exists():
-                    entries.append({"name": f"{letter}:\\", "path": candidate, "type": "drive"})
-        return entries
-
-    def _matches_filter(self, filename: str, patterns: Iterable[str]) -> bool:
-        lowered = filename.lower()
-        for pattern in patterns:
-            if fnmatch.fnmatch(lowered, pattern.lower()):
-                return True
-        return False
-
-    def _format_size(self, size: int) -> str:
-        if size <= 0:
-            return ""
-        units = ["B", "KB", "MB", "GB"]
-        value = float(size)
-        for unit in units:
-            if value < 1024 or unit == units[-1]:
-                return f"{value:.0f} {unit}"
-            value /= 1024
-        return f"{size} B"
 
     # ----------------------------------------------------------------- events
     def _on_list_char(self, event: wx.KeyEvent) -> None:
@@ -222,13 +175,7 @@ class FileSelectionDialog(wx.Dialog):
         return True
 
     def _go_up(self) -> None:
-        if self._current_path is None:
-            return
-        parent = self._current_path.parent
-        if parent == self._current_path:
-            self._current_path = None
-        else:
-            self._current_path = parent
+        self._browser.go_up()
         self._refresh_entries()
 
     def _on_item_activated(self, event: wx.ListEvent) -> None:
@@ -238,14 +185,12 @@ class FileSelectionDialog(wx.Dialog):
         if index < 0 or index >= len(self._entries):
             return
         entry = self._entries[index]
-        entry_type = entry["type"]
+        entry_type = entry.kind
         if entry_type in ("dir", "drive"):
-            self._current_path = entry["path"]
+            self._browser.set_current_path(entry.path)
             self._refresh_entries()
         elif entry_type == "parent":
-            self._current_path = entry["path"] if entry["path"] != self._current_path else entry["path"].parent
-            if self._current_path == entry["path"]:
-                self._current_path = None
+            self._browser.set_current_path(entry.path)
             self._refresh_entries()
         elif entry_type == "file":
             self._confirm_selection()
@@ -258,12 +203,14 @@ class FileSelectionDialog(wx.Dialog):
         selected = self._gather_selected_files()
         if self._save_mode:
             if not selected:
-                if not self._name_input or not self._name_input.GetValue().strip():
-                    wx.MessageBox(_("Enter a file name."), _("Warning"), parent=self)
+                try:
+                    selected = ensure_save_selection(
+                        self._browser.current_path(),
+                        self._name_input.GetValue() if self._name_input else "",
+                    )
+                except ValueError as exc:
+                    wx.MessageBox(str(exc), _("Warning"), parent=self)
                     return False
-                target_dir = self._current_path or Path.cwd()
-                candidate = target_dir / self._name_input.GetValue().strip()
-                selected = [str(candidate)]
             if self._prompt_overwrite and any(Path(path).exists() for path in selected):
                 response = wx.MessageBox(
                     _("File exists. Overwrite?"),
@@ -285,8 +232,10 @@ class FileSelectionDialog(wx.Dialog):
         if selected:
             last_dir = Path(selected[0]).parent
             FileSelectionDialog._last_path = last_dir
-        elif self._current_path:
-            FileSelectionDialog._last_path = self._current_path
+        else:
+            current_path = self._browser.current_path()
+            if current_path:
+                FileSelectionDialog._last_path = current_path
         self.EndModal(wx.ID_OK)
         return True
 
@@ -300,8 +249,8 @@ class FileSelectionDialog(wx.Dialog):
         for idx in indices:
             if 0 <= idx < len(self._entries):
                 entry = self._entries[idx]
-                if entry["type"] == "file":
-                    files.append(str(entry["path"]))
+                if entry.kind == "file":
+                    files.append(str(entry.path))
         return files
 
     # ------------------------------------------------------------- public API

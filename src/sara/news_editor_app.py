@@ -12,9 +12,10 @@ if __package__ is None or __package__ == "":
 
 from sara.core.config import SettingsManager
 from sara.core.i18n import gettext as _, set_language
-from sara.core.playlist import PlaylistKind, PlaylistModel
+from sara.core.playlist import PlaylistItem, PlaylistKind, PlaylistModel
 from sara.audio.engine import AudioEngine
 from sara.ui.news_playlist_panel import NewsPlaylistPanel
+from sara.ui.playback_controller import PlaybackController
 from sara.news_editor_settings import NewsEditorSettings
 
 
@@ -28,6 +29,7 @@ class NewsEditorFrame(wx.Frame):
         self._editor_settings = NewsEditorSettings()
         self._line_length = self._editor_settings.get_line_length(self._settings.get_news_line_length())
         self._model = PlaylistModel(id="news-editor", name=_("News service"), kind=PlaylistKind.NEWS)
+        self._preview_controller = PlaybackController(self._audio_engine, self._settings, self._preview_announce)
         last_device = self._editor_settings.get_last_device_id()
         if last_device:
             self._model.output_device = last_device
@@ -43,6 +45,8 @@ class NewsEditorFrame(wx.Frame):
             line_length_bounds=(0, 500),
             on_line_length_change=self._on_line_length_change,
             on_line_length_apply=self._persist_editor_preferences,
+            on_preview_audio=self._preview_news_clip,
+            on_stop_preview_audio=lambda: self._preview_controller.stop_preview(),
         )
         root_sizer = wx.BoxSizer(wx.VERTICAL)
         root_sizer.Add(self._panel, 1, wx.EXPAND)
@@ -108,7 +112,25 @@ class NewsEditorFrame(wx.Frame):
             self._audio_engine.stop_all()
         except Exception:  # pylint: disable=broad-except
             pass
+        try:
+            self._preview_controller.stop_preview()
+        except Exception:  # pylint: disable=broad-except
+            pass
         event.Skip()
+    def _preview_announce(self, _category: str, message: str) -> None:
+        wx.MessageBox(message, _("Preview"), parent=self)
+
+    def _preview_news_clip(self, path: Path) -> bool:
+        if not path.exists():
+            wx.MessageBox(_("Audio file %s does not exist") % path, _("Error"), parent=self)
+            return False
+        temp_item = PlaylistItem(
+            id=f"news-editor-preview-{path.stem}",
+            path=path,
+            title=path.name,
+            duration_seconds=0.0,
+        )
+        return self._preview_controller.start_preview(temp_item, 0.0)
 
 
 def run() -> None:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from importlib.resources import as_file, files
 import logging
 import os
@@ -31,38 +30,24 @@ from sara.core.media_metadata import (
 from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistKind, PlaylistModel
 from sara.core.shortcuts import get_shortcut
 from sara.ui.undo import InsertOperation, MoveOperation, RemoveOperation, UndoAction
+from sara.ui.undo_manager import UndoManager
 from sara.ui.new_playlist_dialog import NewPlaylistDialog
 from sara.ui.playlist_panel import PlaylistPanel
 from sara.ui.news_playlist_panel import NewsPlaylistPanel
+from sara.ui.playlist_layout import PlaylistLayoutManager, PlaylistLayoutState
+from sara.ui.announcement_service import AnnouncementService
 from sara.ui.playlist_devices_dialog import PlaylistDevicesDialog
 from sara.ui.mix_point_dialog import MixPointEditorDialog
 from sara.ui.options_dialog import OptionsDialog
 from sara.ui.shortcut_editor_dialog import ShortcutEditorDialog
 from sara.ui.shortcut_utils import format_shortcut_display, parse_shortcut
 from sara.ui.nvda_sleep import notify_nvda_play_next
-from sara.ui.speech import cancel_speech, speak_text
 from sara.ui.file_selection_dialog import FileSelectionDialog
+from sara.ui.playback_controller import PlaybackContext, PlaybackController
+from sara.ui.clipboard_service import PlaylistClipboard
 
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class PlaybackContext:
-    player: Player
-    path: Path
-    device_id: str
-    slot_index: int
-    intro_seconds: float | None = None
-    intro_alert_triggered: bool = False
-
-
-@dataclass
-class PreviewContext:
-    player: Player
-    device_id: str
-    item_path: Path
-    finished_event: Event | None = None
 
 
 FADE_DURATION_SECONDS = 2.0
@@ -90,13 +75,12 @@ class MainFrame(wx.Frame):
         self._playlist_wrappers: Dict[str, wx.Window] = {}
         self._playlist_headers: Dict[str, wx.StaticText] = {}
         self._playlist_titles: Dict[str, str] = {}
-        self._playlist_order: list[str] = []
-        self._current_panel_id: str | None = None
-        self._playback_contexts: Dict[tuple[str, str], PlaybackContext] = {}
+        self._layout = PlaylistLayoutManager()
         self._current_index: int = 0
         self._state = state or AppState()
         self._playlist_factory = PlaylistFactory()
         self._audio_engine = AudioEngine()
+        self._playback = PlaybackController(self._audio_engine, self._settings, self._announce_event)
         self._play_next_id = wx.NewIdRef()
         self._add_tracks_id = wx.NewIdRef()
         self._assign_device_id = wx.NewIdRef()
@@ -119,18 +103,14 @@ class MainFrame(wx.Frame):
         self._playlist_action_ids: Dict[str, int] = {}
         self._action_by_id: Dict[int, str] = {}
         self._shortcut_menu_items: Dict[tuple[str, str], tuple[wx.MenuItem, str]] = {}
-        self._preview_context: PreviewContext | None = None
         self._auto_mix_enabled: bool = False
-        self._auto_mix_state: Dict[tuple[str, str], bool] = {}
         self._alternate_play_next: bool = self._settings.get_alternate_play_next()
         self._auto_remove_played: bool = self._settings.get_auto_remove_played()
         self._focus_playing_track: bool = self._settings.get_focus_playing_track()
         self._intro_alert_seconds: float = self._settings.get_intro_alert_seconds()
-        self._pfl_device_id: str | None = self._settings.get_pfl_device()
-        self._clipboard_items: List[Dict[str, Any]] = []
-        self._undo_stack: list[UndoAction] = []
-        self._redo_stack: list[UndoAction] = []
-        self._focus_lock: Dict[str, bool] = {}
+        self._clipboard = PlaylistClipboard()
+        self._undo_manager = UndoManager(self._apply_undo_callback)
+        self._focus_lock: Dict[str, bool] = self._layout.state.focus_lock
         self._intro_alert_players: list[Tuple[Player, Path]] = []
         self._last_started_item_id: Dict[str, str | None] = {}
 
@@ -138,6 +118,7 @@ class MainFrame(wx.Frame):
 
         self.CreateStatusBar()
         self.SetStatusText(_("Ready"))
+        self._announcer = AnnouncementService(self._settings, status_callback=self.SetStatusText)
         wx.ToolTip.Enable(False)
         self.SetToolTip(None)
         self._fade_duration = max(self._settings.get_playback_fade_seconds(), 0.0)
@@ -320,8 +301,8 @@ class MainFrame(wx.Frame):
                     )
         for playlist in existing_playlists:
             self.add_playlist(playlist)
-        if self._playlist_order:
-            wx.CallAfter(self._focus_playlist_panel, self._playlist_order[0])
+        if self._layout.state.order:
+            wx.CallAfter(self._focus_playlist_panel, self._layout.state.order[0])
 
     def _register_accessibility(self) -> None:
         # Placeholder: konfiguracje wx.Accessible zostaną dodane w przyszłych iteracjach
@@ -473,6 +454,8 @@ class MainFrame(wx.Frame):
                 on_focus=self._on_playlist_focus,
                 on_play_audio=lambda path, device: self._play_news_audio_clip(model, path, device),
                 on_device_change=lambda _model=model: self._persist_playlist_outputs(model),
+                on_preview_audio=self._preview_news_clip,
+                on_stop_preview_audio=lambda: self._playback.stop_preview(),
             )
         else:
             panel = PlaylistPanel(
@@ -503,10 +486,7 @@ class MainFrame(wx.Frame):
         self._playlist_headers[model.id] = header
         self._playlist_titles[model.id] = model.name
         self._last_started_item_id.setdefault(model.id, None)
-        if model.id not in self._playlist_order:
-            self._playlist_order.append(model.id)
-        if self._current_panel_id is None:
-            self._current_panel_id = model.id
+        self._layout.add_playlist(model.id)
         if model.id not in self._state.playlists:
             self._state.add_playlist(model)
         self._update_active_playlist_styles()
@@ -522,22 +502,15 @@ class MainFrame(wx.Frame):
         return any(item.is_selected for item in model.items)
 
     def _apply_playlist_order(self, order: list[str]) -> None:
-        filtered = [playlist_id for playlist_id in order if playlist_id in self._playlists]
-        remaining = [playlist_id for playlist_id in self._playlist_order if playlist_id not in filtered]
-        self._playlist_order = filtered + remaining
+        applied = self._layout.apply_order(order)
         self._playlist_sizer.Clear(delete_windows=False)
-        for playlist_id in self._playlist_order:
+        for playlist_id in self._layout.state.order:
             wrapper = self._playlist_wrappers.get(playlist_id)
             if wrapper is not None:
                 self._playlist_sizer.Add(wrapper, 0, wx.EXPAND | wx.ALL, 8)
         self._playlist_container.Layout()
         self._playlist_container.FitInside()
-        if self._current_panel_id not in self._playlist_order:
-            self._current_panel_id = self._playlist_order[0] if self._playlist_order else None
-        if self._current_panel_id and self._current_panel_id in self._playlist_order:
-            self._current_index = self._playlist_order.index(self._current_panel_id)
-        else:
-            self._current_index = 0
+        self._current_index = self._layout.current_index()
         self._update_active_playlist_styles()
 
     def _remove_playlist_by_id(self, playlist_id: str, *, announce: bool = True) -> bool:
@@ -555,14 +528,13 @@ class MainFrame(wx.Frame):
             header.Destroy()
         self._state.remove_playlist(playlist_id)
         self._focus_lock.pop(playlist_id, None)
-        self._playlist_order = [pid for pid in self._playlist_order if pid != playlist_id]
+        self._layout.remove_playlist(playlist_id)
         self._playlist_titles.pop(playlist_id, None)
         self._playlist_container.Layout()
         self._playlist_container.FitInside()
-        self._auto_mix_state = {key: value for key, value in self._auto_mix_state.items() if key[0] != playlist_id}
-        self._playback_contexts = {key: value for key, value in self._playback_contexts.items() if key[0] != playlist_id}
+        self._playback.clear_playlist_entries(playlist_id)
         self._last_started_item_id.pop(playlist_id, None)
-        self._apply_playlist_order(self._playlist_order)
+        self._apply_playlist_order(self._layout.state.order)
         if announce:
             self._announce_event("playlist", _("Removed playlist %s") % title)
         return True
@@ -593,6 +565,18 @@ class MainFrame(wx.Frame):
             player.play(f"{model.id}:news", str(clip_path))
         except Exception as exc:  # pylint: disable=broad-except
             self._announce_event("device", _("Failed to play audio clip: %s") % exc)
+
+    def _preview_news_clip(self, clip_path: Path) -> bool:
+        if not clip_path.exists():
+            self._announce_event("pfl", _("Audio file %s does not exist") % clip_path)
+            return False
+        temp_item = PlaylistItem(
+            id=f"news-preview-{clip_path.stem}",
+            path=clip_path,
+            title=clip_path.name,
+            duration_seconds=0.0,
+        )
+        return self._playback.start_preview(temp_item, 0.0)
 
     def _persist_playlist_outputs(self, model: PlaylistModel) -> None:
         self._settings.set_playlist_outputs(model.name, model.get_configured_slots())
@@ -636,7 +620,7 @@ class MainFrame(wx.Frame):
         return True
 
     def _cycle_playlist_focus(self, *, backwards: bool) -> bool:
-        order = [playlist_id for playlist_id in self._playlist_order if playlist_id in self._playlists]
+        order = [playlist_id for playlist_id in self._layout.state.order if playlist_id in self._playlists]
         if not order:
             self._announce_event("playlist", _("No playlists available"))
             return False
@@ -737,7 +721,7 @@ class MainFrame(wx.Frame):
         )
 
     def _on_remove_playlist(self, _event: wx.CommandEvent) -> None:
-        playlist_id = self._current_panel_id
+        playlist_id = self._layout.state.current_id
         if not playlist_id:
             self._announce_event("playlist", _("No playlist selected"))
             return
@@ -755,7 +739,7 @@ class MainFrame(wx.Frame):
 
     def _on_manage_playlists(self, _event: wx.CommandEvent) -> None:
         entries: list[dict[str, Any]] = []
-        for playlist_id in self._playlist_order:
+        for playlist_id in self._layout.state.order:
             panel = self._playlists.get(playlist_id)
             if not panel:
                 continue
@@ -983,7 +967,7 @@ class MainFrame(wx.Frame):
         if dialog.ShowModal() == wx.ID_OK:
             self._settings.save()
             self._fade_duration = max(self._settings.get_playback_fade_seconds(), 0.0)
-            self._reload_pfl_device()
+            self._playback.reload_pfl_device()
             self._alternate_play_next = self._settings.get_alternate_play_next()
             self._auto_remove_played = self._settings.get_auto_remove_played()
             self._focus_playing_track = self._settings.get_focus_playing_track()
@@ -1018,7 +1002,7 @@ class MainFrame(wx.Frame):
     def _on_toggle_auto_mix(self, event: wx.CommandEvent) -> None:
         self._auto_mix_enabled = not self._auto_mix_enabled
         if not self._auto_mix_enabled:
-            self._auto_mix_state.clear()
+            self._playback.clear_auto_mix()
         status = _("enabled") if self._auto_mix_enabled else _("disabled")
         self._announce_event("auto_mix", _("Auto mix %s") % status)
         if self._auto_mix_enabled:
@@ -1119,7 +1103,7 @@ class MainFrame(wx.Frame):
         self._announce_event("playback_events", message)
 
     def _apply_loop_setting_to_playback(self, *, playlist_id: str | None = None, item_id: str | None = None) -> None:
-        for (pl_id, item_id_key), context in list(self._playback_contexts.items()):
+        for (pl_id, item_id_key), context in list(self._playback.contexts.items()):
             if playlist_id is not None and pl_id != playlist_id:
                 continue
             if item_id is not None and item_id_key != item_id:
@@ -1179,12 +1163,12 @@ class MainFrame(wx.Frame):
             outro_seconds=item.outro_seconds,
             segue_seconds=item.segue_seconds,
             overlap_seconds=item.overlap_seconds,
-            on_preview=lambda position, loop_range=None: self._start_pfl_preview(
+            on_preview=lambda position, loop_range=None: self._playback.start_preview(
                 item,
                 max(0.0, position),
                 loop_range=loop_range,
             ),
-            on_stop_preview=self._stop_pfl_preview,
+            on_stop_preview=self._playback.stop_preview,
             track_path=item.path,
             initial_replay_gain=item.replay_gain_db,
             on_replay_gain_update=lambda gain, item=item: self._apply_replay_gain(item, gain),
@@ -1199,7 +1183,7 @@ class MainFrame(wx.Frame):
             result = dialog.get_result()
         finally:
             dialog.Destroy()
-            self._stop_pfl_preview()
+            self._playback.stop_preview()
 
         mix_values = {
             "cue_in": result.get("cue"),
@@ -1255,7 +1239,7 @@ class MainFrame(wx.Frame):
         key = (playlist.id, item.id)
 
         # stop any preview playback before starting actual playback
-        self._stop_pfl_preview()
+        self._playback.stop_preview()
 
         if not item.path.exists():
             item.status = PlaylistItemStatus.PENDING
@@ -1264,28 +1248,19 @@ class MainFrame(wx.Frame):
             self._announce_event("playback_errors", _("File %s does not exist") % item.path)
             return False
 
-        context = self._playback_contexts.get(key)
+        context = self._playback.contexts.get(key)
+        player = context.player if context else None
         device_id = context.device_id if context else None
         slot_index = context.slot_index if context else None
-        player = context.player if context else None
 
         if player is None or device_id is None or slot_index is None:
             existing_context = self._get_playback_context(playlist.id)
             if existing_context:
                 existing_key, _existing = existing_context
-                crossfade_active = bool(self._auto_mix_state.get(existing_key))
+                crossfade_active = bool(self._playback.auto_mix_state.get(existing_key))
                 if not crossfade_active:
                     fade_seconds = self._fade_duration
                     self._stop_playlist_playback(playlist.id, mark_played=True, fade_duration=fade_seconds)
-
-            acquired = self._ensure_player(playlist)
-            if acquired is None:
-                item.status = PlaylistItemStatus.PENDING
-                panel.mark_item_status(item.id, item.status)
-                panel.refresh()
-                self._announce_event("device", _("No audio devices available"))
-                return False
-            player, device_id, slot_index = acquired
 
         def _on_finished(finished_item_id: str) -> None:
             wx.CallAfter(self._handle_playback_finished, playlist.id, finished_item_id)
@@ -1293,48 +1268,27 @@ class MainFrame(wx.Frame):
         def _on_progress(progress_item_id: str, seconds: float) -> None:
             wx.CallAfter(self._handle_playback_progress, playlist.id, progress_item_id, seconds)
 
-        player.set_finished_callback(_on_finished)
-        player.set_progress_callback(_on_progress)
-
         start_seconds = item.cue_in_seconds or 0.0
 
         notify_nvda_play_next()
 
-        try:
-            player.play(item.id, str(item.path), start_seconds=start_seconds)
-        except Exception as exc:  # pylint: disable=broad-except
-            player.set_finished_callback(None)
-            player.set_progress_callback(None)
+        result = self._playback.start_item(
+            playlist,
+            item,
+            start_seconds=start_seconds,
+            on_finished=_on_finished,
+            on_progress=_on_progress,
+        )
+        if result is None:
             item.status = PlaylistItemStatus.PENDING
             panel.mark_item_status(item.id, item.status)
             panel.refresh()
-            self._announce_event("playback_errors", _("Playback error: %s") % exc)
             return False
 
-        try:
-            player.set_gain_db(item.replay_gain_db)
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.warning("Failed to set ReplayGain: %s", exc)
-
-        try:
-            if item.loop_enabled and item.has_loop():
-                player.set_loop(item.loop_start_seconds, item.loop_end_seconds)
-            else:
-                player.set_loop(None, None)
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.warning("Failed to configure loop: %s", exc)
-
-        self._playback_contexts[key] = PlaybackContext(
-            player=player,
-            path=item.path,
-            device_id=device_id,
-            slot_index=slot_index,
-            intro_seconds=item.intro_seconds,
-        )
-        self._auto_mix_state.pop(key, None)
-        panel.mark_item_status(item.id, item.status)
+        panel.mark_item_status(item.id, PlaylistItemStatus.PLAYING)
         panel.refresh()
         self._focus_lock[playlist.id] = False
+        self._last_started_item_id[playlist.id] = item.id
         self._maybe_focus_playing_item(panel, item.id)
         if item.has_loop() and item.loop_enabled:
             self._announce_event("loop", _("Loop playing"))
@@ -1428,7 +1382,7 @@ class MainFrame(wx.Frame):
         return None
 
     def _play_next_alternate(self) -> bool:
-        ordered_ids = [playlist_id for playlist_id in self._playlist_order if playlist_id in self._playlists]
+        ordered_ids = [playlist_id for playlist_id in self._layout.state.order if playlist_id in self._playlists]
         if not ordered_ids:
             return False
 
@@ -1446,7 +1400,7 @@ class MainFrame(wx.Frame):
                 except ValueError:
                     index = 0
                 self._current_index = (index + 1) % page_count
-                self._current_panel_id = playlist_id
+                self._layout.set_current(playlist_id)
                 self._update_active_playlist_styles()
                 self._announce_event("playlist", f"Aktywna playlista {panel.model.name}")
                 return True
@@ -1482,8 +1436,8 @@ class MainFrame(wx.Frame):
             self._announce_event("playback_events", _("No scheduled tracks available"))
 
     def _handle_playback_finished(self, playlist_id: str, item_id: str) -> None:
-        self._auto_mix_state.pop((playlist_id, item_id), None)
-        context = self._playback_contexts.pop((playlist_id, item_id), None)
+        self._playback.auto_mix_state.pop((playlist_id, item_id), None)
+        context = self._playback.contexts.pop((playlist_id, item_id), None)
         if context:
             try:
                 context.player.set_finished_callback(None)
@@ -1518,7 +1472,7 @@ class MainFrame(wx.Frame):
             self._announce_event("playback_events", _("Finished %s") % item.title)
 
     def _handle_playback_progress(self, playlist_id: str, item_id: str, seconds: float) -> None:
-        context_entry = self._playback_contexts.get((playlist_id, item_id))
+        context_entry = self._playback.contexts.get((playlist_id, item_id))
         if not context_entry:
             return
         panel = self._playlists.get(playlist_id)
@@ -1537,7 +1491,7 @@ class MainFrame(wx.Frame):
 
         if mix_enabled:
             key = (playlist_id, item_id)
-            if not self._auto_mix_state.get(key):
+            if not self._playback.auto_mix_state.get(key):
                 target = item.segue_seconds
                 overlap = item.overlap_seconds
                 if target is None and item.outro_seconds is not None:
@@ -1551,14 +1505,14 @@ class MainFrame(wx.Frame):
                 if target is not None:
                     progress = seconds - (item.cue_in_seconds or 0.0)
                     if progress >= target:
-                        self._auto_mix_state[key] = True
+                        self._playback.auto_mix_state[key] = True
                         next_started = self._start_next_from_playlist(
                             panel,
                             ignore_ui_selection=self._auto_mix_enabled,
                             advance_focus=False,
                         )
                         if not next_started:
-                            self._auto_mix_state[key] = False
+                            self._playback.auto_mix_state[key] = False
                             return
                         try:
                             if default_overlap and default_overlap > 0:
@@ -1601,7 +1555,7 @@ class MainFrame(wx.Frame):
                 item.status = PlaylistItemStatus.PAUSED
                 panel.mark_item_status(item.id, item.status)
                 panel.refresh()
-            self._playback_contexts[key] = context
+            self._playback.contexts[key] = context
             self._announce_event("playback_events", f"Playlista {playlist.name} wstrzymana")
         elif action == "stop":
             self._stop_playlist_playback(playlist.id, mark_played=False, fade_duration=0.0)
@@ -1616,17 +1570,15 @@ class MainFrame(wx.Frame):
                 _("Playlist %s finished track with fade out") % playlist.name,
             )
     def _get_current_playlist_panel(self):
-        if self._current_panel_id and self._current_panel_id in self._playlists:
-            return self._playlists[self._current_panel_id]
+        current_id = self._layout.state.current_id
+        if current_id and current_id in self._playlists:
+            return self._playlists[current_id]
 
-        for playlist_id in self._playlist_order:
+        for playlist_id in self._layout.state.order:
             panel = self._playlists.get(playlist_id)
             if panel:
-                self._current_panel_id = playlist_id
-                try:
-                    self._current_index = self._playlist_order.index(playlist_id)
-                except ValueError:
-                    pass
+                self._layout.set_current(playlist_id)
+                self._current_index = self._layout.current_index()
                 self._update_active_playlist_styles()
                 self._announce_event("playlist", panel.model.name)
                 return panel
@@ -1645,14 +1597,11 @@ class MainFrame(wx.Frame):
     def _on_playlist_focus(self, playlist_id: str) -> None:
         if playlist_id not in self._playlists:
             return
-        previous_id = self._current_panel_id
-        if previous_id == playlist_id:
+        current_id = self._layout.state.current_id
+        if current_id == playlist_id:
             return
-        self._current_panel_id = playlist_id
-        try:
-            self._current_index = self._playlist_order.index(playlist_id)
-        except ValueError:
-            pass
+        self._layout.set_current(playlist_id)
+        self._current_index = self._layout.current_index()
         self._update_active_playlist_styles()
         panel = self._playlists.get(playlist_id)
         if panel:
@@ -1957,7 +1906,7 @@ class MainFrame(wx.Frame):
         panel = self._get_current_music_panel()
         if panel:
             candidate_ids.append(panel.model.id)
-        for playlist_id, _item_id in self._playback_contexts.keys():
+        for playlist_id, _item_id in self._playback.contexts.keys():
             if playlist_id not in candidate_ids:
                 candidate_ids.append(playlist_id)
         for playlist_id in candidate_ids:
@@ -1972,13 +1921,13 @@ class MainFrame(wx.Frame):
         return None
 
     def _active_playlist_item(self, playlist: PlaylistModel) -> PlaylistItem | None:
-        playlist_keys = [key for key in self._playback_contexts.keys() if key[0] == playlist.id]
+        playlist_keys = [key for key in self._playback.contexts.keys() if key[0] == playlist.id]
         if not playlist_keys:
             return None
         last_started = self._last_started_item_id.get(playlist.id)
         if last_started:
             candidate_key = (playlist.id, last_started)
-            if candidate_key in self._playback_contexts:
+            if candidate_key in self._playback.contexts:
                 item = playlist.get_item(last_started)
                 if item:
                     return item
@@ -2024,10 +1973,10 @@ class MainFrame(wx.Frame):
             return False
         if not self._settings.get_announcement_enabled("intro_alert"):
             return False
-        pfl_device_id = self._pfl_device_id or self._settings.get_pfl_device()
+        pfl_device_id = self._playback.pfl_device_id or self._settings.get_pfl_device()
         if not pfl_device_id:
             return False
-        if self._preview_context:
+        if self._playback.preview_context:
             return False
         known_devices = {device.id for device in self._audio_engine.get_devices()}
         if pfl_device_id not in known_devices:
@@ -2107,7 +2056,7 @@ class MainFrame(wx.Frame):
         was_selected = item.is_selected
         item.is_selected = was_selected
         self._forget_last_started_item(model.id, item.id)
-        if any(key == (model.id, item.id) for key in self._playback_contexts):
+        if any(key == (model.id, item.id) for key in self._playback.contexts):
             self._stop_playlist_playback(model.id, mark_played=False, fade_duration=0.0)
         if refocus:
             if model.items:
@@ -2138,16 +2087,15 @@ class MainFrame(wx.Frame):
             self._last_started_item_id[playlist_id] = None
 
     def _push_undo_action(self, model: PlaylistModel, operation) -> None:
-        self._undo_stack.append(UndoAction(model.id, operation))
-        self._redo_stack.clear()
+        self._undo_manager.push(UndoAction(model.id, operation))
 
-    def _apply_undo_action(self, action: UndoAction, *, reverse: bool) -> bool:
+    def _apply_undo_callback(self, action: UndoAction, reverse: bool) -> bool:
         model = self._get_playlist_model(action.playlist_id)
         panel = self._playlists.get(action.playlist_id)
         if model is None or panel is None:
             return False
-        if self._current_panel_id != action.playlist_id:
-            self._current_panel_id = action.playlist_id
+        if self._layout.state.current_id != action.playlist_id:
+            self._layout.set_current(action.playlist_id)
             self._update_active_playlist_styles()
         try:
             indices = action.revert(model) if reverse else action.apply(model)
@@ -2175,7 +2123,7 @@ class MainFrame(wx.Frame):
             return
         panel, model, selected = context
         items = [item for _, item in selected]
-        self._clipboard_items = self._serialize_items(items)
+        self._clipboard.set(self._serialize_items(items))
         existing_paths = [item.path for item in items if item.path.exists()]
         if existing_paths:
             self._set_system_clipboard_paths(existing_paths)
@@ -2193,7 +2141,7 @@ class MainFrame(wx.Frame):
             return
         panel, model, selected = context
         items = [item for _, item in selected]
-        self._clipboard_items = self._serialize_items(items)
+        self._clipboard.set(self._serialize_items(items))
         existing_paths = [item.path for item in items if item.path.exists()]
         if existing_paths:
             self._set_system_clipboard_paths(existing_paths)
@@ -2245,8 +2193,8 @@ class MainFrame(wx.Frame):
             )
             return
 
-        if self._clipboard_items:
-            new_items = [self._create_item_from_serialized(data) for data in self._clipboard_items]
+        if not self._clipboard.is_empty():
+            new_items = [self._create_item_from_serialized(data) for data in self._clipboard.get()]
             self._finalize_clipboard_paste(panel, model, new_items, insert_at, index, skipped_files=0)
             return
 
@@ -2332,26 +2280,16 @@ class MainFrame(wx.Frame):
         self._move_selection(1)
 
     def _on_undo(self, _event: wx.CommandEvent) -> None:
-        if not self._undo_stack:
+        if not self._undo_manager.undo():
             self._announce_event("undo_redo", _("Nothing to undo"))
             return
-        action = self._undo_stack.pop()
-        if not self._apply_undo_action(action, reverse=True):
-            self._announce_event("undo_redo", _("Unable to undo last operation"))
-            return
-        self._redo_stack.append(action)
-        self._announce_operation(action.operation, undo=True)
+        self._announce_event("undo_redo", _("Undo operation"))
 
     def _on_redo(self, _event: wx.CommandEvent) -> None:
-        if not self._redo_stack:
+        if not self._undo_manager.redo():
             self._announce_event("undo_redo", _("Nothing to redo"))
             return
-        action = self._redo_stack.pop()
-        if not self._apply_undo_action(action, reverse=False):
-            self._announce_event("undo_redo", _("Unable to redo last operation"))
-            return
-        self._undo_stack.append(action)
-        self._announce_operation(action.operation, undo=False)
+        self._announce_event("undo_redo", _("Redo operation"))
 
     def _update_active_playlist_styles(self) -> None:
         active_colour = wx.Colour(230, 240, 255)
@@ -2359,8 +2297,9 @@ class MainFrame(wx.Frame):
         active_text_colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_HIGHLIGHT)
         inactive_text_colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOWTEXT)
 
+        current_id = self._layout.state.current_id
         for playlist_id, wrapper in self._playlist_wrappers.items():
-            is_active = playlist_id == self._current_panel_id
+            is_active = playlist_id == current_id
             wrapper.SetBackgroundColour(active_colour if is_active else inactive_colour)
             wrapper.Refresh()
             panel = self._playlists.get(playlist_id)
@@ -2368,7 +2307,7 @@ class MainFrame(wx.Frame):
                 panel.set_active(is_active)
 
         for playlist_id, header in self._playlist_headers.items():
-            is_active = playlist_id == self._current_panel_id
+            is_active = playlist_id == current_id
             base_title = self._playlist_titles.get(playlist_id, header.GetLabel())
             if header.GetLabel() != base_title:
                 header.SetLabel(base_title)
@@ -2378,10 +2317,7 @@ class MainFrame(wx.Frame):
         self._playlist_container.Refresh()
 
     def _get_playback_context(self, playlist_id: str) -> tuple[tuple[str, str], PlaybackContext] | None:
-        for key, context in self._playback_contexts.items():
-            if key[0] == playlist_id:
-                return key, context
-        return None
+        return self._playback.get_context(playlist_id)
 
     def _get_playing_item_id(self, playlist_id: str) -> str | None:
         context = self._get_playback_context(playlist_id)
@@ -2391,7 +2327,7 @@ class MainFrame(wx.Frame):
         return key[1]
 
     def _get_busy_device_ids(self) -> set[str]:
-        return {context.device_id for context in self._playback_contexts.values()}
+        return self._playback.get_busy_device_ids()
 
     def _refresh_selection_display(self, playlist_id: str) -> None:
         panel = self._playlists.get(playlist_id)
@@ -2405,196 +2341,26 @@ class MainFrame(wx.Frame):
         mark_played: bool,
         fade_duration: float = 0.0,
     ) -> None:
-        keys_to_remove = [key for key in self._playback_contexts if key[0] == playlist_id]
-        for key in keys_to_remove:
-            self._auto_mix_state.pop(key, None)
-            context = self._playback_contexts.pop(key)
-            try:
-                if fade_duration > 0.0:
-                    context.player.fade_out(fade_duration)
-                else:
-                    context.player.stop()
-            except Exception as exc:  # pylint: disable=broad-except
-                logger.warning("Failed to stop player: %s", exc)
-            try:
-                context.player.set_finished_callback(None)
-                context.player.set_progress_callback(None)
-            except Exception:  # pylint: disable=broad-except
-                pass
-
-            panel = self._playlists.get(playlist_id)
-            if not panel:
-                continue
+        removed_contexts = self._playback.stop_playlist(playlist_id, fade_duration=fade_duration)
+        panel = self._playlists.get(playlist_id)
+        if not panel:
+            return
+        for key, _context in removed_contexts:
             item = next((track for track in panel.model.items if track.id == key[1]), None)
             if not item:
                 continue
-
             if mark_played:
                 item.status = PlaylistItemStatus.PLAYED
                 item.current_position = item.duration_seconds
             else:
                 item.status = PlaylistItemStatus.PENDING
                 item.current_position = 0.0
-
             panel.mark_item_status(item.id, item.status)
             panel.update_progress(item.id)
             panel.refresh()
 
     def _cancel_active_playback(self, playlist_id: str, mark_played: bool = False) -> None:
         self._stop_playlist_playback(playlist_id, mark_played=mark_played, fade_duration=0.0)
-
-    def _stop_pfl_preview(self, *, wait: bool = True) -> None:
-        if not self._preview_context:
-            return
-        context = self._preview_context
-        self._preview_context = None
-        finished_event = context.finished_event if wait else None
-        try:
-            context.player.set_loop(None, None)
-        except Exception:  # pylint: disable=broad-except
-            pass
-        try:
-            context.player.stop()
-        except Exception:  # pylint: disable=broad-except
-            pass
-        if wait and finished_event:
-            try:
-                finished_event.wait(timeout=0.5)
-            except Exception:  # pylint: disable=broad-except
-                pass
-
-    def _reload_pfl_device(self) -> None:
-        new_device = self._settings.get_pfl_device()
-        if new_device != self._pfl_device_id:
-            self._stop_pfl_preview()
-        self._pfl_device_id = new_device
-
-    def _start_pfl_preview(
-        self,
-        item: PlaylistItem,
-        start: float,
-        *,
-        loop_range: tuple[float, float] | None = None,
-    ) -> bool:
-        if loop_range is not None and loop_range[1] <= loop_range[0]:
-            self._announce_event("loop", _("Loop end must be greater than start"))
-            return False
-
-        self._stop_pfl_preview(wait=True)
-
-        pfl_device_id = self._pfl_device_id or self._settings.get_pfl_device()
-        if not pfl_device_id:
-            self._announce_event("pfl", _("Configure a PFL device in Options"))
-            return False
-
-        known_devices = {device.id for device in self._audio_engine.get_devices()}
-        if pfl_device_id not in known_devices:
-            self._audio_engine.refresh_devices()
-            known_devices = {device.id for device in self._audio_engine.get_devices()}
-        if pfl_device_id not in known_devices:
-            self._announce_event("pfl", _("Selected PFL device is not available"))
-            return False
-
-        busy_devices = self._get_busy_device_ids()
-        if pfl_device_id in busy_devices:
-            self._announce_event("pfl", _("PFL device is currently in use"))
-            return False
-
-        player: Player
-        try:
-            player = self._audio_engine.create_player(pfl_device_id)
-        except Exception as exc:  # pylint: disable=broad-except
-            self._announce_event("pfl", _("Failed to prepare PFL preview: %s") % exc)
-            return False
-
-        finished_event: Event | None = None
-        try:
-            player.set_finished_callback(None)
-            player.set_progress_callback(None)
-            player.set_gain_db(item.replay_gain_db)
-            finished_event = player.play(item.id + ":preview", str(item.path), start_seconds=start)
-            if loop_range:
-                player.set_loop(loop_range[0], loop_range[1])
-            else:
-                player.set_loop(None, None)
-        except Exception as exc:  # pylint: disable=broad-except
-            self._announce_event("pfl", _("Preview error: %s") % exc)
-            try:
-                player.stop()
-            except Exception:  # pylint: disable=broad-except
-                pass
-            return False
-
-        self._preview_context = PreviewContext(
-            player=player,
-            device_id=pfl_device_id,
-            item_path=item.path,
-            finished_event=finished_event,
-        )
-        return True
-
-    def _update_loop_preview(self, item: PlaylistItem, start: float, end: float) -> bool:
-        if end <= start:
-            return False
-        context = self._preview_context
-        if not context or context.item_path != item.path:
-            return False
-        try:
-            context.player.set_loop(start, end)
-        except Exception as exc:  # pylint: disable=broad-except
-            self._announce_event("pfl", _("Preview error: %s") % exc)
-            return False
-        return True
-
-    def _ensure_player(self, playlist: PlaylistModel) -> tuple[Player, str, int] | None:
-        attempts = 0
-        missing_devices: set[str] = set()
-
-        while attempts < 2:
-            devices = self._audio_engine.get_devices()
-            if not devices:
-                self._audio_engine.refresh_devices()
-                devices = self._audio_engine.get_devices()
-                if not devices:
-                    return None
-
-            device_map = {device.id: device for device in devices}
-            busy_devices = self._get_busy_device_ids()
-            selection = playlist.select_next_slot(set(device_map.keys()), busy_devices)
-            if selection is None:
-                if playlist.get_configured_slots():
-                    self._announce_event(
-                        "device",
-                        _("No configured player for playlist %s is available") % playlist.name,
-                    )
-                return None
-
-            slot_index, device_id = selection
-            device = device_map.get(device_id)
-            if device is None:
-                missing_devices.add(device_id)
-                if playlist.output_slots and 0 <= slot_index < len(playlist.output_slots):
-                    playlist.output_slots[slot_index] = None
-                    self._settings.set_playlist_outputs(playlist.name, playlist.output_slots)
-                    self._settings.save()
-                attempts += 1
-                self._audio_engine.refresh_devices()
-                continue
-
-            try:
-                player = self._audio_engine.create_player(device_id)
-                return player, device_id, slot_index
-            except ValueError:
-                attempts += 1
-                self._audio_engine.refresh_devices()
-
-        if missing_devices:
-            removed_list = ", ".join(sorted(missing_devices))
-            self._announce_event(
-                "device",
-                _("Unavailable devices for playlist %s: %s") % (playlist.name, removed_list),
-            )
-        return None
 
     def _announce_event(
         self,
@@ -2604,16 +2370,10 @@ class MainFrame(wx.Frame):
         spoken_message: str | None = None,
     ) -> None:
         """Announce `message` and optionally override spoken content."""
-        self.SetStatusText(message)
-        if not self._settings.get_announcement_enabled(category):
-            return
-        if spoken_message == "":
-            self._silence_screen_reader()
-            return
-        speak_text(spoken_message if spoken_message is not None else message)
+        self._announcer.announce(category, message, spoken_message=spoken_message)
 
     def _silence_screen_reader(self) -> None:
-        cancel_speech()
+        self._announcer.silence()
 
     def _announce(self, message: str) -> None:
         self._announce_event("general", message)

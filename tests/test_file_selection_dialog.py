@@ -30,7 +30,7 @@ def test_file_dialog_filters_files(tmp_path):
         style=wx.FD_OPEN,
     )
     try:
-        files = [entry["name"] for entry in dialog._entries if entry["type"] == "file"]  # type: ignore[attr-defined]
+        files = [entry.name for entry in dialog._entries if entry.kind == "file"]  # type: ignore[attr-defined]
         assert files == [keep.name]
     finally:
         dialog.Destroy()
@@ -42,7 +42,7 @@ def test_file_dialog_remembers_last_directory(tmp_path):
     FileSelectionDialog._last_path = tmp_path  # type: ignore[attr-defined]
     dialog = FileSelectionDialog(None, title="Test", wildcard="All|*.*", style=wx.FD_OPEN)
     try:
-        assert dialog._current_path == tmp_path  # type: ignore[attr-defined]
+        assert dialog._browser.current_path() == tmp_path  # type: ignore[attr-defined]
         dialog._selected_paths = [str(keep)]  # type: ignore[attr-defined]
         dialog.EndModal = lambda *_args, **_kwargs: None  # type: ignore[assignment]
         dialog._confirm_selection()  # type: ignore[attr-defined]
