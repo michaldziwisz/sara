@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import re
-import ctypes
 from pathlib import Path
 from typing import Callable, Optional, Sequence
 
@@ -11,13 +9,14 @@ import wx
 from wx.lib import scrolledpanel
 
 from sara.core.i18n import gettext as _
-from sara.core.media_metadata import is_supported_audio_file
 from sara.core.playlist import PlaylistModel
-from sara.news_service import NewsService, load_news_service, save_news_service
+from sara.news.clipboard import clipboard_audio_paths
+from sara.news.service_manager import NewsServiceManager
+from sara.news_service import NewsService
 from sara.ui.file_selection_dialog import FileSelectionDialog
+from sara.ui.news_mode_controller import NewsEditController, NewsReadController
 
 
-_AUDIO_TOKEN = re.compile(r"\[\[audio:(.+?)\]\]")
 _SERVICE_WILDCARD = _("News services (*.saranews)|*.saranews|All files|*.*")
 
 
@@ -38,6 +37,9 @@ class NewsPlaylistPanel(wx.Panel):
         line_length_bounds: tuple[int, int] = (0, 500),
         on_line_length_change: Callable[[int], None] | None = None,
         on_line_length_apply: Callable[[], None] | None = None,
+        service_manager: NewsServiceManager | None = None,
+        on_preview_audio: Callable[[Path], bool] | None = None,
+        on_stop_preview_audio: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(parent, style=wx.TAB_TRAVERSAL)
         self.SetName(model.name)
@@ -47,17 +49,19 @@ class NewsPlaylistPanel(wx.Panel):
         self._on_focus_request = on_focus
         self._on_play_audio = on_play_audio
         self._on_device_change = on_device_change
+        self._on_preview_audio = on_preview_audio
+        self._on_stop_preview_audio = on_stop_preview_audio
         self._line_length_bounds = line_length_bounds
         self._on_line_length_change = on_line_length_change if enable_line_length_control else None
         self._on_line_length_apply = on_line_length_apply if enable_line_length_control else None
         self._mode: str = "edit"
         self._read_text_ctrl: wx.TextCtrl | None = None
-        self._heading_lines: list[int] = []
         self._suppress_play_shortcut = False
-        self._audio_markers: list[tuple[int, str]] = []
         self._line_length_spin: wx.SpinCtrl | None = None
         self._line_length_apply: wx.Button | None = None
         self._caret_position: int = 0
+        self._service_manager = service_manager or NewsServiceManager(error_handler=self._show_error)
+        self._read_controller = NewsReadController(get_line_length)
 
         self._title = model.name
         self._edit_ctrl = wx.TextCtrl(
@@ -68,11 +72,20 @@ class NewsPlaylistPanel(wx.Panel):
         self._edit_ctrl.Bind(wx.EVT_TEXT, self._on_text_changed)
         self._edit_ctrl.Bind(wx.EVT_SET_FOCUS, self._notify_focus)
         self._edit_ctrl.Bind(wx.EVT_CHAR_HOOK, self._handle_char_hook)
+        self._edit_controller = NewsEditController(
+            self._edit_ctrl,
+            clipboard_reader=clipboard_audio_paths,
+            insert_audio_tokens=self._insert_audio_tokens,
+            show_error=self._show_error,
+            start_preview=self._on_preview_audio,
+            stop_preview=self._stop_preview_audio,
+        )
 
         self._read_panel = scrolledpanel.ScrolledPanel(self, style=wx.BORDER_SIMPLE)
         self._read_panel.SetupScrolling(scroll_x=False, scroll_y=True)
         self._read_panel.Hide()
         self._read_panel.Bind(wx.EVT_SET_FOCUS, self._notify_focus)
+        self.Bind(wx.EVT_WINDOW_DESTROY, lambda _evt: self._stop_preview_audio())
 
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         toolbar = wx.BoxSizer(wx.HORIZONTAL)
@@ -201,22 +214,18 @@ class NewsPlaylistPanel(wx.Panel):
                 self._on_save_service(None)
                 event.StopPropagation()
                 return
+            if keycode in (ord("P"), ord("p")):
+                if event.ShiftDown():
+                    self._edit_controller.stop_preview()
+                else:
+                    self._edit_controller.preview_audio_at_caret()
+                event.StopPropagation()
+                return
 
         if self._mode == "read":
             focused = wx.Window.FindFocus()
             if focused is self._read_text_ctrl:
-                if keycode in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER, wx.WXK_SPACE):
-                    if self._activate_audio_marker():
-                        event.StopPropagation()
-                        return
-                if keycode in (ord("H"), ord("h")):
-                    direction = -1 if event.ShiftDown() else 1
-                    self._focus_heading(direction=direction)
-                    event.StopPropagation()
-                    return
-                if keycode in (ord("C"), ord("c")):
-                    direction = -1 if event.ShiftDown() else 1
-                    self._focus_audio_marker(direction=direction)
+                if self._handle_read_action(event):
                     event.StopPropagation()
                     return
                 if keycode == wx.WXK_TAB and not event.ControlDown() and not event.AltDown():
@@ -246,11 +255,9 @@ class NewsPlaylistPanel(wx.Panel):
             return
 
         if event.ControlDown() and not event.AltDown() and keycode in (ord("V"), ord("v")):
-            audio_paths = self._clipboard_audio_paths()
-            if audio_paths:
-                self._insert_audio_tokens(audio_paths)
-                event.StopPropagation()
-                return
+            self._edit_controller.paste_audio_from_clipboard()
+            event.StopPropagation()
+            return
 
         if not event.ControlDown() and not event.AltDown() and keycode == wx.WXK_SPACE:
             self._suppress_play_shortcut = True
@@ -266,6 +273,7 @@ class NewsPlaylistPanel(wx.Panel):
         self._update_mode_ui()
 
     def _update_mode_ui(self) -> None:
+        self._stop_preview_audio()
         if self._mode == "edit":
             self._mode_button.SetLabel(_("Switch to read mode"))
             self._read_panel.Hide()
@@ -291,11 +299,7 @@ class NewsPlaylistPanel(wx.Panel):
         self.model.news_markdown = self._edit_ctrl.GetValue()
 
     def _insert_audio_placeholder(self, _event: wx.Event) -> None:
-        audio_paths = self._clipboard_audio_paths()
-        if not audio_paths:
-            wx.MessageBox(_("Clipboard does not contain audio files."), _("Error"), parent=self)
-            return
-        self._insert_audio_tokens(audio_paths)
+        self._edit_controller.paste_audio_from_clipboard()
 
     def _insert_audio_tokens(self, audio_paths: list[str]) -> None:
         placeholders = [f"[[audio:{path}]]" for path in audio_paths]
@@ -305,12 +309,17 @@ class NewsPlaylistPanel(wx.Panel):
         self._edit_ctrl.SetInsertionPoint(insertion_point + len(text_to_insert))
         self.model.news_markdown = self._edit_ctrl.GetValue()
 
+    def _stop_preview_audio(self) -> None:
+        if self._on_stop_preview_audio:
+            self._on_stop_preview_audio()
+
     def prompt_load_service(self) -> Path | None:
         dialog = FileSelectionDialog(
             self,
             title=_("Load news service"),
             wildcard=_SERVICE_WILDCARD,
             style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
+            start_path=self._service_manager.last_path,
         )
         if dialog.ShowModal() != wx.ID_OK:
             dialog.Destroy()
@@ -323,10 +332,8 @@ class NewsPlaylistPanel(wx.Panel):
         return path if self._load_service_from_path(path) else None
 
     def _load_service_from_path(self, path: Path) -> bool:
-        try:
-            service = load_news_service(path)
-        except Exception as exc:  # pylint: disable=broad-except
-            self._show_error(_("Failed to load news service: %s") % exc)
+        service = self._service_manager.load_from_path(path)
+        if service is None:
             return False
         self._apply_service(service)
         return True
@@ -340,6 +347,7 @@ class NewsPlaylistPanel(wx.Panel):
             title=_("Save news service"),
             wildcard=_SERVICE_WILDCARD,
             style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
+            start_path=self._service_manager.last_path,
         )
         if dialog.ShowModal() != wx.ID_OK:
             dialog.Destroy()
@@ -349,10 +357,8 @@ class NewsPlaylistPanel(wx.Panel):
         if not paths:
             return None
         raw_path = Path(paths[0])
-        if raw_path.suffix.lower() != ".saranews":
-            target_path = raw_path.with_suffix(".saranews")
-        else:
-            target_path = raw_path
+        self._service_manager.remember_path(raw_path)
+        target_path = self._service_manager.ensure_save_path(raw_path)
         return target_path if self._save_service_to_path(target_path) else None
 
     def _save_service_to_path(self, target_path: Path) -> bool:
@@ -362,12 +368,7 @@ class NewsPlaylistPanel(wx.Panel):
             output_device=self.model.output_device,
             line_length=self._get_line_length(),
         )
-        try:
-            save_news_service(target_path, service)
-        except Exception as exc:  # pylint: disable=broad-except
-            self._show_error(_("Failed to save news service: %s") % exc)
-            return False
-        return True
+        return self._service_manager.save_to_path(target_path, service)
 
     def _on_save_service(self, _event: wx.Event | None) -> None:
         self.prompt_save_service()
@@ -537,127 +538,15 @@ class NewsPlaylistPanel(wx.Panel):
                 self._read_panel.SetFocus()
         self._on_focus_request(self.model.id)
 
-    def _clipboard_audio_paths(self) -> list[str]:
-        candidates = self._collect_clipboard_strings()
-        win32_candidates = self._collect_win32_file_drops()
-        if win32_candidates:
-            candidates.extend(win32_candidates)
-        if not candidates:
-            return []
-
-        audio_files: list[str] = []
-
-        def collect_from_path(path_str: str) -> None:
-            target = Path(path_str.replace("\\\\?\\", "")).expanduser()
-            if not target.exists():
-                return
-            if target.is_dir():
-                for file_path in sorted(target.rglob("*")):
-                    if file_path.is_file() and is_supported_audio_file(file_path):
-                        audio_files.append(str(file_path))
-                return
-            if is_supported_audio_file(target):
-                audio_files.append(str(target))
-
-        for candidate in candidates:
-            collect_from_path(candidate)
-
-        return audio_files
-
-    def _collect_clipboard_strings(self) -> list[str]:
-        clipboard = wx.TheClipboard
-        if not clipboard.Open():
-            return []
-        candidates: list[str] = []
-        try:
-            file_data = wx.FileDataObject()
-            if clipboard.GetData(file_data):
-                candidates.extend(file_data.GetFilenames())
-            text_data = wx.TextDataObject()
-            if clipboard.GetData(text_data):
-                for raw_entry in text_data.GetText().splitlines():
-                    entry = raw_entry.strip().strip('"')
-                    if entry:
-                        candidates.append(entry)
-        finally:
-            clipboard.Close()
-        return candidates
-
-    def _collect_win32_file_drops(self) -> list[str]:
-        if not hasattr(ctypes, "windll"):
-            return []
-        CF_HDROP = 15
-        user32 = ctypes.windll.user32
-        shell32 = ctypes.windll.shell32
-        if not user32.OpenClipboard(0):
-            return []
-        filenames: list[str] = []
-        try:
-            if not user32.IsClipboardFormatAvailable(CF_HDROP):
-                return []
-            hdrop = user32.GetClipboardData(CF_HDROP)
-            if not hdrop:
-                return []
-            handle = ctypes.c_void_p(hdrop)
-            try:
-                count = shell32.DragQueryFileW(handle, 0xFFFFFFFF, None, 0)
-            except OSError:
-                return []
-            for index in range(count):
-                try:
-                    length = shell32.DragQueryFileW(handle, index, None, 0) + 1
-                except OSError:
-                    continue
-                buffer = (ctypes.c_wchar * length)()
-                try:
-                    success = shell32.DragQueryFileW(handle, index, buffer, length)
-                except OSError:
-                    success = 0
-                if success:
-                    filenames.append(buffer.value)
-        finally:
-            user32.CloseClipboard()
-        return filenames
-
     # ------------------------------ rendering -------------------------------
     def _render_read_panel(self) -> None:
         wrapper = wx.BoxSizer(wx.VERTICAL)
         for child in self._read_panel.GetChildren():
             child.Destroy()
         self._read_text_ctrl = None
-        self._heading_lines = []
-        self._audio_markers = []
-
-        blocks = self._parse_blocks(self.model.news_markdown or "")
-        line_length = self._get_line_length()
-        article_lines: list[str] = []
-        audio_entries: list[str] = []
-
-        for block in blocks:
-            btype = block["type"]
-            if btype in {"paragraph", "list", "heading"}:
-                text = block["text"]
-                prefix = ""
-                if btype == "list":
-                    prefix = "- "
-                if btype == "heading":
-                    prefix = "#" * block["level"] + " "
-                    self._heading_lines.append(len(article_lines))
-                lines = self._wrap_text(prefix + text, line_length)
-                if article_lines and article_lines[-1] != "":
-                    article_lines.append("")
-                article_lines.extend(lines)
-            elif btype == "audio":
-                filename = Path(block["path"]).name
-                line_index = len(article_lines)
-                article_lines.append(_("(Audio clip: %s)") % filename)
-                self._audio_markers.append((line_index, block["path"]))
-                audio_entries.append(block["path"])
-            if article_lines and article_lines[-1] != "":
-                article_lines.append("")
-
-        if article_lines and article_lines[-1] == "":
-            article_lines.pop()
+        view_model = self._read_controller.build_view(self.model.news_markdown or "")
+        article_lines = view_model.lines
+        audio_entries = view_model.audio_paths
 
         if article_lines:
             text_value = "\n".join(article_lines)
@@ -684,25 +573,44 @@ class NewsPlaylistPanel(wx.Panel):
         self._read_panel.SetupScrolling(scroll_x=False, scroll_y=True)
         self._restore_caret_position(self._read_text_ctrl)
 
-    def _activate_audio_marker(self) -> bool:
-        if not self._read_text_ctrl or not self._audio_markers:
-            return False
+    def _handle_read_action(self, event: wx.KeyEvent) -> bool:
+        line_index = self._current_read_line()
+        action = self._read_controller.handle_key(
+            event.GetKeyCode(),
+            shift=event.ShiftDown(),
+            control=event.ControlDown(),
+            alt=event.AltDown(),
+            current_line=line_index,
+        )
+        if action.play_path:
+            self._play_clip(action.play_path)
+        if action.focus_line is not None:
+            self._focus_read_line(action.focus_line)
+        return action.handled
+
+    def _current_read_line(self) -> int | None:
+        if not self._read_text_ctrl:
+            return None
         pos = self._read_text_ctrl.GetInsertionPoint()
         success, _, line_index = self._read_text_ctrl.PositionToXY(pos)
-        if not success:
-            return False
-        for marker_line, path in self._audio_markers:
-            if marker_line == line_index:
-                self._play_clip(path)
-                return True
-        return False
+        return line_index if success else None
+
+    def _focus_read_line(self, line_index: int | None) -> None:
+        if line_index is None or not self._read_text_ctrl:
+            return
+        pos_target = self._read_text_ctrl.XYToPosition(0, line_index)
+        if pos_target == wx.NOT_FOUND:
+            return
+        self._read_text_ctrl.SetInsertionPoint(pos_target)
+        self._read_text_ctrl.ShowPosition(pos_target)
+        self._read_text_ctrl.SetFocus()
+        self._update_caret_from_read()
 
     def _handle_read_key(self, event: wx.KeyEvent) -> None:
-        keycode = event.GetKeyCode()
-        if keycode in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER, wx.WXK_SPACE):
-            if self._activate_audio_marker():
-                event.StopPropagation()
-                return
+        handled = self._handle_read_action(event)
+        if handled:
+            event.StopPropagation()
+            return
         if keycode == wx.WXK_TAB and not event.ControlDown() and not event.AltDown():
             if event.ShiftDown():
                 self.Navigate(wx.NavigationKeyEvent.IsBackward)
@@ -714,132 +622,9 @@ class NewsPlaylistPanel(wx.Panel):
             return
         event.Skip()
 
-    def _focus_heading(self, *, direction: int) -> None:
-        if not self._heading_lines or not self._read_text_ctrl:
-            return
-        pos = self._read_text_ctrl.GetInsertionPoint()
-        success, _, current_line = self._read_text_ctrl.PositionToXY(pos)
-        if not success:
-            current_line = -1
-        candidate = None
-        if direction > 0:
-            for line in self._heading_lines:
-                if line > current_line:
-                    candidate = line
-                    break
-        else:
-            for line in reversed(self._heading_lines):
-                if line < current_line:
-                    candidate = line
-                    break
-        if candidate is None:
-            return
-        pos_target = self._read_text_ctrl.XYToPosition(0, candidate)
-        if pos_target != wx.NOT_FOUND:
-            self._read_text_ctrl.SetInsertionPoint(pos_target)
-            self._read_text_ctrl.ShowPosition(pos_target)
-            self._read_text_ctrl.SetFocus()
-            self._update_caret_from_read()
-
-    def _focus_audio_marker(self, *, direction: int) -> None:
-        if not self._audio_markers or not self._read_text_ctrl:
-            return
-        pos = self._read_text_ctrl.GetInsertionPoint()
-        success, _, current_line = self._read_text_ctrl.PositionToXY(pos)
-        if not success:
-            current_line = -1 if direction > 0 else 10**9
-        lines = [line for line, _ in self._audio_markers]
-        candidate = None
-        if direction > 0:
-            for line in lines:
-                if line > current_line:
-                    candidate = line
-                    break
-        else:
-            for line in reversed(lines):
-                if line < current_line:
-                    candidate = line
-                    break
-        if candidate is None:
-            return
-        pos_target = self._read_text_ctrl.XYToPosition(0, candidate)
-        if pos_target != wx.NOT_FOUND:
-            self._read_text_ctrl.SetInsertionPoint(pos_target)
-            self._read_text_ctrl.ShowPosition(pos_target)
-            self._read_text_ctrl.SetFocus()
-            self._update_caret_from_read()
-
     def _play_clip(self, path_str: str) -> None:
         device_id = self.model.output_device or (self.model.output_slots[0] if self.model.output_slots else None)
         self._on_play_audio(Path(path_str), device_id)
-
-    def _wrap_text(self, text: str, line_length: int) -> list[str]:
-        if line_length <= 0:
-            return [text]
-        segments = text.split("\n")
-        lines: list[str] = []
-        for segment in segments:
-            lines.extend(self._wrap_segment(segment, line_length))
-        return lines or [""]
-
-    def _wrap_segment(self, text: str, line_length: int) -> list[str]:
-        if not text:
-            return [""]
-        words = text.split()
-        if not words:
-            return [""]
-        wrapped: list[str] = []
-        current = words[0]
-        for word in words[1:]:
-            tentative = f"{current} {word}"
-            if len(tentative) <= line_length:
-                current = tentative
-            else:
-                wrapped.append(current)
-                if len(word) > line_length:
-                    wrapped.append(word)
-                    current = ""
-                else:
-                    current = word
-        if current:
-            wrapped.append(current)
-        return wrapped
-
-    def _parse_blocks(self, text: str) -> list[dict[str, object]]:
-        lines = text.splitlines()
-        blocks: list[dict[str, object]] = []
-        paragraph: list[str] = []
-
-        def flush_paragraph() -> None:
-            if paragraph:
-                blocks.append({"type": "paragraph", "text": "\n".join(paragraph)})
-                paragraph.clear()
-
-        for raw_line in lines:
-            stripped = raw_line.strip()
-            audio_match = _AUDIO_TOKEN.fullmatch(stripped)
-            if audio_match:
-                flush_paragraph()
-                blocks.append({"type": "audio", "path": audio_match.group(1)})
-                continue
-            if not stripped:
-                flush_paragraph()
-                continue
-            heading_match = re.match(r"^(#{1,5})\s+(.*)", stripped)
-            if heading_match:
-                flush_paragraph()
-                level = len(heading_match.group(1))
-                text = heading_match.group(2).strip()
-                blocks.append({"type": "heading", "text": text, "level": level})
-                continue
-            if stripped.startswith(("- ", "* ")):
-                flush_paragraph()
-                blocks.append({"type": "list", "text": stripped[2:].strip()})
-                continue
-            paragraph.append(stripped)
-
-        flush_paragraph()
-        return blocks
 
     def consume_space_shortcut(self) -> bool:
         if self._suppress_play_shortcut:
