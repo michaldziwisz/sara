@@ -607,6 +607,7 @@ class NewsPlaylistPanel(wx.Panel):
         self._update_caret_from_read()
 
     def _handle_read_key(self, event: wx.KeyEvent) -> None:
+        keycode = event.GetKeyCode()
         handled = self._handle_read_action(event)
         if handled:
             event.StopPropagation()
