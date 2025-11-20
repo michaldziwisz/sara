@@ -169,7 +169,7 @@ class FileSelectionDialog(wx.Dialog):
         if index == -1:
             return self._confirm_selection()
         entry = self._entries[index] if 0 <= index < len(self._entries) else None
-        if entry and entry["type"] == "file":
+        if entry and entry.kind == "file":
             return self._confirm_selection()
         self._activate_entry(index)
         return True
