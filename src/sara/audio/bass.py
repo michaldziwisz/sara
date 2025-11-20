@@ -89,6 +89,9 @@ class _BassLibrary:
                 candidate = directory / name
                 if candidate.exists():
                     try:
+                        if sys.platform.startswith("win") and hasattr(os, "add_dll_directory"):
+                            with os.add_dll_directory(str(candidate.parent)):
+                                return ctypes.WinDLL(str(candidate))
                         return ctypes.WinDLL(str(candidate)) if sys.platform.startswith("win") else ctypes.CDLL(str(candidate))
                     except OSError as exc:  # pragma: no cover - zależne od środowiska
                         errors.append(f"{candidate}: {exc}")
