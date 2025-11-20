@@ -30,10 +30,10 @@ def _configure_logging() -> None:
         file_handler.setFormatter(formatter)
         stream_handler = logging.StreamHandler()
         stream_handler.setFormatter(formatter)
-        logging.basicConfig(level=logging.INFO, handlers=[file_handler, stream_handler])
+        logging.basicConfig(level=logging.WARNING, handlers=[file_handler, stream_handler])
     except Exception:  # pylint: disable=broad-except
         # If logging setup fails (e.g., no write permission), fall back silently.
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(level=logging.WARNING)
     if log_path:
         logging.getLogger(__name__).info("Writing log to %s", log_path)
 
