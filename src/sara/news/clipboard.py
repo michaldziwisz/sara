@@ -55,31 +55,34 @@ def _collect_win32_file_drops() -> list[str]:
     CF_HDROP = 15
     user32 = ctypes.windll.user32
     shell32 = ctypes.windll.shell32
-    if not user32.OpenClipboard(0):
-        return []
-    filenames: list[str] = []
     try:
-        if not user32.IsClipboardFormatAvailable(CF_HDROP):
+        if not user32.OpenClipboard(0):
             return []
-        hdrop = user32.GetClipboardData(CF_HDROP)
-        if not hdrop:
-            return []
-        handle = ctypes.c_void_p(hdrop)
+        filenames: list[str] = []
         try:
-            count = shell32.DragQueryFileW(handle, 0xFFFFFFFF, None, 0)
-        except OSError:
-            return []
-        buffer = ctypes.create_unicode_buffer(260)
-        for index in range(count):
+            if not user32.IsClipboardFormatAvailable(CF_HDROP):
+                return []
+            hdrop = user32.GetClipboardData(CF_HDROP)
+            if not hdrop:
+                return []
+            handle = ctypes.c_void_p(hdrop)
             try:
-                length = shell32.DragQueryFileW(handle, index, buffer, len(buffer))
+                count = shell32.DragQueryFileW(handle, 0xFFFFFFFF, None, 0)
             except OSError:
-                continue
-            if length:
-                filenames.append(buffer.value)
-    finally:
-        user32.CloseClipboard()
-    return filenames
+                return []
+            buffer = ctypes.create_unicode_buffer(260)
+            for index in range(count):
+                try:
+                    length = shell32.DragQueryFileW(handle, index, buffer, len(buffer))
+                except OSError:
+                    continue
+                if length:
+                    filenames.append(buffer.value)
+        finally:
+            user32.CloseClipboard()
+        return filenames
+    except Exception:  # pylint: disable=broad-except
+        return []
 
 
 def _collect_from_path(raw: str, bucket: list[str]) -> None:
