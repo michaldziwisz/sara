@@ -99,7 +99,7 @@ class _BassLibrary:
                 errors.append(f"{name}: {exc}")
         search_list = ", ".join(str(path) for path in search_paths)
         error_list = "; ".join(errors)
-        logger.debug("BASS search paths: %s; errors: %s", search_list, error_list)
+        logger.warning("BASS niedostępny. Sprawdzone ścieżki: %s; błędy: %s", search_list, error_list)
         raise BassNotAvailable("Nie znaleziono biblioteki BASS (ustaw zmienną BASS_LIBRARY_PATH)")
 
     def _configure_prototypes(self) -> None:
