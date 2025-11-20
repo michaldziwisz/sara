@@ -79,6 +79,11 @@ class _BassLibrary:
                 search_paths.append(Path(sys.executable).resolve().parent)
             except Exception:  # pragma: no cover - fallback
                 pass
+            try:
+                base_tmp = Path(getattr(sys, "_MEIPASS"))
+                search_paths.append(base_tmp)
+            except Exception:
+                pass
         for directory in search_paths:
             for name in names:
                 candidate = directory / name
@@ -532,7 +537,7 @@ class BassBackend:
             self._manager = BassManager.instance()
             self.is_available = True
         except BassNotAvailable as exc:
-            logger.info("BASS niedostępny: %s", exc)
+            logger.warning("BASS niedostępny: %s", exc)
             self._manager = None
             self.is_available = False
         self.backend = None
