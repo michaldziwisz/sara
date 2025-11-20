@@ -15,7 +15,11 @@ def clipboard_audio_paths() -> list[str]:
     """Return supported audio files from clipboard (text paths, drag&drop, etc.)."""
 
     candidates = _collect_clipboard_strings()
-    candidates.extend(_collect_win32_file_drops())
+    try:
+        candidates.extend(_collect_win32_file_drops())
+    except Exception:  # pylint: disable=broad-except
+        # Defensive: some Windows clipboard states can cause access violations via ctypes.
+        pass
     if not candidates:
         return []
 
@@ -60,10 +64,17 @@ def _collect_win32_file_drops() -> list[str]:
         hdrop = user32.GetClipboardData(CF_HDROP)
         if not hdrop:
             return []
-        count = shell32.DragQueryFileW(hdrop, 0xFFFFFFFF, None, 0)
+        handle = ctypes.c_void_p(hdrop)
+        try:
+            count = shell32.DragQueryFileW(handle, 0xFFFFFFFF, None, 0)
+        except OSError:
+            return []
         buffer = ctypes.create_unicode_buffer(260)
         for index in range(count):
-            length = shell32.DragQueryFileW(hdrop, index, buffer, len(buffer))
+            try:
+                length = shell32.DragQueryFileW(handle, index, buffer, len(buffer))
+            except OSError:
+                continue
             if length:
                 filenames.append(buffer.value)
     finally:
@@ -82,4 +93,3 @@ def _collect_from_path(raw: str, bucket: list[str]) -> None:
         return
     if is_supported_audio_file(target):
         bucket.append(str(target))
-
