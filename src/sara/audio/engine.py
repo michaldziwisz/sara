@@ -278,6 +278,7 @@ class SoundDevicePlayer:
         self._fade_thread: Optional[Thread] = None
         self._fade_stop_event: Optional[Event] = None
         self._transcoded_path: Optional[Path] = None
+        self._pending_fade_in: int = 0
 
     def play(self, playlist_item_id: str, source_path: str, *, start_seconds: float = 0.0) -> Event:  # noqa: D401
         path = Path(source_path)
@@ -413,6 +414,23 @@ class SoundDevicePlayer:
                                     target_frames = max(1, target_frames)
                                     output_block = _resample_to_length(output_block, target_frames)
                                     resample_state["dst_pos"] += len(output_block)
+                                if np is not None and self._pending_fade_in > 0 and len(output_block):
+                                    frames = min(len(output_block), self._pending_fade_in)
+                                    fade = np.linspace(0.0, 1.0, frames, endpoint=False, dtype=output_block.dtype)
+                                    output_block = output_block.copy()
+                                    output_block[:frames] *= fade[:, None]
+                                    self._pending_fade_in = max(0, self._pending_fade_in - frames)
+                                will_loop = (
+                                    loop_active
+                                    and loop_end_frame > loop_start_frame
+                                    and self._position + frames_read >= loop_end_frame
+                                )
+                                if will_loop and np is not None and len(output_block):
+                                    fade_frames = min(len(output_block), max(1, int(output_samplerate * 0.003)))
+                                    fade = np.linspace(1.0, 0.0, fade_frames, endpoint=False, dtype=output_block.dtype)
+                                    output_block = output_block.copy()
+                                    output_block[-fade_frames:] *= fade[:, None]
+                                    self._pending_fade_in = fade_frames
                                 stream.write(output_block)
                                 self._position += frames_read
                                 if (
@@ -564,6 +582,7 @@ class SoundDevicePlayer:
         self._loop_active = False
         self._loop_start_frame = 0
         self._loop_end_frame = 0
+        self._pending_fade_in = 0
         if self._on_progress and item_id:
             try:
                 self._on_progress(item_id, 0.0)
