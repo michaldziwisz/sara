@@ -76,7 +76,7 @@ PYTHONPATH=src python -m pytest
 - The workflow also copies the bs1770gain CLI (`src/sara/audio/vendor/windows/bs1770gain`) next to `SARA.exe`; do the same when preparing local PyInstaller builds so normalization keeps working.
 - Scripts `scripts/auto_download.sh` and `scripts/download_latest_artifact.sh` (install via `scripts/install_hooks.sh`) keep the latest Windows artifact under `artifacts/` after each successful build.
 - For frozen Windows builds, bundle NVDA controller DLLs and optional BASS binaries alongside the executable.
-- Release notes live in `docs/releases/` (see `docs/releases/0.0.10.md` for the latest changes).
+- Release notes live in `docs/releases/` (see `docs/releases/0.0.11.md` for the latest changes).
 
 ### Roadmap highlights
 - Enhanced accessibility messages.
