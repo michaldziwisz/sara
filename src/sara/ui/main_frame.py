@@ -1263,10 +1263,18 @@ class MainFrame(wx.Frame):
                     self._stop_playlist_playback(playlist.id, mark_played=True, fade_duration=fade_seconds)
 
         def _on_finished(finished_item_id: str) -> None:
-            wx.CallAfter(self._handle_playback_finished, playlist.id, finished_item_id)
+            app = wx.GetApp()
+            if app:
+                wx.CallAfter(self._handle_playback_finished, playlist.id, finished_item_id)
+            else:  # defensive: allow playback controller use without wx.App
+                self._handle_playback_finished(playlist.id, finished_item_id)
 
         def _on_progress(progress_item_id: str, seconds: float) -> None:
-            wx.CallAfter(self._handle_playback_progress, playlist.id, progress_item_id, seconds)
+            app = wx.GetApp()
+            if app:
+                wx.CallAfter(self._handle_playback_progress, playlist.id, progress_item_id, seconds)
+            else:
+                self._handle_playback_progress(playlist.id, progress_item_id, seconds)
 
         start_seconds = item.cue_in_seconds or 0.0
 
