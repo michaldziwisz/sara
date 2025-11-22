@@ -1746,14 +1746,37 @@ class MainFrame(wx.Frame):
         seconds: float,
         queued_selection: bool,
     ) -> None:
-        # Minimal fallback to avoid crashes if automix logic is missing.
-        # Currently we just ensure state dict is present; more advanced automix can be reintroduced later.
-        _ = panel  # unused but kept for future use
-        _ = item
-        _ = context_entry
-        _ = seconds
-        _ = queued_selection
-        return
+        playlist = panel.model
+        if playlist.kind is not PlaylistKind.MUSIC:
+            return
+        if not self._auto_mix_enabled and not queued_selection:
+            return
+
+        key = (playlist.id, item.id)
+        already_mixing = self._playback.auto_mix_state.get(key, False)
+
+        cue = item.cue_in_seconds or 0.0
+        elapsed = max(0.0, seconds - cue)
+        remaining = max(0.0, item.effective_duration_seconds - elapsed)
+
+        # jeśli mamy zaznaczenie, pozwól miksować nawet bez globalnego auto-mix
+        trigger_window = max(self._fade_duration, 0.0)
+        if item.overlap_seconds:
+            trigger_window = max(trigger_window, item.overlap_seconds)
+        if item.outro_seconds:
+            trigger_window = max(trigger_window, item.outro_seconds)
+
+        should_trigger = remaining <= max(0.1, trigger_window)
+        if not should_trigger or already_mixing:
+            return
+
+        self._playback.auto_mix_state[key] = True
+        started = self._start_next_from_playlist(panel, ignore_ui_selection=queued_selection, advance_focus=True, restart_playing=False)
+        if started and self._fade_duration > 0.0:
+            try:
+                context_entry.player.fade_out(self._fade_duration)
+            except Exception:
+                pass
 
     def _on_playlist_hotkey(self, event: wx.CommandEvent) -> None:
         action = self._action_by_id.get(event.GetId())
