@@ -7,7 +7,7 @@ import wx
 from typing import Callable
 
 from sara.core.i18n import gettext as _
-from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistModel
+from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistModel, PlaylistKind
 from sara.core.hotkeys import HotkeyAction
 
 
@@ -22,6 +22,8 @@ class PlaylistPanel(wx.Panel):
         on_mix_configure: Callable[[str, str], None] | None = None,
         on_toggle_selection: Callable[[str, str], None] | None = None,
         on_selection_change: Callable[[str, list[int]], None] | None = None,
+        on_play_request: Callable[[str, str], None] | None = None,
+        swap_play_select: bool = False,
     ):
         super().__init__(parent)
         self.SetName(model.name)
@@ -30,6 +32,8 @@ class PlaylistPanel(wx.Panel):
         self._on_mix_configure = on_mix_configure
         self._on_toggle_selection = on_toggle_selection
         self._on_selection_change = on_selection_change
+        self._on_play_request = on_play_request
+        self._swap_play_select = bool(swap_play_select)
         self._active = False
         self._base_accessible_name = model.name
         self._list_ctrl = wx.ListCtrl(self, style=wx.LC_REPORT)
@@ -254,9 +258,13 @@ class PlaylistPanel(wx.Panel):
 
     def _handle_selection_key_event(self, event: wx.KeyEvent | wx.ListEvent) -> bool:
         key_code = event.GetKeyCode()
-        if key_code not in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
-            return False
-        if not self._on_toggle_selection:
+        allowed_keys = (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
+        space_requested = (
+            self._swap_play_select
+            and self.model.kind is PlaylistKind.MUSIC
+            and key_code == wx.WXK_SPACE
+        )
+        if not space_requested and key_code not in allowed_keys:
             return False
         if isinstance(event, wx.KeyEvent):
             if event.ControlDown() or event.AltDown() or event.MetaDown():
@@ -271,6 +279,23 @@ class PlaylistPanel(wx.Panel):
             index = 0
 
         if index == wx.NOT_FOUND or index >= len(self.model.items):
+            return False
+
+        item = self.model.items[index]
+
+        if space_requested:
+            if self._on_toggle_selection:
+                self._trigger_selection_toggle(index)
+                return True
+            return False
+
+        if self._swap_play_select and self.model.kind is PlaylistKind.MUSIC and self._on_play_request:
+            self._notify_focus()
+            self._list_ctrl.Focus(index)
+            self._on_play_request(self.model.id, item.id)
+            return True
+
+        if not self._on_toggle_selection:
             return False
 
         self._trigger_selection_toggle(index)
@@ -322,3 +347,6 @@ class PlaylistPanel(wx.Panel):
         self._notify_focus()
         self._list_ctrl.Focus(index)
         self._on_toggle_selection(self.model.id, item.id)
+
+    def set_swap_play_select(self, enabled: bool) -> None:
+        self._swap_play_select = bool(enabled)

@@ -123,6 +123,13 @@ class OptionsDialog(wx.Dialog):
         self._alternate_checkbox.SetValue(self._settings.get_alternate_play_next())
         playback_box.Add(self._alternate_checkbox, 0, wx.ALL, 5)
 
+        self._swap_play_select_checkbox = wx.CheckBox(
+            general_panel,
+            label=_("Swap play/select on music playlists (Space selects, Enter plays)"),
+        )
+        self._swap_play_select_checkbox.SetValue(self._settings.get_swap_play_select())
+        playback_box.Add(self._swap_play_select_checkbox, 0, wx.ALL, 5)
+
         self._auto_remove_checkbox = wx.CheckBox(
             general_panel,
             label=_("Automatically remove played tracks"),
@@ -301,6 +308,7 @@ class OptionsDialog(wx.Dialog):
     def _on_accept(self, _event: wx.Event) -> None:
         self._settings.set_playback_fade_seconds(self._fade_ctrl.GetValue())
         self._settings.set_alternate_play_next(self._alternate_checkbox.GetValue())
+        self._settings.set_swap_play_select(self._swap_play_select_checkbox.GetValue())
         self._settings.set_auto_remove_played(self._auto_remove_checkbox.GetValue())
         self._settings.set_focus_playing_track(self._focus_playing_checkbox.GetValue())
         self._settings.set_intro_alert_seconds(self._intro_alert_ctrl.GetValue())

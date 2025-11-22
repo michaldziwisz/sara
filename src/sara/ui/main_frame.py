@@ -105,6 +105,7 @@ class MainFrame(wx.Frame):
         self._shortcut_menu_items: Dict[tuple[str, str], tuple[wx.MenuItem, str]] = {}
         self._auto_mix_enabled: bool = False
         self._alternate_play_next: bool = self._settings.get_alternate_play_next()
+        self._swap_play_select: bool = self._settings.get_swap_play_select()
         self._auto_remove_played: bool = self._settings.get_auto_remove_played()
         self._focus_playing_track: bool = self._settings.get_focus_playing_track()
         self._intro_alert_seconds: float = self._settings.get_intro_alert_seconds()
@@ -268,6 +269,11 @@ class MainFrame(wx.Frame):
                 descriptor = get_shortcut("playlist", action)
                 description = descriptor.label if descriptor else action.title()
                 model.hotkeys[action] = HotkeyAction(key=shortcut, description=description)
+
+    def _apply_swap_play_select_option(self) -> None:
+        for panel in self._playlists.values():
+            if isinstance(panel, PlaylistPanel) and panel.model.kind is PlaylistKind.MUSIC:
+                panel.set_swap_play_select(self._swap_play_select)
 
     def _create_ui(self) -> None:
         panel = wx.Panel(self)
@@ -465,6 +471,8 @@ class MainFrame(wx.Frame):
                 on_mix_configure=self._on_mix_points_configure,
                 on_toggle_selection=self._on_toggle_selection,
                 on_selection_change=self._on_playlist_selection_change,
+                on_play_request=self._on_playlist_play_request,
+                swap_play_select=self._swap_play_select,
             )
         panel.SetMinSize((360, 300))
 
@@ -660,6 +668,24 @@ class MainFrame(wx.Frame):
                 item = panel.model.items[idx]
                 if item.loop_enabled and item.has_loop():
                     self._announce_event("selection", _("Loop enabled"))
+
+    def _on_playlist_play_request(self, playlist_id: str, item_id: str) -> None:
+        self._play_item_direct(playlist_id, item_id)
+
+    def _play_item_direct(self, playlist_id: str, item_id: str) -> bool:
+        panel = self._playlists.get(playlist_id)
+        playlist = self._get_playlist_model(playlist_id)
+        if not isinstance(panel, PlaylistPanel) or playlist is None:
+            return False
+        item = playlist.get_item(item_id)
+        if item is None:
+            return False
+        if self._start_playback(panel, item, restart_playing=True):
+            self._last_started_item_id[playlist.id] = item.id
+            status_message = _("Playing %s from playlist %s") % (self._format_track_name(item), playlist.name)
+            self._announce_event("playback_events", status_message, spoken_message="")
+            return True
+        return False
 
     def _on_new_playlist(self, event: wx.CommandEvent) -> None:
         self._create_playlist_dialog(event)
@@ -975,10 +1001,12 @@ class MainFrame(wx.Frame):
             self._fade_duration = max(self._settings.get_playback_fade_seconds(), 0.0)
             self._playback.reload_pfl_device()
             self._alternate_play_next = self._settings.get_alternate_play_next()
+            self._swap_play_select = self._settings.get_swap_play_select()
             self._auto_remove_played = self._settings.get_auto_remove_played()
             self._focus_playing_track = self._settings.get_focus_playing_track()
             self._intro_alert_seconds = self._settings.get_intro_alert_seconds()
             self._refresh_news_panels()
+            self._apply_swap_play_select_option()
             new_language = self._settings.get_language()
             if new_language != current_language:
                 set_language(new_language)

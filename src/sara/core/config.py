@@ -60,6 +60,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "alternate_play_next": False,
         "auto_remove_played": False,
         "intro_alert_seconds": 5.0,
+        "swap_play_select": False,
     },
     "startup": {
         "playlists": [],
@@ -182,6 +183,14 @@ class SettingsManager:
     def set_auto_remove_played(self, enabled: bool) -> None:
         playback = self._data.setdefault("playback", {})
         playback["auto_remove_played"] = bool(enabled)
+
+    def get_swap_play_select(self) -> bool:
+        playback = self._data.get("playback", {})
+        return bool(playback.get("swap_play_select", DEFAULT_CONFIG["playback"]["swap_play_select"]))
+
+    def set_swap_play_select(self, enabled: bool) -> None:
+        playback = self._data.setdefault("playback", {})
+        playback["swap_play_select"] = bool(enabled)
 
     def get_focus_playing_track(self) -> bool:
         accessibility_raw = self._user_config.get("accessibility", {}) if isinstance(self._user_config, dict) else {}
