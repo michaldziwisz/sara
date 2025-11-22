@@ -1678,6 +1678,8 @@ class MainFrame(wx.Frame):
                     playing_item.break_after = False
                     playing_item.status = PlaylistItemStatus.PLAYED
                     playing_item.current_position = playing_item.effective_duration_seconds
+                    # zapamiętaj punkt wznowienia (pierwszy pending za breakiem)
+                    panel.model.break_resume_index = pending_idx
                     panel.model.clear_selection(playing_item.id)
                     panel.refresh(focus=False)
                     self._stop_playlist_playback(
