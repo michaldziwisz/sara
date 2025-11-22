@@ -1448,7 +1448,7 @@ class MainFrame(wx.Frame):
                         )
                     playlist.break_resume_index = next_pending_idx
                     playing_item.break_after = False
-                    playlist.clear_selection(playing_item.id)
+                    playing_item.is_selected = False
                     playing_item.status = PlaylistItemStatus.PLAYED
                     playing_item.current_position = playing_item.effective_duration_seconds
                     panel.refresh(focus=False)
@@ -1458,6 +1458,10 @@ class MainFrame(wx.Frame):
                         mark_played=True,
                         fade_duration=max(0.0, self._fade_duration),
                     )
+                    if next_pending_idx is not None and 0 <= next_pending_idx < len(playlist.items):
+                        next_item = playlist.items[next_pending_idx]
+                        return self._start_playback(panel, next_item, restart_playing=False)
+                    return False
 
         consumed_model_selection = False
         preferred_item_id = playlist.next_selected_item_id()
