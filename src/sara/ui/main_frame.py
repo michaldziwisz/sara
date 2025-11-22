@@ -1819,6 +1819,8 @@ class MainFrame(wx.Frame):
         playlist = panel.model
         if playlist.kind is not PlaylistKind.MUSIC:
             return
+        if playlist.break_resume_index is not None:
+            return
         if not self._auto_mix_enabled and not queued_selection:
             return
         # Break zatrzymuje automix – nie miksuj w trakcie utworu z breakiem.
