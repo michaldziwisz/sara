@@ -22,6 +22,9 @@ scripts/create_release.sh
 # Local config
 config/settings.yaml
 
+# Logs
+logs/
+
 # OS files
 .DS_Store
 Thumbs.db

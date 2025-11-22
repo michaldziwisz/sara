@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Event
 from typing import Callable, List, Optional
 
 from sara.core.config import SettingsManager
@@ -26,7 +27,7 @@ class DummyPlayer:
         self.stopped = False
         self.fade_calls: List[float] = []
 
-    def play(self, playlist_item_id: str, source_path: str, *, start_seconds: float = 0.0):
+    def play(self, playlist_item_id: str, source_path: str, *, start_seconds: float = 0.0, **_kwargs):
         self.play_calls.append((playlist_item_id, source_path, start_seconds))
 
     def set_finished_callback(self, callback: Optional[Callable[[str], None]]) -> None:
@@ -50,7 +51,7 @@ class DummyPlayer:
 
 class DummyAudioEngine:
     def __init__(self):
-        self._devices = [DummyDevice("dev-1", "Main Device")]
+        self._devices = [DummyDevice("dev-1", "Main Device"), DummyDevice("dev-2", "Alt")]
         self.created_players: List[DummyPlayer] = []
 
     def get_devices(self):
@@ -65,9 +66,60 @@ class DummyAudioEngine:
         return player
 
 
-def _playlist_with_item(tmp_path) -> tuple[PlaylistModel, PlaylistItem]:
+class DummyMixer:
+    def __init__(self, device: DummyDevice):
+        self.device = device
+        self.started: list[tuple[str, str, float]] = []
+        self.faded: list[float] = []
+        self.stopped: list[str] = []
+        self.updated_callbacks: list[tuple[Optional[Callable], Optional[Callable]]] = []
+
+    def start_source(
+        self,
+        source_id: str,
+        path: str,
+        *,
+        start_seconds: float = 0.0,
+        gain_db=None,
+        loop=None,
+        on_progress=None,
+        on_finished=None,
+    ):
+        self.started.append((source_id, path, start_seconds))
+        self._finished = on_finished
+        self._progress = on_progress
+        return Event()
+
+    def fade_out_source(self, _source_id: str, duration: float):
+        self.faded.append(duration)
+
+    def stop_source(self, source_id: str):
+        self.stopped.append(source_id)
+        if hasattr(self, "_finished") and self._finished:
+            self._finished(source_id)
+
+    def pause_source(self, source_id: str):
+        self.stopped.append(f"pause-{source_id}")
+
+    def set_gain_db(self, _source_id: str, _gain_db):
+        return None
+
+    def set_loop(self, _source_id: str, _loop):
+        return None
+
+    def update_callbacks(self, *_args, **_kwargs):
+        progress = _kwargs.get("on_progress")
+        finished = _kwargs.get("on_finished")
+        self.updated_callbacks.append((progress, finished))
+        if finished is not None:
+            self._finished = finished
+        if progress is not None:
+            self._progress = progress
+
+
+def _playlist_with_item(tmp_path, slots: tuple[str, ...] = ("dev-1",)) -> tuple[PlaylistModel, PlaylistItem]:
     playlist = PlaylistModel(id="pl-1", name="Test", kind=PlaylistKind.MUSIC)
-    playlist.set_output_slots(["dev-1"])
+    playlist.set_output_slots(list(slots))
     track_path = tmp_path / "track.mp3"
     track_path.write_text("dummy")
     item = PlaylistItem(id="item-1", path=track_path, title="Track", duration_seconds=10.0)
@@ -76,7 +128,7 @@ def _playlist_with_item(tmp_path) -> tuple[PlaylistModel, PlaylistItem]:
 
 
 def test_start_item_acquires_player_and_registers_context(tmp_path):
-    playlist, item = _playlist_with_item(tmp_path)
+    playlist, item = _playlist_with_item(tmp_path, slots=("dev-1", "dev-2"))
     audio = DummyAudioEngine()
     settings = SettingsManager(config_path=tmp_path / "settings.yaml")
     controller = PlaybackController(audio, settings, lambda *_args: None)
@@ -96,7 +148,7 @@ def test_start_item_acquires_player_and_registers_context(tmp_path):
 
 
 def test_stop_playlist_fades_out_and_clears_context(tmp_path):
-    playlist, item = _playlist_with_item(tmp_path)
+    playlist, item = _playlist_with_item(tmp_path, slots=("dev-1", "dev-2"))
     audio = DummyAudioEngine()
     settings = SettingsManager(config_path=tmp_path / "settings.yaml")
     controller = PlaybackController(audio, settings, lambda *_args: None)
@@ -117,11 +169,46 @@ def test_stop_playlist_fades_out_and_clears_context(tmp_path):
     assert player.stopped is False  # fade_out used instead of stop
 
 
+def test_single_slot_uses_device_mixer_and_fade(monkeypatch, tmp_path):
+    playlist, item = _playlist_with_item(tmp_path)
+    audio = DummyAudioEngine()
+    settings = SettingsManager(config_path=tmp_path / "settings.yaml")
+    mixers: dict[str, DummyMixer] = {}
+
+    def mixer_factory(device):
+        mixer = DummyMixer(device)
+        mixers[device.id] = mixer
+        return mixer
+
+    # make sure mixer is only imported when needed
+    monkeypatch.syspath_prepend(str(tmp_path / "nonexistent"))
+
+    controller = PlaybackController(audio, settings, lambda *_args: None, mixer_factory=mixer_factory)
+
+    controller.start_item(
+        playlist,
+        item,
+        start_seconds=0.0,
+        on_finished=lambda _item_id: None,
+        on_progress=lambda _item_id, _seconds: None,
+    )
+
+    assert mixers["dev-1"].started == [(item.id, str(item.path), 0.0)]
+    removed = controller.stop_playlist(playlist.id, fade_duration=0.5)
+    assert removed
+    assert mixers["dev-1"].faded == [0.5]
+
+
 def test_clear_auto_mix_and_get_context(tmp_path):
     playlist, item = _playlist_with_item(tmp_path)
     audio = DummyAudioEngine()
     settings = SettingsManager(config_path=tmp_path / "settings.yaml")
-    controller = PlaybackController(audio, settings, lambda *_args: None)
+    controller = PlaybackController(
+        audio,
+        settings,
+        lambda *_args: None,
+        mixer_factory=lambda device: DummyMixer(device),
+    )
 
     controller.start_item(
         playlist,

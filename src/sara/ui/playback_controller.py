@@ -6,12 +6,15 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
-from typing import Callable, Dict, Iterable, Optional, Tuple
+from typing import Callable, Dict, Iterable, Optional, Tuple, TYPE_CHECKING
 
-from sara.audio.engine import AudioEngine, Player
+from sara.audio.engine import AudioDevice, AudioEngine, Player, BackendType
 from sara.core.config import SettingsManager
 from sara.core.i18n import gettext as _
-from sara.core.playlist import PlaylistItem, PlaylistModel
+from sara.core.playlist import PlaylistItem, PlaylistModel, PlaylistItemStatus
+
+if TYPE_CHECKING:  # pragma: no cover - tylko dla typowania
+    from sara.audio.mixer import DeviceMixer
 
 
 logger = logging.getLogger(__name__)
@@ -43,6 +46,7 @@ class PlaybackController:
         audio_engine: AudioEngine,
         settings: SettingsManager,
         announce: Callable[[str, str], None],
+        mixer_factory: Callable[[AudioDevice], "DeviceMixer"] | None = None,
     ) -> None:
         self._audio_engine = audio_engine
         self._settings = settings
@@ -51,6 +55,15 @@ class PlaybackController:
         self._auto_mix_state: Dict[tuple[str, str], bool] = {}
         self._preview_context: PreviewContext | None = None
         self._pfl_device_id: str | None = settings.get_pfl_device()
+        self._mixers: Dict[str, "DeviceMixer"] = {}
+        self._mixer_factory = mixer_factory or self._default_mixer_factory
+        # upewnij się, że cache playerów jest świeży po zmianach backendu
+        try:
+            self._audio_engine.stop_all()
+            if hasattr(self._audio_engine, "_players"):
+                self._audio_engine._players.clear()  # pylint: disable=protected-access
+        except Exception:
+            pass
 
     @property
     def contexts(self) -> Dict[tuple[str, str], PlaybackContext]:
@@ -96,6 +109,7 @@ class PlaybackController:
             except Exception:  # pylint: disable=broad-except
                 pass
             removed.append((key, context))
+        self._cleanup_unused_mixers()
         return removed
 
     def start_item(
@@ -106,33 +120,136 @@ class PlaybackController:
         start_seconds: float,
         on_finished: Callable[[str], None],
         on_progress: Callable[[str, float], None],
+        restart_if_playing: bool = False,
+        mix_trigger_seconds: float | None = None,
+        on_mix_trigger: Callable[[], None] | None = None,
     ) -> PlaybackContext | None:
+        try:
+            return self._start_item_impl(
+                playlist,
+                item,
+                start_seconds=start_seconds,
+                on_finished=on_finished,
+                on_progress=on_progress,
+                restart_if_playing=restart_if_playing,
+                mix_trigger_seconds=mix_trigger_seconds,
+                on_mix_trigger=on_mix_trigger,
+            )
+        except Exception:  # pylint: disable=broad-except
+            logger.exception(
+                "PlaybackController: unhandled error starting item playlist=%s item_id=%s",
+                getattr(playlist, "name", playlist.id),
+                item.id,
+            )
+            raise
+
+    # Wydzielona implementacja pozwala zalogować traceback bez rozwijania głównej sygnatury.
+    def _start_item_impl(
+        self,
+        playlist: PlaylistModel,
+        item: PlaylistItem,
+        *,
+        start_seconds: float,
+        on_finished: Callable[[str], None],
+        on_progress: Callable[[str, float], None],
+        restart_if_playing: bool = False,
+        mix_trigger_seconds: float | None = None,
+        on_mix_trigger: Callable[[], None] | None = None,
+    ) -> PlaybackContext | None:
+        logger.info(
+            "PlaybackController: start_item playlist=%s item_id=%s title=%s slots=%s busy=%s",
+            playlist.name,
+            item.id,
+            getattr(item, "title", item.id),
+            playlist.get_configured_slots(),
+            self.get_busy_device_ids(),
+        )
         key = (playlist.id, item.id)
         context = self._playback_contexts.get(key)
         player = context.player if context else None
         device_id = context.device_id if context else None
         slot_index = context.slot_index if context else None
 
+        if (
+            player is not None
+            and device_id is not None
+            and slot_index is not None
+            and item.status is PlaylistItemStatus.PLAYING
+        ):
+            if restart_if_playing:
+                logger.debug(
+                    "PlaybackController: restarting item already playing on device=%s slot=%s",
+                    device_id,
+                    slot_index,
+                )
+                try:
+                    player.stop()
+                except Exception as exc:  # pylint: disable=broad-except
+                    logger.warning("Failed to stop player for restart: %s", exc)
+            else:
+                logger.debug(
+                    "PlaybackController: item already playing, reusing existing player device=%s slot=%s",
+                    device_id,
+                    slot_index,
+                )
+                return context
+
         if player is None or device_id is None or slot_index is None:
             acquired = self._ensure_player(playlist)
             if acquired is None:
+                logger.error("PlaybackController: no player acquired for playlist=%s item=%s", playlist.name, item.id)
                 return None
             player, device_id, slot_index = acquired
 
-        try:
-            player.set_finished_callback(on_finished)
-            player.set_progress_callback(on_progress)
-        except Exception as exc:  # pylint: disable=broad-except
-            self._announce("playback_errors", _("Failed to assign playback callbacks: %s") % exc)
-            return None
+            try:
+                player.set_finished_callback(on_finished)
+                player.set_progress_callback(on_progress)
+            except Exception as exc:  # pylint: disable=broad-except
+                self._announce("playback_errors", _("Failed to assign playback callbacks: %s") % exc)
+                logger.debug("PlaybackController: callback assignment failed device=%s slot=%s: %s", device_id, slot_index, exc)
+                return None
+
+        def _do_play(p: Player) -> None:
+            p.play(
+                item.id,
+                str(item.path),
+                start_seconds=start_seconds,
+                allow_loop=bool(
+                    item.loop_enabled
+                    and item.has_loop()
+                    and not getattr(p, "_use_asio", False)
+                ),
+                mix_trigger_seconds=mix_trigger_seconds,
+                on_mix_trigger=on_mix_trigger,
+            )
 
         try:
-            player.play(item.id, str(item.path), start_seconds=start_seconds)
+            _do_play(player)
         except Exception as exc:  # pylint: disable=broad-except
             player.set_finished_callback(None)
             player.set_progress_callback(None)
-            self._announce("playback_errors", _("Playback error: %s") % exc)
-            return None
+            logger.exception(
+                "PlaybackController: play failed playlist=%s item=%s device=%s slot=%s err=%s",
+                playlist.name,
+                item.title,
+                device_id,
+                slot_index,
+                exc,
+            )
+            # jeśli player jest stary/niekompletny, usuń cache i spróbuj raz jeszcze
+            try:
+                self._audio_engine._players.pop(device_id, None)  # pylint: disable=protected-access
+            except Exception:
+                pass
+            try:
+                player = self._audio_engine.create_player(device_id)
+                player.set_finished_callback(on_finished)
+                player.set_progress_callback(on_progress)
+                _do_play(player)
+            except Exception as retry_exc:  # pylint: disable=broad-except
+                logger.exception("PlaybackController: retry after player refresh failed: %s", retry_exc)
+                self._announce("playback_errors", f"{retry_exc}")
+                return None
 
         try:
             player.set_gain_db(item.replay_gain_db)
@@ -161,6 +278,21 @@ class PlaybackController:
     def _ensure_player(self, playlist: PlaylistModel) -> tuple[Player, str, int] | None:
         attempts = 0
         missing_devices: set[str] = set()
+        use_mixer = self._should_use_mixer(playlist)
+
+        def pick_fallback(device_map: dict[str, AudioDevice], busy_devices: set[str]) -> tuple[int, str] | None:
+            # prefer BASS not busy -> any not busy -> busy BASS -> any
+            def score(dev: AudioDevice) -> tuple[int, bool]:
+                return (0 if dev.backend is BackendType.BASS else 1, dev.id in busy_devices)
+
+            sorted_devices = sorted(device_map.values(), key=score)
+            for dev in sorted_devices:
+                if dev.id in busy_devices:
+                    continue
+                return (0, dev.id)
+            if sorted_devices:
+                return (0, sorted_devices[0].id)
+            return None
 
         while attempts < 2:
             devices = self._audio_engine.get_devices()
@@ -175,12 +307,21 @@ class PlaybackController:
             busy_devices = self.get_busy_device_ids()
             selection = playlist.select_next_slot(set(device_map.keys()), busy_devices)
             if selection is None:
-                if playlist.get_configured_slots():
-                    self._announce(
-                        "device",
-                        _("No configured player for playlist %s is available") % playlist.name,
+                selection = pick_fallback(device_map, busy_devices)
+                if selection is None:
+                    logger.error(
+                        "PlaybackController: no available slot for playlist=%s configured_slots=%s available=%s busy=%s",
+                        playlist.name,
+                        playlist.get_configured_slots(),
+                        list(device_map.keys()),
+                        list(busy_devices),
                     )
-                return None
+                    if playlist.get_configured_slots():
+                        self._announce(
+                            "device",
+                            _("No configured player for playlist %s is available") % playlist.name,
+                        )
+                    return None
 
             slot_index, device_id = selection
             device = device_map.get(device_id)
@@ -192,10 +333,37 @@ class PlaybackController:
                     self._settings.save()
                 attempts += 1
                 self._audio_engine.refresh_devices()
+                logger.debug(
+                    "PlaybackController: device %s missing for playlist=%s, refreshing devices (attempt %s)",
+                    device_id,
+                    playlist.name,
+                    attempts,
+                )
                 continue
+            logger.debug(
+                "PlaybackController: selected device %s backend=%s slot=%s use_mixer=%s configured_slots=%s busy=%s",
+                device_id,
+                device.backend if hasattr(device, "backend") else "?",
+                slot_index,
+                use_mixer,
+                playlist.get_configured_slots(),
+                busy_devices,
+            )
 
             try:
-                player = self._audio_engine.create_player(device_id)
+                # Jeśli backend to BASS lub mixer nie jest dostępny, graj bezpośrednio
+                effective_use_mixer = use_mixer and device.backend not in (BackendType.BASS, BackendType.BASS_ASIO)
+                player: Player
+                if effective_use_mixer:
+                    try:
+                        mixer = self._get_or_create_mixer(device)
+                        MixerPlayer = self._get_mixer_player_class()
+                        player = MixerPlayer(mixer)
+                    except Exception as exc:  # pylint: disable=broad-except
+                        logger.warning("Mixer unavailable for %s, falling back to direct player: %s", device_id, exc)
+                        effective_use_mixer = False
+                if not effective_use_mixer:
+                    player = self._audio_engine.create_player(device_id)
                 return player, device_id, slot_index
             except ValueError:
                 attempts += 1
@@ -208,6 +376,41 @@ class PlaybackController:
                 _("Unavailable devices for playlist %s: %s") % (playlist.name, removed_list),
             )
         return None
+
+    def _get_mixer_classes(self):
+        from sara.audio.mixer import DeviceMixer, MixerPlayer
+
+        return DeviceMixer, MixerPlayer
+
+    def _get_mixer_player_class(self):
+        _, MixerPlayer = self._get_mixer_classes()
+        return MixerPlayer
+
+    def _default_mixer_factory(self, device: AudioDevice):
+        DeviceMixer, _ = self._get_mixer_classes()
+        return DeviceMixer(device)
+
+    def _get_or_create_mixer(self, device: AudioDevice):
+        mixer = self._mixers.get(device.id)
+        if mixer:
+            return mixer
+        mixer = self._mixer_factory(device)
+        self._mixers[device.id] = mixer
+        return mixer
+
+    def _cleanup_unused_mixers(self) -> None:
+        active_devices = {context.device_id for context in self._playback_contexts.values()}
+        stale = [device_id for device_id in self._mixers if device_id not in active_devices]
+        for device_id in stale:
+            mixer = self._mixers.pop(device_id)
+            try:
+                mixer.close()
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.warning("Nie udało się zamknąć miksera %s: %s", device_id, exc)
+
+    def _should_use_mixer(self, playlist: PlaylistModel) -> bool:
+        slots = [slot for slot in playlist.get_configured_slots() if slot]
+        return len(slots) <= 1
 
     def get_context(self, playlist_id: str) -> tuple[tuple[str, str], PlaybackContext] | None:
         for key, context in self._playback_contexts.items():
@@ -223,6 +426,7 @@ class PlaybackController:
         for key in keys_to_remove:
             self._playback_contexts.pop(key, None)
             self._auto_mix_state.pop(key, None)
+        self._cleanup_unused_mixers()
 
     def stop_preview(self, *, wait: bool = True) -> None:
         if not self._preview_context:
@@ -251,6 +455,13 @@ class PlaybackController:
         *,
         loop_range: tuple[float, float] | None = None,
     ) -> bool:
+        logger.debug(
+            "PlaybackController: start_preview item=%s start=%.3f loop=%s device=%s",
+            getattr(item, "title", item.id),
+            start,
+            loop_range,
+            self._pfl_device_id,
+        )
         if loop_range is not None and loop_range[1] <= loop_range[0]:
             self._announce("loop", _("Loop end must be greater than start"))
             return False
@@ -285,7 +496,12 @@ class PlaybackController:
             player.set_finished_callback(None)
             player.set_progress_callback(None)
             player.set_gain_db(item.replay_gain_db)
-            finished_event = player.play(item.id + ":preview", str(item.path), start_seconds=start)
+            finished_event = player.play(
+                item.id + ":preview",
+                str(item.path),
+                start_seconds=start,
+                allow_loop=True,
+            )
             if loop_range:
                 player.set_loop(loop_range[0], loop_range[1])
             else:

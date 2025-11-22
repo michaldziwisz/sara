@@ -51,15 +51,17 @@ except ImportError:  # pragma: no cover - pythonnet opcjonalny
     clr = None
 
 try:
-    from sara.audio.bass import BassBackend
+    from sara.audio.bass import BassBackend, BassAsioBackend
 except Exception:  # pragma: no cover - BASS opcjonalny
     BassBackend = None
+    BassAsioBackend = None
 
 
 class BackendType(Enum):
     WASAPI = "wasapi"
     ASIO = "asio"
     BASS = "bass"
+    BASS_ASIO = "bass-asio"
 
 
 @dataclass
@@ -72,7 +74,17 @@ class AudioDevice:
 
 
 class Player(Protocol):
-    def play(self, playlist_item_id: str, source_path: str, *, start_seconds: float = 0.0) -> Optional[Event]: ...
+    def play(
+        self,
+        playlist_item_id: str,
+        source_path: str,
+        *,
+        start_seconds: float = 0.0,
+        allow_loop: bool = True,
+        mix_trigger_seconds: Optional[float] = None,
+        on_mix_trigger: Optional[Callable[[], None]] = None,
+    ) -> Optional[Event]: ...
+    def is_active(self) -> bool: ...
 
     def pause(self) -> None: ...
 
@@ -170,7 +182,16 @@ class MockPlayer:
         self._loop_start: float = 0.0
         self._loop_end: Optional[float] = None
 
-    def play(self, playlist_item_id: str, source_path: str, *, start_seconds: float = 0.0) -> Optional[Event]:  # noqa: D401
+    def play(
+        self,
+        playlist_item_id: str,
+        source_path: str,
+        *,
+        start_seconds: float = 0.0,
+        allow_loop: bool = True,
+        mix_trigger_seconds: float | None = None,
+        on_mix_trigger: Callable[[], None] | None = None,
+    ) -> Optional[Event]:  # noqa: D401
         self.stop()
         self._current_item = playlist_item_id
         logger.info("[MOCK] Odtwarzanie %s na %s (%s)", source_path, self.device.name, playlist_item_id)
@@ -208,6 +229,10 @@ class MockPlayer:
     def set_progress_callback(self, callback: Optional[Callable[[str, float], None]]) -> None:  # noqa: D401
         self._on_progress = callback
 
+    def set_mix_callback(self, callback: Optional[Callable[[], None]]) -> None:
+        # kompatybilność z interfejsem BassPlayer
+        pass
+
     def set_gain_db(self, gain_db: Optional[float]) -> None:  # noqa: D401
         self._gain_db = gain_db
 
@@ -218,6 +243,10 @@ class MockPlayer:
             return
         self._loop_start = max(0.0, start_seconds)
         self._loop_end = end_seconds
+
+    # kompatybilność – w prawdziwym playerze wywoływane przy play
+    def _apply_loop_settings(self) -> None:
+        return
 
     def _tick(self) -> None:
         if not self._current_item:
@@ -280,7 +309,16 @@ class SoundDevicePlayer:
         self._transcoded_path: Optional[Path] = None
         self._pending_fade_in: int = 0
 
-    def play(self, playlist_item_id: str, source_path: str, *, start_seconds: float = 0.0) -> Event:  # noqa: D401
+    def play(
+        self,
+        playlist_item_id: str,
+        source_path: str,
+        *,
+        start_seconds: float = 0.0,
+        allow_loop: bool = True,
+        mix_trigger_seconds: float | None = None,
+        on_mix_trigger: Callable[[], None] | None = None,
+    ) -> Event:  # noqa: D401
         path = Path(source_path)
         with self._lock:
             if self._current_item == playlist_item_id and self._pause_event and self._pause_event.is_set():
@@ -374,106 +412,129 @@ class SoundDevicePlayer:
 
             def _run() -> None:
                 with sound_file:
-                    try:
-                        with sd.OutputStream(
-                            device=self.device.raw_index,
-                            samplerate=output_samplerate,
-                            channels=channels,
-                            dtype="float32",
-                            **stream_kwargs,
-                        ) as stream:
-                            block = 4096
-                            while stop_event is not None and not stop_event.is_set():
-                                if self._pause_event.is_set():
-                                    time.sleep(0.05)
-                                    continue
-                                data = sound_file.read(block, dtype="float32", always_2d=True)
-                                frames_read = len(data)
-                                if data.size == 0:
+                    restart_attempted = False
+                    while True:
+                        try:
+                            with sd.OutputStream(
+                                device=self.device.raw_index,
+                                samplerate=output_samplerate,
+                                channels=channels,
+                                dtype="float32",
+                                **stream_kwargs,
+                            ) as stream:
+                                block = 4096
+                                while stop_event is not None and not stop_event.is_set():
+                                    if self._pause_event.is_set():
+                                        time.sleep(0.05)
+                                        continue
+                                    data = sound_file.read(block, dtype="float32", always_2d=True)
+                                    frames_read = len(data)
+                                    if data.size == 0:
+                                        with self._lock:
+                                            loop_active = self._loop_active
+                                            loop_start_frame = self._loop_start_frame
+                                            loop_end_frame = self._loop_end_frame
+                                        if loop_active and loop_end_frame > loop_start_frame:
+                                            sound_file.seek(loop_start_frame)
+                                            self._position = loop_start_frame
+                                            continue
+                                        break
                                     with self._lock:
+                                        gain_factor = self._gain_factor
                                         loop_active = self._loop_active
                                         loop_start_frame = self._loop_start_frame
                                         loop_end_frame = self._loop_end_frame
-                                    if loop_active and loop_end_frame > loop_start_frame:
-                                        sound_file.seek(loop_start_frame)
-                                        self._position = loop_start_frame
-                                        continue
-                                    break
-                                with self._lock:
-                                    gain_factor = self._gain_factor
-                                    loop_active = self._loop_active
-                                    loop_start_frame = self._loop_start_frame
-                                    loop_end_frame = self._loop_end_frame
-                                output_block = data
-                                if gain_factor != 1.0:
-                                    output_block = output_block * gain_factor
-                                if frames_read and abs(resample_ratio - 1.0) > 1e-6:
-                                    resample_state["src_pos"] += frames_read
-                                    expected_total = resample_state["src_pos"] * resample_ratio
-                                    target_frames = int(round(expected_total - resample_state["dst_pos"]))
-                                    target_frames = max(1, target_frames)
-                                    output_block = _resample_to_length(output_block, target_frames)
-                                    resample_state["dst_pos"] += len(output_block)
-                                if np is not None and self._pending_fade_in > 0 and len(output_block):
-                                    frames = min(len(output_block), self._pending_fade_in)
-                                    fade = np.linspace(0.0, 1.0, frames, endpoint=False, dtype=output_block.dtype)
-                                    output_block = output_block.copy()
-                                    output_block[:frames] *= fade[:, None]
-                                    self._pending_fade_in = max(0, self._pending_fade_in - frames)
-                                will_loop = (
-                                    loop_active
-                                    and loop_end_frame > loop_start_frame
-                                    and self._position + frames_read >= loop_end_frame
+                                    output_block = data
+                                    if gain_factor != 1.0:
+                                        output_block = output_block * gain_factor
+                                    if frames_read and abs(resample_ratio - 1.0) > 1e-6:
+                                        resample_state["src_pos"] += frames_read
+                                        expected_total = resample_state["src_pos"] * resample_ratio
+                                        target_frames = int(round(expected_total - resample_state["dst_pos"]))
+                                        target_frames = max(1, target_frames)
+                                        output_block = _resample_to_length(output_block, target_frames)
+                                        resample_state["dst_pos"] += len(output_block)
+                                    if np is not None and self._pending_fade_in > 0 and len(output_block):
+                                        frames = min(len(output_block), self._pending_fade_in)
+                                        fade = np.linspace(0.0, 1.0, frames, endpoint=False, dtype=output_block.dtype)
+                                        output_block = output_block.copy()
+                                        output_block[:frames] *= fade[:, None]
+                                        self._pending_fade_in = max(0, self._pending_fade_in - frames)
+                                    will_loop = (
+                                        loop_active
+                                        and loop_end_frame > loop_start_frame
+                                        and self._position + frames_read >= loop_end_frame
+                                    )
+                                    if will_loop and np is not None and len(output_block):
+                                        fade_frames = min(len(output_block), max(1, int(output_samplerate * 0.003)))
+                                        fade = np.linspace(1.0, 0.0, fade_frames, endpoint=False, dtype=output_block.dtype)
+                                        output_block = output_block.copy()
+                                        output_block[-fade_frames:] *= fade[:, None]
+                                        self._pending_fade_in = fade_frames
+                                    stream.write(output_block)
+                                    self._position += frames_read
+                                    if (
+                                        loop_active
+                                        and loop_end_frame > loop_start_frame
+                                        and self._position >= loop_end_frame
+                                    ):
+                                        try:
+                                            sound_file.seek(loop_start_frame)
+                                        except Exception as exc:  # pylint: disable=broad-except
+                                            logger.error("Błąd ustawienia pętli: %s", exc)
+                                            with self._lock:
+                                                self._loop_active = False
+                                        else:
+                                            self._position = loop_start_frame
+                                            continue
+                                    if self._on_progress:
+                                        seconds = self._position / self._samplerate if self._samplerate else 0.0
+                                        try:
+                                            self._on_progress(self._current_item or playlist_item_id, seconds)
+                                        except Exception as exc:  # pylint: disable=broad-except
+                                            logger.error("Błąd callbacku postępu: %s", exc)
+                            break
+                        except Exception as exc:  # pylint: disable=broad-except
+                            should_retry = False
+                            status_code = getattr(exc, "errno", None) or getattr(exc, "status", None)
+                            if (
+                                sd is not None
+                                and isinstance(exc, Exception)
+                                and status_code == -9983
+                                and not restart_attempted
+                                and stop_event is not None
+                                and not stop_event.is_set()
+                            ):
+                                restart_attempted = True
+                                should_retry = True
+                                logger.warning(
+                                    "Strumień sounddevice zatrzymany (PaError -9983) na %s, ponawiam...",
+                                    self.device.name,
                                 )
-                                if will_loop and np is not None and len(output_block):
-                                    fade_frames = min(len(output_block), max(1, int(output_samplerate * 0.003)))
-                                    fade = np.linspace(1.0, 0.0, fade_frames, endpoint=False, dtype=output_block.dtype)
-                                    output_block = output_block.copy()
-                                    output_block[-fade_frames:] *= fade[:, None]
-                                    self._pending_fade_in = fade_frames
-                                stream.write(output_block)
-                                self._position += frames_read
-                                if (
-                                    loop_active
-                                    and loop_end_frame > loop_start_frame
-                                    and self._position >= loop_end_frame
-                                ):
-                                    try:
-                                        sound_file.seek(loop_start_frame)
-                                    except Exception as exc:  # pylint: disable=broad-except
-                                        logger.error("Błąd ustawienia pętli: %s", exc)
-                                        with self._lock:
-                                            self._loop_active = False
-                                    else:
-                                        self._position = loop_start_frame
-                                        continue
-                                if self._on_progress:
-                                    seconds = self._position / self._samplerate if self._samplerate else 0.0
-                                    try:
-                                        self._on_progress(self._current_item or playlist_item_id, seconds)
-                                    except Exception as exc:  # pylint: disable=broad-except
-                                        logger.error("Błąd callbacku postępu: %s", exc)
-                    except Exception as exc:  # pylint: disable=broad-except
-                        logger.error("Błąd odtwarzania sounddevice: %s", exc)
-                    finally:
-                        should_notify = not stop_event.is_set() if stop_event else True
-                        current_item = self._current_item
-                        self._position = 0
-                        if self._finished_event:
-                            self._finished_event.set()
-                        self._current_item = None
-                        if self._on_progress and current_item:
-                            try:
-                                total = self._total_frames / self._samplerate if self._samplerate else 0.0
-                                self._on_progress(current_item, total)
-                            except Exception as exc:  # pylint: disable=broad-except
-                                logger.error("Błąd callbacku postępu: %s", exc)
-                        if should_notify and current_item and self._on_finished:
-                            try:
-                                self._on_finished(current_item)
-                            except Exception as exc:  # pylint: disable=broad-except
-                                logger.error("Błąd callbacku zakończenia odtwarzania: %s", exc)
-                        self._cleanup_transcoded_file()
+                                time.sleep(0.05)
+                            if not should_retry:
+                                logger.error("Błąd odtwarzania sounddevice: %s", exc)
+                                break
+                        if not restart_attempted:
+                            break
+                    should_notify = not stop_event.is_set() if stop_event else True
+                    current_item = self._current_item
+                    self._position = 0
+                    if self._finished_event:
+                        self._finished_event.set()
+                    self._current_item = None
+                    if self._on_progress and current_item:
+                        try:
+                            total = self._total_frames / self._samplerate if self._samplerate else 0.0
+                            self._on_progress(current_item, total)
+                        except Exception as exc:  # pylint: disable=broad-except
+                            logger.error("Błąd callbacku postępu: %s", exc)
+                    if should_notify and current_item and self._on_finished:
+                        try:
+                            self._on_finished(current_item)
+                        except Exception as exc:  # pylint: disable=broad-except
+                            logger.error("Błąd callbacku zakończenia odtwarzania: %s", exc)
+                    self._cleanup_transcoded_file()
 
             self._thread = Thread(target=_run, daemon=True)
             self._thread.start()
@@ -860,11 +921,46 @@ class AudioEngine:
 
     def __init__(self) -> None:
         self._providers: List[BackendProvider] = []
-        if BassBackend is not None:
-            bass_backend = BassBackend()
-            if getattr(bass_backend, "is_available", False):
-                bass_backend.backend = BackendType.BASS
-                self._providers.append(bass_backend)
+        backend_cls = BassBackend
+        if backend_cls is None:
+            try:
+                from sara.audio import bass as _bass_mod  # type: ignore
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.error("Nie udało się zaimportować backendu BASS: %s", exc)
+            else:
+                backend_cls = getattr(_bass_mod, "BassBackend", None)
+        if backend_cls is None:
+            logger.error("Backend BASS nie jest dostępny (brak klasy BassBackend)")
+        else:
+            try:
+                bass_backend = backend_cls()
+                if getattr(bass_backend, "is_available", False):
+                    bass_backend.backend = BackendType.BASS
+                    self._providers.append(bass_backend)
+                else:
+                    logger.error("Backend BASS niedostępny (is_available=False)")
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.error("Inicjalizacja backendu BASS nie powiodła się: %s", exc)
+        # Bass ASIO (jeśli dostępny)
+        asio_cls = BassAsioBackend
+        if asio_cls is None:
+            try:
+                from sara.audio import bass as _bass_mod  # type: ignore
+            except Exception:
+                asio_cls = None
+            else:
+                asio_cls = getattr(_bass_mod, "BassAsioBackend", None)
+        if asio_cls is not None:
+            try:
+                bass_asio_backend = asio_cls()
+                if getattr(bass_asio_backend, "is_available", False):
+                    bass_asio_backend.backend = BackendType.BASS_ASIO
+                    self._providers.append(bass_asio_backend)
+                else:
+                    logger.debug("Backend BASS ASIO niedostępny (is_available=False)")
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.debug("Inicjalizacja backendu BASS ASIO nie powiodła się: %s", exc)
+        # Backendy sounddevice/pycaw są opcjonalne – jeśli sd brak, nadal trzymamy BASS
         self._providers.extend(
             [
                 SoundDeviceBackend(BackendType.WASAPI, ("WASAPI",)),
@@ -877,9 +973,16 @@ class AudioEngine:
         self._players: Dict[str, Player] = {}
 
     def refresh_devices(self) -> None:
+        # wyczyść cache playerów, żeby po zmianach backendu tworzyć świeże instancje
+        self._players.clear()
         self._devices.clear()
+        all_devices: list[AudioDevice] = []
         for provider in self._providers:
-            for device in provider.list_devices():
+            devices = provider.list_devices()
+            if not devices:
+                logger.debug("Provider %s nie zwrócił urządzeń", getattr(provider, "backend", provider))
+                continue
+            for device in devices:
                 label = f"{provider.backend.name.lower()}: {device.name}"
                 device_labelled = AudioDevice(
                     id=device.id,
@@ -888,8 +991,21 @@ class AudioEngine:
                     raw_index=device.raw_index,
                     is_default=device.is_default,
                 )
+                try:
+                    if hasattr(device, "native_samplerate"):
+                        device_labelled.native_samplerate = getattr(device, "native_samplerate")
+                except Exception:  # pylint: disable=broad-except
+                    pass
                 self._devices[device.id] = device_labelled
-        logger.debug("Zarejestrowano %d urządzeń audio", len(self._devices))
+                all_devices.append(device_labelled)
+        if all_devices:
+            logger.debug(
+                "Zarejestrowano %d urządzeń audio: %s",
+                len(all_devices),
+                ", ".join(f"{d.backend.value}:{d.name}" for d in all_devices),
+            )
+        else:
+            logger.debug("Brak wykrytych urządzeń audio")
 
     def get_devices(self) -> List[AudioDevice]:
         if not self._devices:
@@ -898,7 +1014,20 @@ class AudioEngine:
 
     def create_player(self, device_id: str) -> Player:
         if device_id in self._players:
-            return self._players[device_id]
+            player = self._players[device_id]
+            # Jeśli player jest stary i nie ma wymaganych metod (np. po refaktorze), odtwórz go.
+            if (
+                not hasattr(player, "_apply_loop_settings")
+                or not hasattr(player, "set_mix_callback")
+                or not hasattr(player, "set_loop")
+            ):
+                try:
+                    player.stop()
+                except Exception:
+                    pass
+                self._players.pop(device_id, None)
+            else:
+                return player
 
         device = self._devices.get(device_id)
         if device is None:

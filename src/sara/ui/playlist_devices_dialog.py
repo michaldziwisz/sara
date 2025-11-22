@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Dict, DefaultDict
+from collections import defaultdict
 
 import wx
 
-from sara.audio.engine import AudioDevice
+from sara.audio.engine import AudioDevice, BackendType
 from sara.core.i18n import gettext as _
 
 
@@ -25,7 +26,11 @@ class PlaylistDevicesDialog(wx.Dialog):
         super().__init__(parent, title=_("Playlist player configuration"), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._devices = devices
         self._initial_slots = list(slots or [])
-        self._choices: list[wx.Choice] = []
+        self._backend_choices: list[wx.Choice] = []
+        self._device_choices: list[wx.Choice] = []
+        self._devices_by_backend: Dict[BackendType, List[AudioDevice]] = defaultdict(list)
+        for dev in devices:
+            self._devices_by_backend[dev.backend].append(dev)
 
         main_sizer = wx.BoxSizer(wx.VERTICAL)
 
@@ -45,8 +50,8 @@ class PlaylistDevicesDialog(wx.Dialog):
         main_sizer.Add(count_sizer, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
         self._slots_container = wx.Panel(self)
-        self._slots_sizer = wx.FlexGridSizer(rows=0, cols=2, hgap=10, vgap=8)
-        self._slots_sizer.AddGrowableCol(1, 1)
+        self._slots_sizer = wx.FlexGridSizer(rows=0, cols=3, hgap=10, vgap=8)
+        self._slots_sizer.AddGrowableCol(2, 1)
         self._slots_container.SetSizer(self._slots_sizer)
         main_sizer.Add(self._slots_container, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
 
@@ -68,19 +73,20 @@ class PlaylistDevicesDialog(wx.Dialog):
         try:
             value = int(self._count_ctrl.GetValue())
         except (TypeError, ValueError):
-            value = len(self._choices) or 1
+            value = len(self._device_choices) or 1
         value = max(1, min(value, self.MAX_SLOTS))
         self._count_ctrl.SetValue(value)
         self._rebuild_slot_controls(value)
         event.Skip()
 
     def _rebuild_slot_controls(self, count: int) -> None:
-        if self._choices:
+        if self._device_choices:
             self._initial_slots = self.get_slots()
 
         for child in list(self._slots_container.GetChildren()):
             child.Destroy()
-        self._choices.clear()
+        self._backend_choices.clear()
+        self._device_choices.clear()
 
         existing = list(self._initial_slots)
         while len(existing) < count:
@@ -88,26 +94,61 @@ class PlaylistDevicesDialog(wx.Dialog):
 
         for index in range(count):
             label = wx.StaticText(self._slots_container, label=_("Player %d") % (index + 1))
-            choice = wx.Choice(self._slots_container)
-            choice.Append(_("(none)"), clientData=None)
-            for device in self._devices:
-                device_label = f"{device.name} [{device.backend.value.upper()}]"
-                if device.is_default:
-                    device_label += _(" (default)")
-                choice.Append(device_label, clientData=device.id)
+            backend_choice = wx.Choice(self._slots_container)
+            device_choice = wx.Choice(self._slots_container)
 
-            desired = existing[index]
-            selection = 0
-            if desired is not None:
-                for pos in range(choice.GetCount()):
-                    if choice.GetClientData(pos) == desired:
-                        selection = pos
+            # backend options
+            backends = sorted(self._devices_by_backend.keys(), key=lambda b: b.value)
+            for backend in backends:
+                backend_choice.Append(backend.value.upper(), clientData=backend)
+
+            # preselect backend based on existing device id
+            desired_id = existing[index]
+            desired_backend = None
+            if desired_id:
+                for dev in self._devices:
+                    if dev.id == desired_id:
+                        desired_backend = dev.backend
                         break
-            choice.SetSelection(selection)
+            if desired_backend is None and backends:
+                desired_backend = backends[0]
+
+            sel_backend_idx = 0
+            if desired_backend is not None:
+                for pos in range(backend_choice.GetCount()):
+                    if backend_choice.GetClientData(pos) == desired_backend:
+                        sel_backend_idx = pos
+                        break
+            backend_choice.SetSelection(sel_backend_idx)
 
             self._slots_sizer.Add(label, 0, wx.ALIGN_CENTER_VERTICAL)
-            self._slots_sizer.Add(choice, 1, wx.EXPAND)
-            self._choices.append(choice)
+            self._slots_sizer.Add(backend_choice, 0, wx.ALIGN_CENTER_VERTICAL)
+            self._slots_sizer.Add(device_choice, 1, wx.EXPAND)
+            self._backend_choices.append(backend_choice)
+            self._device_choices.append(device_choice)
+
+            def refresh_devices_for(idx: int) -> None:
+                backend = self._backend_choices[idx].GetClientData(self._backend_choices[idx].GetSelection())
+                device_choice = self._device_choices[idx]
+                device_choice.Clear()
+                device_choice.Append(_("(none)"), clientData=None)
+                for dev in self._devices_by_backend.get(backend, []):
+                    label = dev.name
+                    if dev.is_default:
+                        label += _(" (default)")
+                    device_choice.Append(label, clientData=dev.id)
+                # reselect previous if still matches backend
+                prev = existing[idx]
+                sel = 0
+                if prev:
+                    for pos in range(device_choice.GetCount()):
+                        if device_choice.GetClientData(pos) == prev:
+                            sel = pos
+                            break
+                device_choice.SetSelection(sel)
+
+            backend_choice.Bind(wx.EVT_CHOICE, lambda evt, i=index: refresh_devices_for(i))
+            refresh_devices_for(index)
 
         self._initial_slots = existing[:count]
         self._slots_container.Layout()
@@ -117,10 +158,10 @@ class PlaylistDevicesDialog(wx.Dialog):
 
     def get_slots(self) -> list[Optional[str]]:
         slots: list[Optional[str]] = []
-        for choice in self._choices:
-            selection = choice.GetSelection()
+        for device_choice in self._device_choices:
+            selection = device_choice.GetSelection()
             if selection == wx.NOT_FOUND:
                 slots.append(None)
             else:
-                slots.append(choice.GetClientData(selection))
+                slots.append(device_choice.GetClientData(selection))
         return slots

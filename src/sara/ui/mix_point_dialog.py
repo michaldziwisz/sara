@@ -29,7 +29,7 @@ class MixPointEditorDialog(wx.Dialog):
 
     _SLIDER_SCALE = 1000  # milliseconds precision
     _DEFAULT_JUMP_SECONDS = 20.0
-    _FINE_STEP = 0.1
+    _FINE_STEP = 0.01
 
     def __init__(
         self,
@@ -129,8 +129,8 @@ class MixPointEditorDialog(wx.Dialog):
         info = wx.StaticText(
             self,
             label=_(
-                "Shortcuts: A/S/Z = move back (5s/1s/0.1s), "
-                "F/G/C = move forward (1s/5s/0.1s), D = play/pause, "
+                "Shortcuts: A/S/Z = move back (5s/1s/0.01s), "
+                "F/G/C = move forward (1s/5s/0.01s), D = play/pause, "
                 "Q = preview from start, W = preview last 20s, X = capture point, "
                 "Z/C fine-tune active point, "
                 "V = preview active point, Shift+V = preview loop end, Alt+V = preview loop."
