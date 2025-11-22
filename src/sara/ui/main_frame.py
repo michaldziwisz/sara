@@ -1218,62 +1218,43 @@ class MainFrame(wx.Frame):
             self._announce_event("selection", _("Selection removed from %s") % item.title)
 
     def _auto_mix_play_next(self, panel: PlaylistPanel) -> bool:
-        """Play next pending item sequentially; break = stop and continue after it."""
+        """Play Next w automixie: gra kolejny utwór sekwencyjnie; break zatrzymuje i jedziemy dalej, z zawijaniem."""
         playlist = panel.model
-        # zatrzymaj wszystkie grające konteksty tej playlisty i oznacz PLAYED
-        contexts = [key for key in list(self._playback.contexts.keys()) if key[0] == playlist.id]
-        last_played_index: int | None = None
-        for key in contexts:
+        if not playlist.items:
+            return False
+
+        # ustal aktualnie grający indeks (jeśli jest)
+        current_idx: int | None = None
+        ctx = self._get_playback_context(playlist.id)
+        if ctx:
+            key, _ = ctx
+            current_idx = self._index_of_item(playlist, key[1])
+
+        # zatrzymaj bieżące odtwarzanie i oznacz PLAYED
+        if ctx:
+            key, _ = ctx
             item_obj = playlist.get_item(key[1])
             if item_obj:
                 item_obj.break_after = False
                 item_obj.is_selected = False
                 item_obj.status = PlaylistItemStatus.PLAYED
                 item_obj.current_position = item_obj.effective_duration_seconds
-                idx_obj = self._index_of_item(playlist, item_obj.id)
-                if idx_obj is not None:
-                    last_played_index = max(last_played_index or idx_obj, idx_obj)
-        # zatrzymaj aktywne playbacki
-        self._stop_playlist_playback(playlist.id, mark_played=True, fade_duration=max(0.0, self._fade_duration))
-        panel.refresh(focus=False)
+            self._stop_playlist_playback(playlist.id, mark_played=True, fade_duration=max(0.0, self._fade_duration))
 
-        # wyczyść automix state dla tej playlisty
-        for key in list(self._playback.auto_mix_state.keys()):
-            if key[0] == playlist.id:
-                self._playback.auto_mix_state.pop(key, None)
-
-        # wybierz pierwszy pending po break_resume, potem po last_played, wreszcie od początku
-        start_candidates: list[int] = []
-        if playlist.break_resume_index is not None:
-            start_candidates.append(playlist.break_resume_index)
-        if last_played_index is not None:
-            start_candidates.append(last_played_index + 1)
-        start_candidates.append(0)
-
-        pending_idx: int | None = None
-        for start in start_candidates:
-            pending_idx = next(
-                (
-                    i
-                    for i in range(start, len(playlist.items))
-                    if playlist.items[i].status is PlaylistItemStatus.PENDING
-                ),
-                None,
-            )
-            if pending_idx is not None:
-                break
-
+        # znajdź kolejny indeks (zawijanie)
+        next_idx = 0
+        if current_idx is not None:
+            next_idx = (current_idx + 1) % len(playlist.items)
+        # jeśli break_resume_index jest ustawione, użyj go jako priorytetu
+        if playlist.break_resume_index is not None and 0 <= playlist.break_resume_index < len(playlist.items):
+            next_idx = playlist.break_resume_index
         playlist.break_resume_index = None
-        if pending_idx is None:
-            # jeżeli żadnego pending – zresetuj listę do PENDING i zacznij od początku
-            for item in playlist.items:
-                item.status = PlaylistItemStatus.PENDING
-                item.current_position = 0.0
-            if not playlist.items:
-                return False
-            pending_idx = 0
 
-        next_item = playlist.items[pending_idx]
+        # Jeśli pozycja jest poza zakresem, zacznij od początku
+        if next_idx >= len(playlist.items):
+            next_idx = 0
+
+        next_item = playlist.items[next_idx]
         return self._start_playback(panel, next_item, restart_playing=False)
 
     def _on_mix_points_configure(self, playlist_id: str, item_id: str) -> None:
