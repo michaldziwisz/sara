@@ -1256,6 +1256,9 @@ class MainFrame(wx.Frame):
         playlist.break_resume_index = None
         panel.refresh(focus=False)
         next_item = playlist.items[next_idx]
+        # upewnij się, że będzie traktowany jako do zagrania
+        next_item.status = PlaylistItemStatus.PENDING
+        next_item.current_position = 0.0
         return self._start_playback(panel, next_item, restart_playing=False)
 
     def _on_mix_points_configure(self, playlist_id: str, item_id: str) -> None:
