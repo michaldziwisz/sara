@@ -1513,6 +1513,18 @@ class MainFrame(wx.Frame):
                 preferred_item_id = playlist.items[play_index].id
             else:
                 preferred_item_id = None
+
+        # Jeśli wybrany indeks nie jest pending/paused, przeskocz do kolejnego pending.
+        if play_index is not None:
+            def _next_pending(start_idx: int) -> int | None:
+                for idx in range(start_idx, len(playlist.items)):
+                    if playlist.items[idx].status in (PlaylistItemStatus.PENDING, PlaylistItemStatus.PAUSED):
+                        return idx
+                return None
+
+            if not (0 <= play_index < len(playlist.items) and playlist.items[play_index].status in (PlaylistItemStatus.PENDING, PlaylistItemStatus.PAUSED)):
+                play_index = _next_pending((play_index + 1) if play_index is not None else 0)
+                preferred_item_id = playlist.items[play_index].id if play_index is not None else None
         logger.debug(
             "UI: start_next playlist=%s preferred=%s play_index=%s used_ui=%s consumed_selection=%s ignore_ui=%s",
             playlist.id,
