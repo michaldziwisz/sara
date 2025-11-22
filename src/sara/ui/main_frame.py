@@ -1682,8 +1682,13 @@ class MainFrame(wx.Frame):
             self._stop_playlist_playback(playlist_id, mark_played=True, fade_duration=max(0.0, self._fade_duration))
             panel.refresh(focus=False)
 
+            start_from = panel.model.break_resume_index or 0
             pending_idx = next(
-                (i for i, it in enumerate(panel.model.items) if it.status is PlaylistItemStatus.PENDING),
+                (
+                    i
+                    for i in range(start_from, len(panel.model.items))
+                    if panel.model.items[i].status is PlaylistItemStatus.PENDING
+                ),
                 None,
             )
             panel.model.break_resume_index = None
