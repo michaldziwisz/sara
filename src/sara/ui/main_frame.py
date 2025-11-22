@@ -1454,7 +1454,12 @@ class MainFrame(wx.Frame):
                 )
             if play_index is None:
                 if not ignore_ui_selection:
-                    selected_indices = panel.get_selected_indices()
+                    selected_indices = [
+                        idx
+                        for idx in panel.get_selected_indices()
+                        if 0 <= idx < len(playlist.items)
+                        and playlist.items[idx].status in (PlaylistItemStatus.PENDING, PlaylistItemStatus.PAUSED)
+                    ]
                 else:
                     selected_indices = []
                 if selected_indices:
@@ -1616,19 +1621,21 @@ class MainFrame(wx.Frame):
             current_ctx = self._get_playback_context(panel.model.id)
             if current_ctx:
                 key, _ctx = current_ctx
-                playing_item = panel.model.get_item(key[1])
-                if playing_item and playing_item.break_after:
-                    idx = self._index_of_item(panel.model, playing_item.id)
-                    target_index = (idx + 1) if idx is not None else None
-                    if target_index is not None and target_index >= len(panel.model.items):
-                        target_index = None
-                    panel.model.break_resume_index = target_index
-                    playing_item.break_after = False
-                    self._stop_playlist_playback(
-                        panel.model.id,
-                        mark_played=True,
-                        fade_duration=max(0.0, self._fade_duration),
-                    )
+                    playing_item = panel.model.get_item(key[1])
+                    if playing_item and playing_item.break_after:
+                        idx = self._index_of_item(panel.model, playing_item.id)
+                        target_index = (idx + 1) if idx is not None else None
+                        if target_index is not None and target_index >= len(panel.model.items):
+                            target_index = None
+                        panel.model.break_resume_index = target_index
+                        playing_item.break_after = False
+                        panel.model.clear_selection(playing_item.id)
+                        panel.refresh(focus=False)
+                        self._stop_playlist_playback(
+                            panel.model.id,
+                            mark_played=True,
+                            fade_duration=max(0.0, self._fade_duration),
+                        )
 
         if not self._start_next_from_playlist(panel):
             self._announce_event("playback_events", _("No scheduled tracks available"))
