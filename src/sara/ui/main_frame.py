@@ -1223,12 +1223,16 @@ class MainFrame(wx.Frame):
         if not playlist.items:
             return False
 
-        # ustal aktualnie grający indeks (jeśli jest)
+        # ustal aktualnie grający indeks (jeśli jest) lub ostatnio uruchomiony
         current_idx: int | None = None
         ctx = self._get_playback_context(playlist.id)
         if ctx:
             key, _ = ctx
             current_idx = self._index_of_item(playlist, key[1])
+        if current_idx is None:
+            last_id = self._last_started_item_id.get(playlist.id)
+            if last_id:
+                current_idx = self._index_of_item(playlist, last_id)
 
         # zatrzymaj bieżące odtwarzanie i oznacz PLAYED
         if ctx:
@@ -1243,11 +1247,10 @@ class MainFrame(wx.Frame):
 
         # znajdź kolejny indeks (zawijanie)
         next_idx = 0
-        if current_idx is not None:
-            next_idx = (current_idx + 1) % len(playlist.items)
-        # jeśli break_resume_index jest ustawione, użyj go jako priorytetu
         if playlist.break_resume_index is not None and 0 <= playlist.break_resume_index < len(playlist.items):
             next_idx = playlist.break_resume_index
+        elif current_idx is not None:
+            next_idx = (current_idx + 1) % len(playlist.items)
         playlist.break_resume_index = None
 
         # Jeśli pozycja jest poza zakresem, zacznij od początku
