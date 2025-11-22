@@ -1764,6 +1764,9 @@ class MainFrame(wx.Frame):
             return
         if not self._auto_mix_enabled and not queued_selection:
             return
+        # Break zatrzymuje automix – nie miksuj w trakcie utworu z breakiem.
+        if item.break_after:
+            return
 
         key = (playlist.id, item.id)
         already_mixing = self._playback.auto_mix_state.get(key, False)
