@@ -212,11 +212,9 @@ class PlaybackController:
                 item.id,
                 str(item.path),
                 start_seconds=start_seconds,
-                allow_loop=bool(
-                    item.loop_enabled
-                    and item.has_loop()
-                    and not getattr(p, "_use_asio", False)
-                ),
+                # pozwól SAMPLE_LOOP, jeśli faktycznie mamy pętlę (dla ASIO też),
+                # reszta i tak jest kontrolowana markerami/guardem
+                allow_loop=bool(item.loop_enabled and item.has_loop()),
                 mix_trigger_seconds=mix_trigger_seconds,
                 on_mix_trigger=on_mix_trigger,
             )
