@@ -1611,6 +1611,25 @@ class MainFrame(wx.Frame):
             self._announce_event("playlist", _("Select a playlist first"))
             return
 
+        # Jeśli automix jest aktywny i grany utwór ma break, Play Next ma przejść za break.
+        if self._auto_mix_enabled and panel.model.kind is PlaylistKind.MUSIC:
+            current_ctx = self._get_playback_context(panel.model.id)
+            if current_ctx:
+                key, _ctx = current_ctx
+                playing_item = panel.model.get_item(key[1])
+                if playing_item and playing_item.break_after:
+                    idx = self._index_of_item(panel.model, playing_item.id)
+                    target_index = (idx + 1) if idx is not None else None
+                    if target_index is not None and target_index >= len(panel.model.items):
+                        target_index = None
+                    panel.model.break_resume_index = target_index
+                    playing_item.break_after = False
+                    self._stop_playlist_playback(
+                        panel.model.id,
+                        mark_played=True,
+                        fade_duration=max(0.0, self._fade_duration),
+                    )
+
         if not self._start_next_from_playlist(panel):
             self._announce_event("playback_events", _("No scheduled tracks available"))
 
