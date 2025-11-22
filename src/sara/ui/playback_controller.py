@@ -60,8 +60,6 @@ class PlaybackController:
         # upewnij się, że cache playerów jest świeży po zmianach backendu
         try:
             self._audio_engine.stop_all()
-            if hasattr(self._audio_engine, "_players"):
-                self._audio_engine._players.clear()  # pylint: disable=protected-access
         except Exception:
             pass
 

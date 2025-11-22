@@ -1010,8 +1010,8 @@ class BassAsioPlayer(BassPlayer):
         # osobny kontekst BASS do tworzenia strumienia decode (no-sound)
         self._decode_device_context: Optional[_DeviceContext] = None
         self._gain_factor = 1.0
-        # przy BASS ASIO włączamy guard oraz sync – oba dla pewności
-        self._loop_guard_enabled = True
+        # dla ASIO polegamy na syncach, pythonowy guard wyłączony
+        self._loop_guard_enabled = False
         # własne callbacki ASIO
         self._asio_finished_callback: Optional[Callable[[str], None]] = None
         self._asio_mix_callback: Optional[Callable[[], None]] = None

@@ -1013,30 +1013,12 @@ class AudioEngine:
         return list(self._devices.values())
 
     def create_player(self, device_id: str) -> Player:
-        if device_id in self._players:
-            player = self._players[device_id]
-            # Jeśli player jest stary i nie ma wymaganych metod (np. po refaktorze), odtwórz go.
-            if (
-                not hasattr(player, "_apply_loop_settings")
-                or not hasattr(player, "set_mix_callback")
-                or not hasattr(player, "set_loop")
-            ):
-                try:
-                    player.stop()
-                except Exception:
-                    pass
-                self._players.pop(device_id, None)
-            else:
-                return player
-
         device = self._devices.get(device_id)
         if device is None:
             raise ValueError(f"Nieznane urządzenie: {device_id}")
 
         provider = self._get_provider(device.backend)
-        player = provider.create_player(device)
-        self._players[device_id] = player
-        return player
+        return provider.create_player(device)
 
     def _get_provider(self, backend: BackendType) -> BackendProvider:
         for provider in self._providers:
