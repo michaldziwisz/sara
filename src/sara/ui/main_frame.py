@@ -1663,10 +1663,14 @@ class MainFrame(wx.Frame):
             self._announce_event("playlist", _("Select a playlist first"))
             return
 
-        # Automix: prosto – zatrzymaj wszystko w tej playliście, oznacz jako PLAYED, znajdź pierwszy pending i startuj.
+        # Automix: prosto – zatrzymaj wszystko w tej playliście, oznacz jako PLAYED, wyczyść break/auto-mix i odpal pierwszy pending.
         if self._auto_mix_enabled and panel.model.kind is PlaylistKind.MUSIC:
-            # zatrzymaj wszystkie grające konteksty tej playlisty, oznacz PLAYED i wyczyść break/selekt
             playlist_id = panel.model.id
+            # wyczyść stan automix dla tej playlisty
+            for key in list(self._playback.auto_mix_state.keys()):
+                if key[0] == playlist_id:
+                    self._playback.auto_mix_state.pop(key, None)
+            # zatrzymaj wszystkie grające konteksty tej playlisty, oznacz PLAYED i wyczyść break/selekt
             contexts = [key for key in list(self._playback.contexts.keys()) if key[0] == playlist_id]
             for key in contexts:
                 item_obj = panel.model.get_item(key[1])
@@ -1675,13 +1679,14 @@ class MainFrame(wx.Frame):
                     item_obj.status = PlaylistItemStatus.PLAYED
                     item_obj.current_position = item_obj.effective_duration_seconds
                     panel.model.clear_selection(item_obj.id)
-                self._stop_playlist_playback(playlist_id, mark_played=True, fade_duration=max(0.0, self._fade_duration))
+            self._stop_playlist_playback(playlist_id, mark_played=True, fade_duration=max(0.0, self._fade_duration))
             panel.refresh(focus=False)
 
             pending_idx = next(
                 (i for i, it in enumerate(panel.model.items) if it.status is PlaylistItemStatus.PENDING),
                 None,
             )
+            panel.model.break_resume_index = None
             if pending_idx is not None and 0 <= pending_idx < len(panel.model.items):
                 next_item = panel.model.items[pending_idx]
                 self._start_playback(panel, next_item, restart_playing=False)
