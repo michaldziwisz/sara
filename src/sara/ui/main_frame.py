@@ -1663,24 +1663,18 @@ class MainFrame(wx.Frame):
             self._announce_event("playlist", _("Select a playlist first"))
             return
 
-        # Automix + break: natychmiast przeskocz grający utwór z breakiem i zacznij pierwszy pending za nim.
+        # Automix: prosto – zawsze gra pierwszy pending, break zatrzymuje bieżący i idziemy dalej.
         if self._auto_mix_enabled and panel.model.kind is PlaylistKind.MUSIC:
+            # znajdź pierwszy pending
+            pending_idx = next(
+                (i for i, it in enumerate(panel.model.items) if it.status is PlaylistItemStatus.PENDING),
+                None,
+            )
             current_ctx = self._get_playback_context(panel.model.id)
             if current_ctx:
                 key, _ctx = current_ctx
                 playing_item = panel.model.get_item(key[1])
                 if playing_item and playing_item.break_after:
-                    idx = self._index_of_item(panel.model, playing_item.id)
-                    next_pending_idx = None
-                    if idx is not None:
-                        next_pending_idx = next(
-                            (
-                                i
-                                for i in range(idx + 1, len(panel.model.items))
-                                if panel.model.items[i].status is PlaylistItemStatus.PENDING
-                            ),
-                            None,
-                        )
                     playing_item.break_after = False
                     playing_item.status = PlaylistItemStatus.PLAYED
                     playing_item.current_position = playing_item.effective_duration_seconds
@@ -1691,10 +1685,12 @@ class MainFrame(wx.Frame):
                         mark_played=True,
                         fade_duration=max(0.0, self._fade_duration),
                     )
-                    if next_pending_idx is not None:
-                        next_item = panel.model.items[next_pending_idx]
-                        self._start_playback(panel, next_item, restart_playing=False)
-                    return
+            if pending_idx is not None and 0 <= pending_idx < len(panel.model.items):
+                next_item = panel.model.items[pending_idx]
+                self._start_playback(panel, next_item, restart_playing=False)
+                return
+            self._announce_event("playback_events", _("No scheduled tracks available"))
+            return
 
         if not self._start_next_from_playlist(panel):
             self._announce_event("playback_events", _("No scheduled tracks available"))
