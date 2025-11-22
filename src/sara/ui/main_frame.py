@@ -1218,7 +1218,7 @@ class MainFrame(wx.Frame):
             self._announce_event("selection", _("Selection removed from %s") % item.title)
 
     def _auto_mix_play_next(self, panel: PlaylistPanel) -> bool:
-        """Play Next w automixie: gra kolejny utwór sekwencyjnie; break zatrzymuje i jedziemy dalej, z zawijaniem."""
+        """Play Next w automixie: gra kolejny utwór sekwencyjnie; break przechodzi dalej (z zawijaniem)."""
         playlist = panel.model
         if not playlist.items:
             return False
@@ -1229,10 +1229,8 @@ class MainFrame(wx.Frame):
         if ctx:
             key, _ = ctx
             current_idx = self._index_of_item(playlist, key[1])
-        if current_idx is None:
-            last_id = self._last_started_item_id.get(playlist.id)
-            if last_id:
-                current_idx = self._index_of_item(playlist, last_id)
+        if current_idx is None and self._last_started_item_id.get(playlist.id):
+            current_idx = self._index_of_item(playlist, self._last_started_item_id[playlist.id])
 
         # zatrzymaj bieżące odtwarzanie i oznacz PLAYED
         if ctx:
@@ -1245,39 +1243,26 @@ class MainFrame(wx.Frame):
                 item_obj.current_position = item_obj.effective_duration_seconds
             self._stop_playlist_playback(playlist.id, mark_played=True, fade_duration=max(0.0, self._fade_duration))
 
-        # znajdź kolejny indeks (zawijanie), pomijając PLAYED; jeśli wszystkie PLAYED, zresetuj i startuj od początku
         if not playlist.items:
             return False
 
-        start_idx = 0
+        # wyznacz następny indeks sekwencyjnie (zawijanie)
         if playlist.break_resume_index is not None and 0 <= playlist.break_resume_index < len(playlist.items):
-            start_idx = playlist.break_resume_index
+            next_idx = playlist.break_resume_index
         elif current_idx is not None:
-            start_idx = (current_idx + 1) % len(playlist.items)
-
-        next_idx: int | None = None
-        for step in range(len(playlist.items)):
-            idx = (start_idx + step) % len(playlist.items)
-            if playlist.items[idx].status is not PlaylistItemStatus.PLAYED:
-                next_idx = idx
-                break
-
-        if next_idx is None:
-            # wszystkie utwory PLAYED – zresetuj statusy i zacznij od pierwszego
-            for item in playlist.items:
-                item.status = PlaylistItemStatus.PENDING
-                item.current_position = 0.0
-                item.break_after = False
-                item.is_selected = False
+            next_idx = (current_idx + 1) % len(playlist.items)
+        else:
             next_idx = 0
-            self._last_started_item_id[playlist.id] = None
 
         playlist.break_resume_index = None
         panel.refresh(focus=False)
         next_item = playlist.items[next_idx]
         next_item.status = PlaylistItemStatus.PENDING
         next_item.current_position = 0.0
-        return self._start_playback(panel, next_item, restart_playing=False)
+        ok = self._start_playback(panel, next_item, restart_playing=False)
+        if ok:
+            self._last_started_item_id[playlist.id] = next_item.id
+        return ok
 
     def _on_mix_points_configure(self, playlist_id: str, item_id: str) -> None:
         panel = self._playlists.get(playlist_id)
