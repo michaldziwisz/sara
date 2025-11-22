@@ -255,10 +255,13 @@ class PlaybackController:
             logger.warning("Failed to set ReplayGain: %s", exc)
 
         try:
-            if item.loop_enabled and item.has_loop():
-                player.set_loop(item.loop_start_seconds, item.loop_end_seconds)
+            if hasattr(player, "set_loop"):
+                if item.loop_enabled and item.has_loop():
+                    player.set_loop(item.loop_start_seconds, item.loop_end_seconds)
+                else:
+                    player.set_loop(None, None)
             else:
-                player.set_loop(None, None)
+                logger.debug("Loop not supported by player %s", type(player))
         except Exception as exc:  # pylint: disable=broad-except
             logger.warning("Failed to configure loop: %s", exc)
 
