@@ -1433,27 +1433,42 @@ class MainFrame(wx.Frame):
         play_index: int | None = None
 
         used_ui_selection = False
+        break_target_index: int | None = None
+        if playlist.kind is PlaylistKind.MUSIC and playlist.break_resume_index is not None:
+            break_target_index = playlist.break_resume_index
+            logger.debug("UI: break resume index detected for playlist %s -> %s", playlist.id, break_target_index)
+            playlist.break_resume_index = None
 
         if preferred_item_id:
             consumed_model_selection = True
             play_index = self._index_of_item(playlist, preferred_item_id)
         else:
-            if not ignore_ui_selection:
-                selected_indices = panel.get_selected_indices()
-            else:
-                selected_indices = []
-            if selected_indices:
-                play_index = selected_indices[0]
-                used_ui_selection = True
-            elif not ignore_ui_selection:
-                focus_index = panel.get_focused_index()
-                if focus_index != wx.NOT_FOUND:
-                    play_index = focus_index
+            if break_target_index is not None:
+                play_index = next(
+                    (
+                        idx
+                        for idx in range(break_target_index, len(playlist.items))
+                        if playlist.items[idx].status is PlaylistItemStatus.PENDING
+                    ),
+                    None,
+                )
+            if play_index is None:
+                if not ignore_ui_selection:
+                    selected_indices = panel.get_selected_indices()
+                else:
+                    selected_indices = []
+                if selected_indices:
+                    play_index = selected_indices[0]
                     used_ui_selection = True
+                elif not ignore_ui_selection:
+                    focus_index = panel.get_focused_index()
+                    if focus_index != wx.NOT_FOUND:
+                        play_index = focus_index
+                        used_ui_selection = True
+                    else:
+                        play_index = self._derive_next_play_index(playlist)
                 else:
                     play_index = self._derive_next_play_index(playlist)
-            else:
-                play_index = self._derive_next_play_index(playlist)
             if play_index is not None and 0 <= play_index < len(playlist.items):
                 preferred_item_id = playlist.items[play_index].id
             else:
@@ -1633,8 +1648,19 @@ class MainFrame(wx.Frame):
                 context.player.stop()
             except Exception as exc:  # pylint: disable=broad-except
                 self._announce_event("playback_errors", _("Player stop error: %s") % exc)
+        break_flag = item.break_after and model.kind is PlaylistKind.MUSIC
         if not removed:
             self._announce_event("playback_events", _("Finished %s") % item.title)
+
+        # wyznacz, gdzie wznowić po breaku (pozycja po tym utworze, po usunięciu przesunięta)
+        if break_flag:
+            target_index = item_index + 1
+            if self._auto_remove_played:
+                target_index = item_index
+            if target_index >= len(model.items):
+                target_index = None
+            model.break_resume_index = target_index
+            item.break_after = False
 
     def _handle_playback_progress(self, playlist_id: str, item_id: str, seconds: float) -> None:
         context_entry = self._playback.contexts.get((playlist_id, item_id))
@@ -1685,6 +1711,29 @@ class MainFrame(wx.Frame):
         playlist = panel.model
         if action == "play":
             self._start_next_from_playlist(panel)
+            return
+        if action == "break_toggle":
+            if playlist.kind is not PlaylistKind.MUSIC:
+                self._announce_event("playlist", _("Breaks are only available on music playlists"))
+                return
+            indices = panel.get_selected_indices()
+            if not indices:
+                focus_idx = panel.get_focused_index()
+                if focus_idx != wx.NOT_FOUND:
+                    indices = [focus_idx]
+            if not indices:
+                self._announce_event("playlist", _("Select a track to toggle break"))
+                return
+            last_state = None
+            for idx in indices:
+                if 0 <= idx < len(playlist.items):
+                    track = playlist.items[idx]
+                    track.break_after = not track.break_after
+                    last_state = track.break_after
+            panel.refresh(indices, focus=True)
+            if last_state is not None:
+                message = _("Break enabled after track") if last_state else _("Break cleared")
+                self._announce_event("playlist", message)
             return
 
         context_entry = self._get_playback_context(playlist.id)
@@ -2211,6 +2260,11 @@ class MainFrame(wx.Frame):
         self, panel: PlaylistPanel, model: PlaylistModel, index: int, *, refocus: bool = True
     ) -> PlaylistItem:
         item = model.items.pop(index)
+        if model.break_resume_index is not None:
+            if index < model.break_resume_index:
+                model.break_resume_index = max(0, model.break_resume_index - 1)
+            elif index == model.break_resume_index and model.break_resume_index >= len(model.items):
+                model.break_resume_index = None
         was_selected = item.is_selected
         item.is_selected = was_selected
         self._forget_last_started_item(model.id, item.id)

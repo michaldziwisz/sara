@@ -38,6 +38,7 @@ class PlaylistItem:
     loop_start_seconds: Optional[float] = None
     loop_end_seconds: Optional[float] = None
     loop_enabled: bool = False
+    break_after: bool = False
     is_selected: bool = False
 
     @property
@@ -93,6 +94,7 @@ class PlaylistModel:
     next_slot_index: int = 0
     items: List[PlaylistItem] = field(default_factory=list)
     hotkeys: Dict[str, "HotkeyAction"] = field(default_factory=dict)
+    break_resume_index: Optional[int] = None
 
     # backward compatibility: single device
     output_device: Optional[str] = None

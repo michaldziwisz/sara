@@ -43,6 +43,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "pause": "F2",
             "stop": "F3",
             "fade": "F4",
+            "break_toggle": "CTRL+B",
         },
         "edit": {
             "undo": "CTRL+Z",

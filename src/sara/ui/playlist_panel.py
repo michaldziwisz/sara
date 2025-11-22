@@ -138,8 +138,13 @@ class PlaylistPanel(wx.Panel):
 
     def _status_label(self, item: PlaylistItem) -> str:
         label = _(item.status.value)
+        extras = []
         if item.has_loop():
-            label += _(" (loop)")
+            extras.append(_("loop"))
+        if item.break_after:
+            extras.append(_("break"))
+        if extras:
+            label += " (" + ", ".join(extras) + ")"
         return label
 
     def set_active(self, active: bool) -> None:
