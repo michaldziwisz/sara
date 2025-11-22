@@ -154,6 +154,14 @@ class PlaybackController:
         mix_trigger_seconds: float | None = None,
         on_mix_trigger: Callable[[], None] | None = None,
     ) -> PlaybackContext | None:
+        # Nie uruchamiaj ponownie utworu już zagranych (PLAYED) – zwróć None, żeby UI wybrał kolejny.
+        if item.status is PlaylistItemStatus.PLAYED:
+            logger.debug(
+                "PlaybackController: skipping item already PLAYED playlist=%s item=%s",
+                playlist.name,
+                item.id,
+            )
+            return None
         logger.info(
             "PlaybackController: start_item playlist=%s item_id=%s title=%s slots=%s busy=%s",
             playlist.name,
