@@ -1663,30 +1663,25 @@ class MainFrame(wx.Frame):
             self._announce_event("playlist", _("Select a playlist first"))
             return
 
-        # Automix: prosto – zawsze gra pierwszy pending, break zatrzymuje bieżący i idziemy dalej.
+        # Automix: prosto – zatrzymaj wszystko w tej playliście, oznacz jako PLAYED, znajdź pierwszy pending i startuj.
         if self._auto_mix_enabled and panel.model.kind is PlaylistKind.MUSIC:
-            # znajdź pierwszy pending
+            # zatrzymaj wszystkie grające konteksty tej playlisty, oznacz PLAYED i wyczyść break/selekt
+            playlist_id = panel.model.id
+            contexts = [key for key in list(self._playback.contexts.keys()) if key[0] == playlist_id]
+            for key in contexts:
+                item_obj = panel.model.get_item(key[1])
+                if item_obj:
+                    item_obj.break_after = False
+                    item_obj.status = PlaylistItemStatus.PLAYED
+                    item_obj.current_position = item_obj.effective_duration_seconds
+                    panel.model.clear_selection(item_obj.id)
+                self._stop_playlist_playback(playlist_id, mark_played=True, fade_duration=max(0.0, self._fade_duration))
+            panel.refresh(focus=False)
+
             pending_idx = next(
                 (i for i, it in enumerate(panel.model.items) if it.status is PlaylistItemStatus.PENDING),
                 None,
             )
-            current_ctx = self._get_playback_context(panel.model.id)
-            if current_ctx:
-                key, _ctx = current_ctx
-                playing_item = panel.model.get_item(key[1])
-                if playing_item and playing_item.break_after:
-                    playing_item.break_after = False
-                    playing_item.status = PlaylistItemStatus.PLAYED
-                    playing_item.current_position = playing_item.effective_duration_seconds
-                    # zapamiętaj punkt wznowienia (pierwszy pending za breakiem)
-                    panel.model.break_resume_index = pending_idx
-                    panel.model.clear_selection(playing_item.id)
-                    panel.refresh(focus=False)
-                    self._stop_playlist_playback(
-                        panel.model.id,
-                        mark_played=True,
-                        fade_duration=max(0.0, self._fade_duration),
-                    )
             if pending_idx is not None and 0 <= pending_idx < len(panel.model.items):
                 next_item = panel.model.items[pending_idx]
                 self._start_playback(panel, next_item, restart_playing=False)
