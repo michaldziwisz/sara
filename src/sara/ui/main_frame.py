@@ -1245,29 +1245,14 @@ class MainFrame(wx.Frame):
                 item_obj.current_position = item_obj.effective_duration_seconds
             self._stop_playlist_playback(playlist.id, mark_played=True, fade_duration=max(0.0, self._fade_duration))
 
-        # znajdź kolejny indeks (zawijanie), pomijając PLAYED; resetuj, jeśli wszystko PLAYED
+        # znajdź kolejny indeks (zawijanie)
         start_idx = 0
         if playlist.break_resume_index is not None and 0 <= playlist.break_resume_index < len(playlist.items):
             start_idx = playlist.break_resume_index
         elif current_idx is not None:
             start_idx = (current_idx + 1) % len(playlist.items)
 
-        next_idx: int | None = None
-        for step in range(len(playlist.items)):
-            idx = (start_idx + step) % len(playlist.items)
-            if playlist.items[idx].status is not PlaylistItemStatus.PLAYED:
-                next_idx = idx
-                break
-
-        if next_idx is None:
-            # wszystkie PLAYED – zresetuj statusy na PENDING i zacznij od początku
-            for item in playlist.items:
-                item.status = PlaylistItemStatus.PENDING
-                item.current_position = 0.0
-                item.break_after = False
-                item.is_selected = False
-            next_idx = 0
-
+        next_idx = start_idx % len(playlist.items)
         playlist.break_resume_index = None
         panel.refresh(focus=False)
         next_item = playlist.items[next_idx]
