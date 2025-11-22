@@ -191,6 +191,16 @@ class PlaybackController:
                     slot_index,
                 )
                 return context
+        # Jeśli utwór był PLAYED i automix włączony – nie restartuj go, wybierz inny.
+        if (
+            player is not None
+            and device_id is not None
+            and slot_index is not None
+            and item.status is PlaylistItemStatus.PLAYED
+            and self._settings.get_alternate_play_next()
+        ):
+            logger.debug("PlaybackController: skipping PLAYED item in automix/play-next flow")
+            return None
 
         if player is None or device_id is None or slot_index is None:
             acquired = self._ensure_player(playlist)
