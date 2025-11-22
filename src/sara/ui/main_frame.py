@@ -1498,9 +1498,13 @@ class MainFrame(wx.Frame):
                     used_ui_selection = True
                 elif not ignore_ui_selection:
                     focus_index = panel.get_focused_index()
-                    if focus_index != wx.NOT_FOUND:
-                        play_index = focus_index
-                        used_ui_selection = True
+                    if focus_index != wx.NOT_FOUND and 0 <= focus_index < len(playlist.items):
+                        focus_item = playlist.items[focus_index]
+                        if focus_item.status in (PlaylistItemStatus.PENDING, PlaylistItemStatus.PAUSED):
+                            play_index = focus_index
+                            used_ui_selection = True
+                        else:
+                            play_index = self._derive_next_play_index(playlist)
                     else:
                         play_index = self._derive_next_play_index(playlist)
                 else:
