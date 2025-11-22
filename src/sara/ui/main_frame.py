@@ -1688,6 +1688,7 @@ class MainFrame(wx.Frame):
                     self._playback.auto_mix_state.pop(key, None)
             # zatrzymaj wszystkie grające konteksty tej playlisty, oznacz PLAYED i wyczyść break/selekt
             contexts = [key for key in list(self._playback.contexts.keys()) if key[0] == playlist_id]
+            playing_indices: list[int] = []
             for key in contexts:
                 item_obj = panel.model.get_item(key[1])
                 if item_obj:
@@ -1695,10 +1696,15 @@ class MainFrame(wx.Frame):
                     item_obj.status = PlaylistItemStatus.PLAYED
                     item_obj.current_position = item_obj.effective_duration_seconds
                     panel.model.clear_selection(item_obj.id)
+                    idx_obj = self._index_of_item(panel.model, item_obj.id)
+                    if idx_obj is not None:
+                        playing_indices.append(idx_obj)
             self._stop_playlist_playback(playlist_id, mark_played=True, fade_duration=max(0.0, self._fade_duration))
             panel.refresh(focus=False)
 
-            start_from = panel.model.break_resume_index or 0
+            start_from = panel.model.break_resume_index if panel.model.break_resume_index is not None else (
+                max(playing_indices) + 1 if playing_indices else 0
+            )
             pending_idx = next(
                 (
                     i
