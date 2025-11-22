@@ -1372,6 +1372,21 @@ class MainFrame(wx.Frame):
             logger.debug("UI: automix skip already played item=%s, searching next pending", item.id)
             return self._start_next_from_playlist(panel, ignore_ui_selection=True, advance_focus=True, restart_playing=False)
 
+        # Jeśli utwór ma break i to playlista muzyczna – zbroimy break: zapamiętujemy punkt wznowienia i resetujemy flagę.
+        if playlist.kind is PlaylistKind.MUSIC and item.break_after:
+            idx = self._index_of_item(playlist, item.id)
+            if idx is not None:
+                next_pending = next(
+                    (
+                        i
+                        for i in range(idx + 1, len(playlist.items))
+                        if playlist.items[i].status is PlaylistItemStatus.PENDING
+                    ),
+                    None,
+                )
+                playlist.break_resume_index = next_pending
+            item.break_after = False
+
         # auto-mix trigger: wyzwól na określonym czasie (segoue/outro/overlap)
         auto_mix_target_seconds = None
         mix_trigger_seconds = None
@@ -1758,17 +1773,19 @@ class MainFrame(wx.Frame):
                 context.player.stop()
             except Exception as exc:  # pylint: disable=broad-except
                 self._announce_event("playback_errors", _("Player stop error: %s") % exc)
-        break_flag = item.break_after and model.kind is PlaylistKind.MUSIC
+        break_flag = (model.break_resume_index is not None or item.break_after) and model.kind is PlaylistKind.MUSIC
         if not removed:
             self._announce_event("playback_events", _("Finished %s") % item.title)
 
         # wyznacz, gdzie wznowić po breaku (pozycja po tym utworze, po usunięciu przesunięta)
         if break_flag:
-            target_index = item_index + 1
-            if self._auto_remove_played:
-                target_index = item_index
-            if target_index >= len(model.items):
-                target_index = None
+            target_index = model.break_resume_index
+            if target_index is None:
+                target_index = item_index + 1
+                if self._auto_remove_played:
+                    target_index = item_index
+                if target_index >= len(model.items):
+                    target_index = None
             model.break_resume_index = target_index
             item.break_after = False
 
