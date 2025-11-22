@@ -285,6 +285,8 @@ class PlaylistPanel(wx.Panel):
 
         if space_requested:
             if self._on_toggle_selection:
+                # wymuś jednoznaczną selekcję na wskazanym elemencie
+                self.set_selection([index], focus=True)
                 self._trigger_selection_toggle(index)
                 return True
             return False
