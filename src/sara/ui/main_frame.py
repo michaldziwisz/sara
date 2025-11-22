@@ -1367,6 +1367,11 @@ class MainFrame(wx.Frame):
         except Exception as exc:  # pylint: disable=broad-except
             logger.warning("NVDA play-next notify failed: %s", exc)
 
+        # Jeśli automix jest włączony, nie odtwarzaj ponownie utworów oznaczonych jako PLAYED – przeskocz do pending.
+        if self._auto_mix_enabled and playlist.kind is PlaylistKind.MUSIC and item.status is PlaylistItemStatus.PLAYED:
+            logger.debug("UI: automix skip already played item=%s, searching next pending", item.id)
+            return self._start_next_from_playlist(panel, ignore_ui_selection=True, advance_focus=True, restart_playing=False)
+
         # auto-mix trigger: wyzwól na określonym czasie (segoue/outro/overlap)
         auto_mix_target_seconds = None
         mix_trigger_seconds = None
