@@ -1215,7 +1215,7 @@ class MainFrame(wx.Frame):
             parts.append(_("Track %s selected in playlist %s") % (item.title, playlist.name))
             self._announce_event("selection", ". ".join(parts))
         else:
-        self._announce_event("selection", _("Selection removed from %s") % item.title)
+            self._announce_event("selection", _("Selection removed from %s") % item.title)
 
     def _auto_mix_play_next(self, panel: PlaylistPanel) -> bool:
         """Play next pending item sequentially; break = stop and continue after it."""
