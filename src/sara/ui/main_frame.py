@@ -1428,6 +1428,37 @@ class MainFrame(wx.Frame):
             self._announce_event("playlist", _("Playlist %s is empty") % playlist.name)
             return False
 
+        # Jeśli automix jest aktywny, bieżący utwór ma break i nadal gra – przeskocz go natychmiast.
+        if self._auto_mix_enabled and playlist.kind is PlaylistKind.MUSIC:
+            current_ctx = self._get_playback_context(playlist.id)
+            if current_ctx:
+                key, _ctx = current_ctx
+                playing_item = playlist.get_item(key[1])
+                if playing_item and playing_item.break_after and playing_item.status is PlaylistItemStatus.PLAYING:
+                    idx_playing = self._index_of_item(playlist, playing_item.id)
+                    next_pending_idx = None
+                    if idx_playing is not None:
+                        next_pending_idx = next(
+                            (
+                                idx
+                                for idx in range(idx_playing + 1, len(playlist.items))
+                                if playlist.items[idx].status is PlaylistItemStatus.PENDING
+                            ),
+                            None,
+                        )
+                    playlist.break_resume_index = next_pending_idx
+                    playing_item.break_after = False
+                    playlist.clear_selection(playing_item.id)
+                    playing_item.status = PlaylistItemStatus.PLAYED
+                    playing_item.current_position = playing_item.effective_duration_seconds
+                    panel.refresh(focus=False)
+                    # zatrzymaj bieżący utwór, żeby zrobić miejsce na kolejny
+                    self._stop_playlist_playback(
+                        playlist.id,
+                        mark_played=True,
+                        fade_duration=max(0.0, self._fade_duration),
+                    )
+
         consumed_model_selection = False
         preferred_item_id = playlist.next_selected_item_id()
         play_index: int | None = None
