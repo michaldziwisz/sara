@@ -1655,9 +1655,16 @@ class MainFrame(wx.Frame):
                 playing_item = panel.model.get_item(key[1])
                 if playing_item and playing_item.break_after:
                     idx = self._index_of_item(panel.model, playing_item.id)
-                    target_index = (idx + 1) if idx is not None else None
-                    if target_index is not None and target_index >= len(panel.model.items):
-                        target_index = None
+                    target_index = None
+                    if idx is not None:
+                        target_index = next(
+                            (
+                                i
+                                for i in range(idx + 1, len(panel.model.items))
+                                if panel.model.items[i].status is PlaylistItemStatus.PENDING
+                            ),
+                            None,
+                        )
                     panel.model.break_resume_index = target_index
                     playing_item.break_after = False
                     panel.model.clear_selection(playing_item.id)
@@ -1667,6 +1674,12 @@ class MainFrame(wx.Frame):
                         mark_played=True,
                         fade_duration=max(0.0, self._fade_duration),
                     )
+                    if target_index is not None and 0 <= target_index < len(panel.model.items):
+                        next_item = panel.model.items[target_index]
+                        self._start_playback(panel, next_item, restart_playing=False)
+                        return
+                    # brak kolejnego pending – po prostu zatrzymaj się na breaku
+                    return
 
         if not self._start_next_from_playlist(panel):
             self._announce_event("playback_events", _("No scheduled tracks available"))
