@@ -208,6 +208,12 @@ class PlaybackController:
                 return None
 
         def _do_play(p: Player) -> None:
+            # wyzeruj ewentualne poprzednie ustawienia pętli zanim wystartujemy nowy utwór
+            if hasattr(p, "set_loop") and not (item.loop_enabled and item.has_loop()):
+                try:
+                    p.set_loop(None, None)
+                except Exception:
+                    pass
             p.play(
                 item.id,
                 str(item.path),
@@ -218,6 +224,12 @@ class PlaybackController:
                 mix_trigger_seconds=mix_trigger_seconds,
                 on_mix_trigger=on_mix_trigger,
             )
+
+        # Ustaw ReplayGain przed startem, żeby uniknąć „głośnego pierwszego uderzenia”
+        try:
+            player.set_gain_db(item.replay_gain_db)
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.warning("Failed to set ReplayGain: %s", exc)
 
         try:
             _do_play(player)
@@ -241,16 +253,13 @@ class PlaybackController:
                 player = self._audio_engine.create_player(device_id)
                 player.set_finished_callback(on_finished)
                 player.set_progress_callback(on_progress)
+                # ponownie ustaw RG przed startem
+                player.set_gain_db(item.replay_gain_db)
                 _do_play(player)
             except Exception as retry_exc:  # pylint: disable=broad-except
                 logger.exception("PlaybackController: retry after player refresh failed: %s", retry_exc)
                 self._announce("playback_errors", f"{retry_exc}")
                 return None
-
-        try:
-            player.set_gain_db(item.replay_gain_db)
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.warning("Failed to set ReplayGain: %s", exc)
 
         try:
             if hasattr(player, "set_loop"):

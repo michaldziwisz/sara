@@ -941,34 +941,7 @@ class AudioEngine:
                     logger.error("Backend BASS niedostępny (is_available=False)")
             except Exception as exc:  # pylint: disable=broad-except
                 logger.error("Inicjalizacja backendu BASS nie powiodła się: %s", exc)
-        # Bass ASIO (jeśli dostępny)
-        asio_cls = BassAsioBackend
-        if asio_cls is None:
-            try:
-                from sara.audio import bass as _bass_mod  # type: ignore
-            except Exception:
-                asio_cls = None
-            else:
-                asio_cls = getattr(_bass_mod, "BassAsioBackend", None)
-        if asio_cls is not None:
-            try:
-                bass_asio_backend = asio_cls()
-                if getattr(bass_asio_backend, "is_available", False):
-                    bass_asio_backend.backend = BackendType.BASS_ASIO
-                    self._providers.append(bass_asio_backend)
-                else:
-                    logger.debug("Backend BASS ASIO niedostępny (is_available=False)")
-            except Exception as exc:  # pylint: disable=broad-except
-                logger.debug("Inicjalizacja backendu BASS ASIO nie powiodła się: %s", exc)
-        # Backendy sounddevice/pycaw są opcjonalne – jeśli sd brak, nadal trzymamy BASS
-        self._providers.extend(
-            [
-                SoundDeviceBackend(BackendType.WASAPI, ("WASAPI",)),
-                SoundDeviceBackend(BackendType.ASIO, ("ASIO",)),
-                PycawBackend(),
-                AsioBackend(),
-            ]
-        )
+        # Backend BASS ASIO wyłączony na teraz – zostawiamy tylko standardowy BASS
         self._devices: Dict[str, AudioDevice] = {}
         self._players: Dict[str, Player] = {}
 

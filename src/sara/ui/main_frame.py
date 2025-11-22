@@ -634,26 +634,32 @@ class MainFrame(wx.Frame):
         return self._focus_playlist_panel(target_id)
 
     def _on_playlist_selection_change(self, playlist_id: str, indices: list[int]) -> None:
-        if not self._focus_playing_track:
-            return
-        playing_id = self._get_playing_item_id(playlist_id)
         panel = self._playlists.get(playlist_id)
         if not isinstance(panel, PlaylistPanel):
             return
-        if playing_id is None:
-            self._focus_lock[playlist_id] = False
-            return
-        if not indices:
-            self._focus_lock[playlist_id] = False
-            return
+        playing_id = self._get_playing_item_id(playlist_id)
+
+        # focus-lock logika jak wcześniej
+        if self._focus_playing_track:
+            if playing_id is None or not indices:
+                self._focus_lock[playlist_id] = False
+            elif len(indices) == 1:
+                selected_index = indices[0]
+                if 0 <= selected_index < len(panel.model.items):
+                    selected_item = panel.model.items[selected_index]
+                    if selected_item.id == playing_id:
+                        self._focus_lock[playlist_id] = False
+                        return
+                self._focus_lock[playlist_id] = True
+
+        # komunikat o zaznaczeniu z informacją o pętli/auto-mix
+        # komunikat o pętli przy pojedynczym zaznaczeniu
         if len(indices) == 1:
-            selected_index = indices[0]
-            if 0 <= selected_index < len(panel.model.items):
-                selected_item = panel.model.items[selected_index]
-                if selected_item.id == playing_id:
-                    self._focus_lock[playlist_id] = False
-                    return
-        self._focus_lock[playlist_id] = True
+            idx = indices[0]
+            if 0 <= idx < len(panel.model.items):
+                item = panel.model.items[idx]
+                if item.loop_enabled and item.has_loop():
+                    self._announce_event("selection", _("Loop enabled"))
 
     def _on_new_playlist(self, event: wx.CommandEvent) -> None:
         self._create_playlist_dialog(event)
@@ -1012,34 +1018,66 @@ class MainFrame(wx.Frame):
                     self._announce_event("playback_events", _("No scheduled tracks available"))
 
     def _on_toggle_loop_playback(self, _event: wx.CommandEvent) -> None:
-        context = self._get_selected_context()
-        if context is None:
-            return
-        panel, model, indices = context
-        index = indices[0]
-        if not (0 <= index < len(model.items)):
-            self._announce_event("playlist", _("No track selected"))
+        # 1) Jeśli gdziekolwiek gra pętla – wyłącz ją globalnie, niezależnie od zaznaczenia/playlisty.
+        def _find_active_loop() -> tuple[PlaylistItem, PlaylistModel] | None:
+            for (pl_id, item_id), _ctx in self._playback.contexts.items():
+                panel = self._playlists.get(pl_id)
+                if not isinstance(panel, PlaylistPanel):
+                    continue
+                item = panel.model.get_item(item_id)
+                if item and item.loop_enabled and item.has_loop():
+                    return item, panel.model
+            return None
+
+        active = _find_active_loop()
+        if active:
+            playing_item, playing_model = active
+            playing_item.loop_enabled = False
+            if not save_loop_metadata(
+                playing_item.path,
+                playing_item.loop_start_seconds,
+                playing_item.loop_end_seconds,
+                playing_item.loop_enabled,
+            ):
+                self._announce_event("loop", _("Failed to update loop metadata"))
+            self._apply_loop_setting_to_playback(playlist_id=playing_model.id, item_id=playing_item.id)
+            self._announce_event("loop", _("Track looping disabled"))
+            remaining = self._compute_intro_remaining(playing_item)
+            if remaining is not None:
+                # tylko czas, bez dodatkowych prefiksów
+                self._announce_intro_remaining(remaining, prefix_only=True)
+            panel = self._playlists.get(playing_model.id)
+            current_panel = self._get_current_music_panel()
+            if isinstance(panel, PlaylistPanel) and current_panel is panel:
+                panel.refresh(focus=False)
             return
 
-        item = model.items[index]
+        # 2) W przeciwnym razie toggle dotyczy zaznaczonego utworu.
+        context = self._get_selected_context()
+        if context is None:
+            self._announce_event("playlist", _("No track selected"))
+            return
+        panel, model, indices = context
+        idx = indices[0]
+        if not (0 <= idx < len(model.items)):
+            self._announce_event("playlist", _("No track selected"))
+            return
+        item = model.items[idx]
         if not item.has_loop():
             self._announce_event("loop", _("Track has no loop defined"))
             return
 
         item.loop_enabled = not item.loop_enabled
-
         if not save_loop_metadata(item.path, item.loop_start_seconds, item.loop_end_seconds, item.loop_enabled):
             self._announce_event("loop", _("Failed to update loop metadata"))
-
         self._apply_loop_setting_to_playback(playlist_id=model.id, item_id=item.id)
-
         state = _("enabled") if item.loop_enabled else _("disabled")
         self._announce_event("loop", _("Track looping %s") % state)
         if not item.loop_enabled:
             remaining = self._compute_intro_remaining(item)
             if remaining is not None:
-                self._announce_intro_remaining(remaining)
-        panel.refresh()
+                self._announce_intro_remaining(remaining, prefix_only=True)
+        panel.refresh(focus=False)
 
     def _apply_replay_gain(self, item: PlaylistItem, gain_db: float | None) -> None:
         item.replay_gain_db = gain_db
@@ -1093,14 +1131,12 @@ class MainFrame(wx.Frame):
             time_text = f"{hours:d}:{minutes:02d}:{seconds:02d}"
         else:
             time_text = f"{minutes:02d}:{seconds:02d}"
-        message = _(
-            "Remaining time for %(track)s (%(playlist)s): %(time)s"
-        ) % {
-            "track": item.title,
-            "playlist": playlist.name,
-            "time": time_text,
-        }
-        self._announce_event("playback_events", message)
+        # Najpierw czas, następnie (jeśli aktywna) informacja o pętli, potem kontekst
+        parts: list[str] = [time_text]
+        if item.loop_enabled and item.has_loop():
+            parts.append(_("Loop enabled"))
+        parts.append(_("Track: %(track)s. Playlist: %(playlist)s.") % {"track": item.title, "playlist": playlist.name})
+        self._announce_event("playback_events", " ".join(parts))
 
     def _apply_loop_setting_to_playback(self, *, playlist_id: str | None = None, item_id: str | None = None) -> None:
         for (pl_id, item_id_key), context in list(self._playback.contexts.items()):
@@ -1142,7 +1178,11 @@ class MainFrame(wx.Frame):
             panel.refresh(indices, focus=bool(indices))
         item = playlist.get_item(item_id)
         if selected:
-            self._announce_event("selection", _("Track %s selected in playlist %s") % (item.title, playlist.name))
+            parts: list[str] = []
+            if item.loop_enabled and item.has_loop():
+                parts.append(_("Loop enabled"))
+            parts.append(_("Track %s selected in playlist %s") % (item.title, playlist.name))
+            self._announce_event("selection", ". ".join(parts))
         else:
             self._announce_event("selection", _("Selection removed from %s") % item.title)
 
@@ -2030,8 +2070,12 @@ class MainFrame(wx.Frame):
             return 0.0
         return remaining
 
-    def _announce_intro_remaining(self, remaining: float) -> None:
-        message = _("Intro remaining: {seconds:.0f} seconds").format(seconds=max(0.0, remaining))
+    def _announce_intro_remaining(self, remaining: float, *, prefix_only: bool = False) -> None:
+        seconds = max(0.0, remaining)
+        if prefix_only:
+            message = f"{seconds:.0f} seconds"
+        else:
+            message = _("Intro remaining: {seconds:.0f} seconds").format(seconds=seconds)
         self._announce_event("intro_alert", message)
 
     def _cleanup_intro_alert_player(self, player: Player) -> None:
@@ -2113,6 +2157,9 @@ class MainFrame(wx.Frame):
     ) -> None:
         intro_end = context.intro_seconds if context.intro_seconds is not None else item.intro_seconds
         if intro_end is None:
+            return
+        # jeśli pętla jest aktywna, pomiń alarm intro (bo intro się nie skończy)
+        if item.loop_enabled:
             return
         if context.intro_alert_triggered:
             return

@@ -565,7 +565,7 @@ class BassManager:
         index: int,
         path: Path,
         *,
-        allow_loop: bool = True,
+        allow_loop: bool = False,
         decode: bool = False,
         set_device: bool = True,
     ) -> int:
@@ -711,6 +711,7 @@ class BassPlayer:
         self._last_loop_jump_ts: float = 0.0
         self._loop_guard_enabled: bool = True
         self._last_loop_debug_log: float = 0.0
+        self._last_progress_ts: float = 0.0
         # zapewnij kompatybilność, nawet jeśli stary obiekt był zcache'owany
         if not hasattr(self, "_apply_loop_settings"):
             self._apply_loop_settings = lambda: None  # type: ignore[attr-defined]
@@ -733,7 +734,7 @@ class BassPlayer:
         source_path: str,
         *,
         start_seconds: float = 0.0,
-        allow_loop: bool = True,
+        allow_loop: bool = False,
         mix_trigger_seconds: Optional[float] = None,
         on_mix_trigger: Optional[Callable[[], None]] = None,
     ) -> Optional[threading.Event]:
@@ -812,12 +813,18 @@ class BassPlayer:
             while not self._monitor_stop.is_set():
                 try:
                     if self._stream:
-                        if self._progress_callback and self._current_item_id:
+                        now = time.time()
+                        if (
+                            self._progress_callback
+                            and self._current_item_id
+                            and (now - self._last_progress_ts) >= 0.05
+                        ):
                             try:
                                 pos = self._manager.channel_get_seconds(self._stream)
                                 self._progress_callback(self._current_item_id, pos)
                             except Exception:
                                 pass
+                            self._last_progress_ts = now
                         # nadzoruj pętlę również po stronie Python, żeby uniknąć pominiętych synców
                         if (
                             self._loop_guard_enabled

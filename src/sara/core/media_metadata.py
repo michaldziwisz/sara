@@ -559,8 +559,8 @@ def extract_metadata(path: Path) -> AudioMetadata:
                     break
 
     loop_start, loop_end, loop_enabled = _scan_loop_values(path)
-    if loop_start is None or loop_end is None:
-        loop_enabled = False
+    # Domyślnie pętla jest wyłączona – użytkownik musi ją włączyć ręcznie.
+    loop_enabled = False
 
     return AudioMetadata(
         title=title,
