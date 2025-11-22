@@ -1514,6 +1514,20 @@ class MainFrame(wx.Frame):
                     ),
                     None,
                 )
+            # jeśli brak celu z breaka, a ostatnio grany utwór jest PLAYED, wybierz pierwszy pending za nim
+            if play_index is None and playlist.kind is PlaylistKind.MUSIC:
+                last_id = self._last_started_item_id.get(playlist.id)
+                if last_id:
+                    last_idx = self._index_of_item(playlist, last_id)
+                    if last_idx is not None and playlist.get_item(last_id).status is PlaylistItemStatus.PLAYED:
+                        play_index = next(
+                            (
+                                idx
+                                for idx in range(last_idx + 1, len(playlist.items))
+                                if playlist.items[idx].status is PlaylistItemStatus.PENDING
+                            ),
+                            None,
+                        )
             if play_index is None:
                 if not ignore_ui_selection:
                     selected_indices = [
