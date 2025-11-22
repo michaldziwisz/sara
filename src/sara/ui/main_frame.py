@@ -684,6 +684,9 @@ class MainFrame(wx.Frame):
             self._last_started_item_id[playlist.id] = item.id
             status_message = _("Playing %s from playlist %s") % (self._format_track_name(item), playlist.name)
             self._announce_event("playback_events", status_message, spoken_message="")
+            if self._swap_play_select and playlist.kind is PlaylistKind.MUSIC:
+                playlist.clear_selection(item.id)
+                self._refresh_selection_display(playlist.id)
             return True
         return False
 
