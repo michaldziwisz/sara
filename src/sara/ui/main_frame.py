@@ -1215,7 +1215,66 @@ class MainFrame(wx.Frame):
             parts.append(_("Track %s selected in playlist %s") % (item.title, playlist.name))
             self._announce_event("selection", ". ".join(parts))
         else:
-            self._announce_event("selection", _("Selection removed from %s") % item.title)
+        self._announce_event("selection", _("Selection removed from %s") % item.title)
+
+    def _auto_mix_play_next(self, panel: PlaylistPanel) -> bool:
+        """Play next pending item sequentially; break = stop and continue after it."""
+        playlist = panel.model
+        # zatrzymaj wszystkie grające konteksty tej playlisty i oznacz PLAYED
+        contexts = [key for key in list(self._playback.contexts.keys()) if key[0] == playlist.id]
+        last_played_index: int | None = None
+        for key in contexts:
+            item_obj = playlist.get_item(key[1])
+            if item_obj:
+                item_obj.break_after = False
+                item_obj.is_selected = False
+                item_obj.status = PlaylistItemStatus.PLAYED
+                item_obj.current_position = item_obj.effective_duration_seconds
+                idx_obj = self._index_of_item(playlist, item_obj.id)
+                if idx_obj is not None:
+                    last_played_index = max(last_played_index or idx_obj, idx_obj)
+        # zatrzymaj aktywne playbacki
+        self._stop_playlist_playback(playlist.id, mark_played=True, fade_duration=max(0.0, self._fade_duration))
+        panel.refresh(focus=False)
+
+        # wyczyść automix state dla tej playlisty
+        for key in list(self._playback.auto_mix_state.keys()):
+            if key[0] == playlist.id:
+                self._playback.auto_mix_state.pop(key, None)
+
+        # wybierz pierwszy pending po break_resume, potem po last_played, wreszcie od początku
+        start_candidates: list[int] = []
+        if playlist.break_resume_index is not None:
+            start_candidates.append(playlist.break_resume_index)
+        if last_played_index is not None:
+            start_candidates.append(last_played_index + 1)
+        start_candidates.append(0)
+
+        pending_idx: int | None = None
+        for start in start_candidates:
+            pending_idx = next(
+                (
+                    i
+                    for i in range(start, len(playlist.items))
+                    if playlist.items[i].status is PlaylistItemStatus.PENDING
+                ),
+                None,
+            )
+            if pending_idx is not None:
+                break
+
+        playlist.break_resume_index = None
+        if pending_idx is None:
+            # jeżeli żadnego pending – zresetuj listę do PENDING i zacznij od początku
+            for item in playlist.items:
+                item.status = PlaylistItemStatus.PENDING
+                item.current_position = 0.0
+            if not playlist.items:
+                return False
+            pending_idx = 0
+
+        next_item = playlist.items[pending_idx]
+        return self._start_playback(panel, next_item, restart_playing=False)
 
     def _on_mix_points_configure(self, playlist_id: str, item_id: str) -> None:
         panel = self._playlists.get(playlist_id)
@@ -1519,7 +1578,8 @@ class MainFrame(wx.Frame):
                 last_id = self._last_started_item_id.get(playlist.id)
                 if last_id:
                     last_idx = self._index_of_item(playlist, last_id)
-                    if last_idx is not None and playlist.get_item(last_id).status is PlaylistItemStatus.PLAYED:
+                    last_item = playlist.get_item(last_id)
+                    if last_idx is not None and last_item and last_item.status is PlaylistItemStatus.PLAYED:
                         play_index = next(
                             (
                                 idx
@@ -1708,44 +1768,9 @@ class MainFrame(wx.Frame):
             self._announce_event("playlist", _("Select a playlist first"))
             return
 
-        # Automix: prosto – zatrzymaj wszystko w tej playliście, oznacz jako PLAYED, wyczyść break/auto-mix i odpal pierwszy pending.
+        # Automix: Play Next zawsze gra kolejny pending w kolejności; break zatrzymuje i wybieramy pending za ostatnim PLAYED.
         if self._auto_mix_enabled and panel.model.kind is PlaylistKind.MUSIC:
-            playlist_id = panel.model.id
-            # wyczyść stan automix dla tej playlisty
-            for key in list(self._playback.auto_mix_state.keys()):
-                if key[0] == playlist_id:
-                    self._playback.auto_mix_state.pop(key, None)
-            # zatrzymaj wszystkie grające konteksty tej playlisty, oznacz PLAYED i wyczyść break/selekt
-            contexts = [key for key in list(self._playback.contexts.keys()) if key[0] == playlist_id]
-            playing_indices: list[int] = []
-            for key in contexts:
-                item_obj = panel.model.get_item(key[1])
-                if item_obj:
-                    item_obj.break_after = False
-                    item_obj.status = PlaylistItemStatus.PLAYED
-                    item_obj.current_position = item_obj.effective_duration_seconds
-                    panel.model.clear_selection(item_obj.id)
-                    idx_obj = self._index_of_item(panel.model, item_obj.id)
-                    if idx_obj is not None:
-                        playing_indices.append(idx_obj)
-            self._stop_playlist_playback(playlist_id, mark_played=True, fade_duration=max(0.0, self._fade_duration))
-            panel.refresh(focus=False)
-
-            start_from = panel.model.break_resume_index if panel.model.break_resume_index is not None else (
-                max(playing_indices) + 1 if playing_indices else 0
-            )
-            pending_idx = next(
-                (
-                    i
-                    for i in range(start_from, len(panel.model.items))
-                    if panel.model.items[i].status is PlaylistItemStatus.PENDING
-                ),
-                None,
-            )
-            panel.model.break_resume_index = None
-            if pending_idx is not None and 0 <= pending_idx < len(panel.model.items):
-                next_item = panel.model.items[pending_idx]
-                self._start_playback(panel, next_item, restart_playing=False)
+            if self._auto_mix_play_next(panel):
                 return
             self._announce_event("playback_events", _("No scheduled tracks available"))
             return
