@@ -1254,8 +1254,6 @@ class MainFrame(wx.Frame):
             start_idx = playlist.break_resume_index
         elif current_idx is not None:
             start_idx = (current_idx + 1) % len(playlist.items)
-        elif current_idx is None and playlist.break_resume_index is None:
-            start_idx = 0
 
         next_idx: int | None = None
         for step in range(len(playlist.items)):
