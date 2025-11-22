@@ -1466,6 +1466,13 @@ class MainFrame(wx.Frame):
         used_ui_selection = False
         break_target_index: int | None = None
         if playlist.kind is PlaylistKind.MUSIC and playlist.break_resume_index is not None:
+            # upewnij się, że pozycje przed resume są oznaczone jako PLAYED
+            for idx in range(min(playlist.break_resume_index, len(playlist.items))):
+                track = playlist.items[idx]
+                track.break_after = False
+                track.is_selected = False
+                track.status = PlaylistItemStatus.PLAYED
+                track.current_position = track.effective_duration_seconds
             break_target_index = playlist.break_resume_index
             logger.debug("UI: break resume index detected for playlist %s -> %s", playlist.id, break_target_index)
             playlist.break_resume_index = None
