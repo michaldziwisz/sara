@@ -78,6 +78,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "faulthandler": False,
         "faulthandler_interval": 40.0,
         "loop_debug": False,
+        "log_level": "WARNING",
     },
 }
 
@@ -252,6 +253,15 @@ class SettingsManager:
     def set_diagnostics_loop_debug(self, enabled: bool) -> None:
         diagnostics = self._data.setdefault("diagnostics", {})
         diagnostics["loop_debug"] = bool(enabled)
+
+    def get_diagnostics_log_level(self) -> str:
+        diagnostics = self._data.get("diagnostics", {})
+        level = str(diagnostics.get("log_level", DEFAULT_CONFIG["diagnostics"]["log_level"])).upper()
+        return level if level in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL") else DEFAULT_CONFIG["diagnostics"]["log_level"]
+
+    def set_diagnostics_log_level(self, level: str) -> None:
+        diagnostics = self._data.setdefault("diagnostics", {})
+        diagnostics["log_level"] = str(level).upper()
 
     def get_intro_alert_seconds(self) -> float:
         playback = self._data.get("playback", {})

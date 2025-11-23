@@ -24,8 +24,9 @@ from sara.ui.nvda_sleep import ensure_nvda_sleep_mode
 _FAULTHANDLER_FILE = None
 
 
-def _configure_logging() -> Optional[Path]:
-    level_name = os.environ.get("LOGLEVEL", "WARNING").upper()
+def _configure_logging(level_override: Optional[str] = None) -> Optional[Path]:
+    env_level = os.environ.get("LOGLEVEL")
+    level_name = (env_level or level_override or "WARNING").upper()
     level = getattr(logging, level_name, logging.WARNING)
 
     primary_dir = Path.cwd() / "logs"
@@ -89,9 +90,9 @@ def _enable_debug_dump(log_path: Optional[Path], *, enabled: bool = False, inter
 
 def run() -> None:
     """Start the main wxPython event loop."""
-    log_path = _configure_logging()
-    app = wx.App()
     settings = SettingsManager()
+    log_path = _configure_logging(settings.get_diagnostics_log_level())
+    app = wx.App()
     try:
         # Diagnostics toggles from settings
         _enable_debug_dump(

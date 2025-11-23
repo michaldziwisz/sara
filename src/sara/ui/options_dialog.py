@@ -102,6 +102,7 @@ class OptionsDialog(wx.Dialog):
         self._diag_faulthandler_checkbox: Optional[wx.CheckBox] = None
         self._diag_interval_ctrl: Optional[wx.SpinCtrlDouble] = None
         self._diag_loop_checkbox: Optional[wx.CheckBox] = None
+        self._diag_log_level_choice: Optional[wx.Choice] = None
 
         notebook = wx.Notebook(self)
         main_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 10)
@@ -262,6 +263,19 @@ class OptionsDialog(wx.Dialog):
         self._diag_loop_checkbox.SetValue(self._settings.get_diagnostics_loop_debug())
         diag_box.Add(self._diag_loop_checkbox, 0, wx.ALL, 5)
 
+        level_row = wx.BoxSizer(wx.HORIZONTAL)
+        level_label = wx.StaticText(diag_panel, label=_("Log level:"))
+        levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+        self._diag_log_level_choice = wx.Choice(diag_panel, choices=levels)
+        try:
+            sel = levels.index(self._settings.get_diagnostics_log_level())
+        except ValueError:
+            sel = levels.index("WARNING")
+        self._diag_log_level_choice.SetSelection(sel)
+        level_row.Add(level_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        level_row.Add(self._diag_log_level_choice, 0, wx.ALIGN_CENTER_VERTICAL)
+        diag_box.Add(level_row, 0, wx.ALL, 5)
+
         help_text = wx.StaticText(
             diag_panel,
             label=_("Diagnostics options may increase log size and CPU usage. Use only when troubleshooting."),
@@ -363,6 +377,11 @@ class OptionsDialog(wx.Dialog):
             self._settings.set_diagnostics_faulthandler_interval(self._diag_interval_ctrl.GetValue())
         if self._diag_loop_checkbox:
             self._settings.set_diagnostics_loop_debug(self._diag_loop_checkbox.GetValue())
+        if self._diag_log_level_choice:
+            sel = self._diag_log_level_choice.GetSelection()
+            if sel != wx.NOT_FOUND:
+                levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+                self._settings.set_diagnostics_log_level(levels[sel])
         self.EndModal(wx.ID_OK)
 
     def _populate_pfl_choice(self) -> None:
