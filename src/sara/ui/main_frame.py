@@ -1579,6 +1579,8 @@ class MainFrame(wx.Frame):
             slot_index or getattr(result, "slot_index", None),
         )
 
+        previous_selection = panel.get_selected_indices()
+
         panel.mark_item_status(item.id, PlaylistItemStatus.PLAYING)
         # automix: ustaw selekcję na grający utwór tylko przy starcie; później użytkownik może nawigować strzałkami
         if self._auto_mix_enabled and playlist.kind is PlaylistKind.MUSIC and self._focus_playing_track:
@@ -1586,9 +1588,9 @@ class MainFrame(wx.Frame):
             if idx >= 0:
                 panel.refresh(selected_indices=[idx], focus=True)
             else:
-                panel.refresh(focus=False)
+                panel.refresh(selected_indices=previous_selection or None, focus=False)
         else:
-            panel.refresh(focus=False)
+            panel.refresh(selected_indices=previous_selection or None, focus=False)
         self._focus_lock[playlist.id] = False
         self._last_started_item_id[playlist.id] = item.id
         # Jeśli utwór ma break, zapamiętaj w stanie, żeby nie wyzwalać mixu.
