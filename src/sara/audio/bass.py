@@ -901,12 +901,25 @@ class BassPlayer:
             self._manager.channel_set_position_bytes(self._stream, self._loop_start_bytes)
         else:
             self._manager.channel_set_position(self._stream, self._loop_start)
+        post_pos = None
+        try:
+            post_pos = self._manager.channel_get_seconds(self._stream)
+            drift = abs(post_pos - self._loop_start)
+            if drift > 0.002:
+                if self._loop_start_bytes:
+                    self._manager.channel_set_position_bytes(self._stream, self._loop_start_bytes)
+                else:
+                    self._manager.channel_set_position(self._stream, self._loop_start)
+                post_pos = self._manager.channel_get_seconds(self._stream)
+        except Exception:
+            pass
         if self._debug_loop:
             logger.debug(
-                "Loop debug: jump #%s reason=%s pos=%.6f start=%.6f end=%.6f stream=%s",
+                "Loop debug: jump #%s reason=%s pos=%.6f post=%.6f start=%.6f end=%.6f stream=%s",
                 self._loop_iteration,
                 reason,
                 pos if pos is not None else -1.0,
+                post_pos if post_pos is not None else -1.0,
                 self._loop_start,
                 self._loop_end,
                 self._stream,
