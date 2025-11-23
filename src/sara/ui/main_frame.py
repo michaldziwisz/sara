@@ -46,7 +46,6 @@ from sara.ui.file_selection_dialog import FileSelectionDialog
 from sara.ui.playback_controller import PlaybackContext, PlaybackController
 from sara.ui.auto_mix_tracker import AutoMixTracker
 from sara.ui.clipboard_service import PlaylistClipboard
-from sara.ui.selection_controller import SelectionController
 
 
 logger = logging.getLogger(__name__)
@@ -114,7 +113,6 @@ class MainFrame(wx.Frame):
         self._clipboard = PlaylistClipboard()
         self._undo_manager = UndoManager(self._apply_undo_callback)
         self._focus_lock: Dict[str, bool] = self._layout.state.focus_lock
-        self._selection = SelectionController(follow_playing=self._focus_playing_track)
         self._intro_alert_players: list[Tuple[Player, Path]] = []
         self._last_started_item_id: Dict[str, str | None] = {}
         self._active_break_item: Dict[str, str] = {}  # playlist_id -> item_id z aktywnym breakiem
