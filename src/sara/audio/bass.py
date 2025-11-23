@@ -838,14 +838,15 @@ class BassPlayer:
                                         self._stream,
                                     )
                                     self._last_loop_debug_log = now
-                                # strażnik awaryjny: reaguje tuż przed końcem, gdy sync nie zadziałał
-                                if (now - self._last_loop_jump_ts) > 0.002 and pos >= (self._loop_end - 0.003):
-                                    self._jump_to_loop_start("guard", pos)
-                                    continue
-                                # jeśli pozycja wyleciała daleko za koniec (np. audio glitch), natychmiast skoryguj
-                                if pos > (self._loop_end + 0.005):
-                                    self._jump_to_loop_start("clamp", pos)
-                                    continue
+                                # strażnik awaryjny: pozwól syncowi zadziałać, a reaguj dopiero PO końcu
+                                if (now - self._last_loop_jump_ts) > 0.005:
+                                    if pos > (self._loop_end + 0.004):
+                                        self._jump_to_loop_start("guard", pos)
+                                        continue
+                                    # twardy clamp tylko przy dużym odjechaniu
+                                    if pos > (self._loop_end + 0.05):
+                                        self._jump_to_loop_start("clamp", pos)
+                                        continue
                             except Exception as exc:
                                 if self._debug_loop:
                                     logger.debug("Loop debug: guard check failed: %s", exc)
