@@ -90,9 +90,19 @@ class PlaylistPanel(wx.Panel):
         self.model.hotkeys.setdefault("play", HotkeyAction("F1"))
 
     def refresh(self, selected_indices: list[int] | None = None, *, focus: bool = True) -> None:
+        # zachowaj selekcję/fokus, jeśli nie podano nowej selekcji
+        if selected_indices is None:
+            selected_indices = self.get_selected_indices()
+            focused = self.get_focused_index()
+        else:
+            focused = -1
+
         self._refresh_content()
-        if selected_indices is not None:
+
+        if selected_indices:
             self.set_selection(selected_indices, focus=focus)
+        elif focused != -1 and 0 <= focused < self._list_ctrl.GetItemCount():
+            self._list_ctrl.Focus(focused)
 
     def _refresh_content(self) -> None:
         self._list_ctrl.DeleteAllItems()
