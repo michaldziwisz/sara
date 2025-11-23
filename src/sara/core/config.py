@@ -74,6 +74,11 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "announcements": {},
         "follow_playing_selection": True,
     },
+    "diagnostics": {
+        "faulthandler": False,
+        "faulthandler_interval": 40.0,
+        "loop_debug": False,
+    },
 }
 
 DEFAULT_ANNOUNCEMENTS = {
@@ -218,6 +223,35 @@ class SettingsManager:
             playback_raw = self._user_config.setdefault("playback", {})
             if isinstance(playback_raw, dict):
                 playback_raw.pop("focus_playing_track", None)
+
+    # --- diagnostics ---
+    def get_diagnostics_faulthandler(self) -> bool:
+        diagnostics = self._data.get("diagnostics", {})
+        return bool(diagnostics.get("faulthandler", DEFAULT_CONFIG["diagnostics"]["faulthandler"]))
+
+    def set_diagnostics_faulthandler(self, enabled: bool) -> None:
+        diagnostics = self._data.setdefault("diagnostics", {})
+        diagnostics["faulthandler"] = bool(enabled)
+
+    def get_diagnostics_faulthandler_interval(self) -> float:
+        diagnostics = self._data.get("diagnostics", {})
+        value = diagnostics.get("faulthandler_interval", DEFAULT_CONFIG["diagnostics"]["faulthandler_interval"])
+        try:
+            return max(0.0, float(value))
+        except (TypeError, ValueError):
+            return DEFAULT_CONFIG["diagnostics"]["faulthandler_interval"]
+
+    def set_diagnostics_faulthandler_interval(self, value: float) -> None:
+        diagnostics = self._data.setdefault("diagnostics", {})
+        diagnostics["faulthandler_interval"] = max(0.0, float(value))
+
+    def get_diagnostics_loop_debug(self) -> bool:
+        diagnostics = self._data.get("diagnostics", {})
+        return bool(diagnostics.get("loop_debug", DEFAULT_CONFIG["diagnostics"]["loop_debug"]))
+
+    def set_diagnostics_loop_debug(self, enabled: bool) -> None:
+        diagnostics = self._data.setdefault("diagnostics", {})
+        diagnostics["loop_debug"] = bool(enabled)
 
     def get_intro_alert_seconds(self) -> float:
         playback = self._data.get("playback", {})

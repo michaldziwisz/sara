@@ -99,6 +99,9 @@ class OptionsDialog(wx.Dialog):
         main_sizer = wx.BoxSizer(wx.VERTICAL)
         self._pfl_entries: list[tuple[Optional[str], str]] = []
         self._announcement_checkboxes: dict[str, wx.CheckBox] = {}
+        self._diag_faulthandler_checkbox: Optional[wx.CheckBox] = None
+        self._diag_interval_ctrl: Optional[wx.SpinCtrlDouble] = None
+        self._diag_loop_checkbox: Optional[wx.CheckBox] = None
 
         notebook = wx.Notebook(self)
         main_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 10)
@@ -233,6 +236,43 @@ class OptionsDialog(wx.Dialog):
         accessibility_panel.SetSizer(accessibility_sizer)
         notebook.AddPage(accessibility_panel, _("Accessibility"))
 
+        diag_panel = wx.Panel(notebook)
+        diag_sizer = wx.BoxSizer(wx.VERTICAL)
+        diag_box = wx.StaticBoxSizer(wx.StaticBox(diag_panel, label=_("Diagnostics")), wx.VERTICAL)
+        self._diag_faulthandler_checkbox = wx.CheckBox(
+            diag_panel,
+            label=_("Periodic stack traces (faulthandler)"),
+        )
+        self._diag_faulthandler_checkbox.SetValue(self._settings.get_diagnostics_faulthandler())
+        diag_box.Add(self._diag_faulthandler_checkbox, 0, wx.ALL, 5)
+
+        interval_row = wx.BoxSizer(wx.HORIZONTAL)
+        interval_label = wx.StaticText(diag_panel, label=_("Stack trace interval (s, 0 = disable):"))
+        self._diag_interval_ctrl = wx.SpinCtrlDouble(diag_panel, min=0.0, max=600.0, inc=1.0)
+        self._diag_interval_ctrl.SetDigits(1)
+        self._diag_interval_ctrl.SetValue(self._settings.get_diagnostics_faulthandler_interval())
+        interval_row.Add(interval_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        interval_row.Add(self._diag_interval_ctrl, 0, wx.ALIGN_CENTER_VERTICAL)
+        diag_box.Add(interval_row, 0, wx.ALL, 5)
+
+        self._diag_loop_checkbox = wx.CheckBox(
+            diag_panel,
+            label=_("Detailed loop debug logging"),
+        )
+        self._diag_loop_checkbox.SetValue(self._settings.get_diagnostics_loop_debug())
+        diag_box.Add(self._diag_loop_checkbox, 0, wx.ALL, 5)
+
+        help_text = wx.StaticText(
+            diag_panel,
+            label=_("Diagnostics options may increase log size and CPU usage. Use only when troubleshooting."),
+        )
+        help_text.Wrap(440)
+        diag_box.Add(help_text, 0, wx.ALL, 5)
+
+        diag_sizer.Add(diag_box, 0, wx.EXPAND | wx.ALL, 10)
+        diag_panel.SetSizer(diag_sizer)
+        notebook.AddPage(diag_panel, _("Diagnostics"))
+
         button_sizer = self.CreateSeparatedButtonSizer(wx.OK | wx.CANCEL)
         if button_sizer:
             main_sizer.Add(button_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
@@ -318,6 +358,11 @@ class OptionsDialog(wx.Dialog):
         self._settings.set_language(self._language_codes[self._language_choice.GetSelection()])
         for category_id, checkbox in self._announcement_checkboxes.items():
             self._settings.set_announcement_enabled(category_id, checkbox.GetValue())
+        if self._diag_faulthandler_checkbox and self._diag_interval_ctrl:
+            self._settings.set_diagnostics_faulthandler(self._diag_faulthandler_checkbox.GetValue())
+            self._settings.set_diagnostics_faulthandler_interval(self._diag_interval_ctrl.GetValue())
+        if self._diag_loop_checkbox:
+            self._settings.set_diagnostics_loop_debug(self._diag_loop_checkbox.GetValue())
         self.EndModal(wx.ID_OK)
 
     def _populate_pfl_choice(self) -> None:

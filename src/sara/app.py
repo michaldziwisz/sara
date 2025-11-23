@@ -61,9 +61,10 @@ def _configure_logging() -> Optional[Path]:
     return log_path
 
 
-def _enable_debug_dump(log_path: Optional[Path]) -> None:
+def _enable_debug_dump(log_path: Optional[Path], *, enabled: bool = False, interval: Optional[float] = None) -> None:
     """Enable periodic stack dumps when running in debug mode."""
-    if not (os.environ.get("SARA_DEBUG_STACK") or os.environ.get("LOGLEVEL", "").lower() == "debug"):
+    env_enabled = bool(os.environ.get("SARA_DEBUG_STACK") or os.environ.get("LOGLEVEL", "").lower() == "debug")
+    if not (enabled or env_enabled):
         return
     try:
         import faulthandler
@@ -75,9 +76,11 @@ def _enable_debug_dump(log_path: Optional[Path]) -> None:
         target = log_path.open("a", encoding="utf-8") if log_path else sys.stderr
         faulthandler.enable(file=target, all_threads=True)
         # Dump co 40s żeby nie zalewać logu (w wątpliwych przypadkach można ustawić SARA_DEBUG_STACK_INTERVAL)
-        interval = float(os.environ.get("SARA_DEBUG_STACK_INTERVAL", "40"))
-        if interval > 0:
-            faulthandler.dump_traceback_later(interval, file=target, repeat=True)
+        dump_interval = interval
+        if dump_interval is None:
+            dump_interval = float(os.environ.get("SARA_DEBUG_STACK_INTERVAL", "40"))
+        if dump_interval > 0:
+            faulthandler.dump_traceback_later(dump_interval, file=target, repeat=True)
         _FAULTHANDLER_FILE = target
         logging.getLogger(__name__).debug("Faulthandler stack dump enabled")
     except Exception:  # pylint: disable=broad-except
@@ -87,9 +90,21 @@ def _enable_debug_dump(log_path: Optional[Path]) -> None:
 def run() -> None:
     """Start the main wxPython event loop."""
     log_path = _configure_logging()
-    _enable_debug_dump(log_path)
     app = wx.App()
     settings = SettingsManager()
+    try:
+        # Diagnostics toggles from settings
+        _enable_debug_dump(
+            log_path,
+            enabled=settings.get_diagnostics_faulthandler(),
+            interval=settings.get_diagnostics_faulthandler_interval(),
+        )
+        # ustawia debug loop przed tworzeniem playerów
+        import sara.audio.bass as bass_mod  # pylint: disable=import-outside-toplevel
+
+        bass_mod._DEBUG_LOOP = bool(settings.get_diagnostics_loop_debug())
+    except Exception:
+        pass
     set_language(settings.get_language())
     ensure_nvda_sleep_mode()
     frame = MainFrame(settings=settings)
