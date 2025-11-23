@@ -1588,9 +1588,9 @@ class MainFrame(wx.Frame):
             if idx >= 0:
                 panel.refresh(selected_indices=[idx], focus=True)
             else:
-                panel.refresh(selected_indices=previous_selection or None, focus=False)
+                panel.refresh(selected_indices=previous_selection or None, focus=True if previous_selection else False)
         else:
-            panel.refresh(selected_indices=previous_selection or None, focus=False)
+            panel.refresh(selected_indices=previous_selection or None, focus=True if previous_selection else False)
         self._focus_lock[playlist.id] = False
         self._last_started_item_id[playlist.id] = item.id
         # Jeśli utwór ma break, zapamiętaj w stanie, żeby nie wyzwalać mixu.
