@@ -1803,10 +1803,10 @@ class MainFrame(wx.Frame):
                 playlist.clear_selection(item.id)
                 self._refresh_selection_display(playlist.id)
             if advance_focus and not consumed_model_selection and not used_ui_selection:
-                next_focus = self._derive_next_play_index(playlist)
-                if next_focus is not None and 0 <= next_focus < len(playlist.items):
-                    # jeśli follow_playing_track jest wyłączone, nie zmieniaj selekcji
-                    if self._focus_playing_track:
+                # jeśli follow_playing_track jest wyłączone, nie zmieniaj selekcji; inaczej ustaw ją na kolejny utwór
+                if self._focus_playing_track:
+                    next_focus = self._derive_next_play_index(playlist)
+                    if next_focus is not None and 0 <= next_focus < len(playlist.items):
                         panel.select_index(next_focus, focus=False)
             status_message = _("Playing %s from playlist %s") % (track_name, playlist.name)
             self._announce_event(
