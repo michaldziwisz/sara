@@ -1580,7 +1580,18 @@ class MainFrame(wx.Frame):
         )
 
         panel.mark_item_status(item.id, PlaylistItemStatus.PLAYING)
-        panel.refresh()
+        # w automixie nie psuj aktualnej selekcji; opcjonalnie podążaj za grającym wg preferencji
+        if self._auto_mix_enabled and playlist.kind is PlaylistKind.MUSIC:
+            if self._focus_playing_track:
+                idx = playlist.index_of(item.id)
+                if idx >= 0:
+                    panel.refresh(selected_indices=[idx], focus=True)
+                else:
+                    panel.refresh(focus=False)
+            else:
+                panel.refresh(focus=False)
+        else:
+            panel.refresh(focus=False)
         self._focus_lock[playlist.id] = False
         self._last_started_item_id[playlist.id] = item.id
         # Jeśli utwór ma break, zapamiętaj w stanie, żeby nie wyzwalać mixu.
