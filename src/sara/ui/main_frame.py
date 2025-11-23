@@ -113,7 +113,6 @@ class MainFrame(wx.Frame):
         self._clipboard = PlaylistClipboard()
         self._undo_manager = UndoManager(self._apply_undo_callback)
         self._focus_lock: Dict[str, bool] = self._layout.state.focus_lock
-        self._last_focus_index: Dict[str, int] = {}
         self._intro_alert_players: list[Tuple[Player, Path]] = []
         self._last_started_item_id: Dict[str, str | None] = {}
         self._active_break_item: Dict[str, str] = {}  # playlist_id -> item_id z aktywnym breakiem
@@ -1587,8 +1586,6 @@ class MainFrame(wx.Frame):
 
         previous_selection = panel.get_selected_indices()
         previous_focus = panel.get_focused_index()
-        if previous_focus != wx.NOT_FOUND:
-            self._last_focus_index[playlist.id] = previous_focus
 
         panel.mark_item_status(item.id, PlaylistItemStatus.PLAYING)
         # automix: ustaw selekcję na grający utwór tylko przy starcie; później użytkownik może nawigować strzałkami
@@ -1609,11 +1606,6 @@ class MainFrame(wx.Frame):
                     # brak selekcji – przywróć focus na poprzedni wiersz
                     panel.refresh(focus=False)
                     panel.select_index(previous_focus, focus=True)
-                elif playlist.id in self._last_focus_index:
-                    fallback_focus = self._last_focus_index[playlist.id]
-                    if 0 <= fallback_focus < len(playlist.items):
-                        panel.refresh(focus=False)
-                        panel.select_index(fallback_focus, focus=True)
                 else:
                     panel.refresh(focus=False)
         self._focus_lock[playlist.id] = False
