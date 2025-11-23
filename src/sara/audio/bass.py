@@ -839,8 +839,8 @@ class BassPlayer:
                                     )
                                     self._last_loop_debug_log = now
                                 # strażnik awaryjny: pozwól syncowi zadziałać, a reaguj dopiero PO końcu
-                                if (now - self._last_loop_jump_ts) > 0.005:
-                                    if pos > (self._loop_end + 0.004):
+                                if (now - self._last_loop_jump_ts) > 0.008:
+                                    if pos > (self._loop_end + 0.008):
                                         self._jump_to_loop_start("guard", pos)
                                         continue
                                     # twardy clamp tylko przy dużym odjechaniu
@@ -1217,6 +1217,7 @@ class BassAsioPlayer(BassPlayer):
                 if self._debug_loop:
                     logger.debug("Loop debug: sync jump failed: %s", exc)
 
+        # rejestruj dwa synchro: zwykłe oraz MIXTIME, żeby dać BASS więcej szans
         try:
             self._loop_sync_proc = self._manager.make_sync_proc(_sync_cb)
             self._loop_sync_handle = self._manager.channel_set_sync_pos(
@@ -1227,8 +1228,16 @@ class BassAsioPlayer(BassPlayer):
             self._loop_sync_handle = 0
             if self._debug_loop:
                 logger.debug("Loop debug: failed to set sync pos: %s", exc)
-        self._loop_alt_sync_proc = None
-        self._loop_alt_sync_handle = 0
+        try:
+            self._loop_alt_sync_proc = self._manager.make_sync_proc(_sync_cb)
+            self._loop_alt_sync_handle = self._manager.channel_set_sync_pos(
+                self._stream, self._loop_end_bytes, self._loop_alt_sync_proc, is_bytes=True, mix_time=True
+            )
+        except Exception as exc:
+            self._loop_alt_sync_proc = None
+            self._loop_alt_sync_handle = 0
+            if self._debug_loop:
+                logger.debug("Loop debug: failed to set alt sync pos: %s", exc)
         self._loop_end_sync_proc = None
         self._loop_end_sync_handle = 0
         if self._debug_loop:
