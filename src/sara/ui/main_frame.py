@@ -1795,15 +1795,16 @@ class MainFrame(wx.Frame):
                 self._auto_mix_tracker.set_last_started(playlist.id, item.id)
             track_name = self._format_track_name(item)
             if used_ui_selection or consumed_model_selection or item.id == preferred_item_id:
-                logger.debug(
-                    "UI: clearing selection for started item=%s playlist=%s (used_ui=%s consumed_model=%s)",
-                    item.id,
-                    playlist.id,
-                    used_ui_selection,
-                    consumed_model_selection,
-                )
-                playlist.clear_selection(item.id)
-                self._refresh_selection_display(playlist.id)
+                if self._focus_playing_track:
+                    logger.debug(
+                        "UI: clearing selection for started item=%s playlist=%s (used_ui=%s consumed_model=%s)",
+                        item.id,
+                        playlist.id,
+                        used_ui_selection,
+                        consumed_model_selection,
+                    )
+                    playlist.clear_selection(item.id)
+                    self._refresh_selection_display(playlist.id)
             if advance_focus and not consumed_model_selection and not used_ui_selection:
                 # jeśli follow_playing_track jest wyłączone, nie zmieniaj selekcji; inaczej ustaw ją na kolejny utwór
                 if self._focus_playing_track:
