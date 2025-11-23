@@ -694,7 +694,7 @@ class MainFrame(wx.Frame):
         playing_id = self._get_playing_item_id(playlist_id)
 
         # focus-lock logika jak wcześniej
-        if self._focus_playing_track and not (self._auto_mix_enabled and panel.model.kind is PlaylistKind.MUSIC):
+        if self._focus_playing_track:
             if playing_id is None or not indices:
                 self._focus_lock[playlist_id] = False
             elif len(indices) == 1:
@@ -1580,15 +1580,11 @@ class MainFrame(wx.Frame):
         )
 
         panel.mark_item_status(item.id, PlaylistItemStatus.PLAYING)
-        # automix: zostaw selekcję w spokoju, ale jeśli użytkownik chce podążać za grającym – ustaw ją na bieżący track
-        if self._auto_mix_enabled and playlist.kind is PlaylistKind.MUSIC:
-            if self._focus_playing_track:
-                idx = playlist.index_of(item.id)
-                if idx >= 0:
-                    panel.refresh(selected_indices=[idx], focus=True)
-                    panel.select_index(idx)
-                else:
-                    panel.refresh(focus=False)
+        # automix: ustaw selekcję na grający utwór tylko przy starcie; później użytkownik może nawigować strzałkami
+        if self._auto_mix_enabled and playlist.kind is PlaylistKind.MUSIC and self._focus_playing_track:
+            idx = playlist.index_of(item.id)
+            if idx >= 0:
+                panel.refresh(selected_indices=[idx], focus=True)
             else:
                 panel.refresh(focus=False)
         else:
@@ -2436,9 +2432,6 @@ class MainFrame(wx.Frame):
         if not self._focus_playing_track:
             return
         playlist_id = panel.model.id
-        # w automixie ignoruj focus-lock – podążaj za grającym, jeśli włączone
-        if self._auto_mix_enabled and panel.model.kind is PlaylistKind.MUSIC:
-            self._focus_lock[playlist_id] = False
         if self._focus_lock.get(playlist_id):
             current = panel.get_selected_indices()
             if len(current) == 1:
