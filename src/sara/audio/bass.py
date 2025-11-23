@@ -643,19 +643,12 @@ class BassManager:
     def make_sync_proc(self, func: Callable[[int, int, int, ctypes.c_void_p], None]):
         return self._sync_type(func)
 
-    def channel_set_sync_pos(self, stream: int, position_or_seconds: float, proc, *, is_bytes: bool = False) -> int:
-        position = (
-            int(position_or_seconds)
-            if is_bytes
-            else self.seconds_to_bytes(stream, float(position_or_seconds))
-        )
-        handle = self._lib.BASS_ChannelSetSync(
-            stream,
-            _BassConstants.SYNC_POS | _BassConstants.SYNC_MIXTIME,
-            position,
-            proc,
-            None,
-        )
+    def channel_set_sync_pos(
+        self, stream: int, position_or_seconds: float, proc, *, is_bytes: bool = False, mix_time: bool = True
+    ) -> int:
+        position = int(position_or_seconds) if is_bytes else self.seconds_to_bytes(stream, float(position_or_seconds))
+        flags = _BassConstants.SYNC_POS | (_BassConstants.SYNC_MIXTIME if mix_time else 0)
+        handle = self._lib.BASS_ChannelSetSync(stream, flags, position, proc, None)
         if not handle:
             code = self._lib.BASS_ErrorGetCode()
             raise BassNotAvailable(f"BASS_ChannelSetSync nie powiodło się (kod {code})")
@@ -945,7 +938,7 @@ class BassPlayer:
         self._mix_sync_proc = self._manager.make_sync_proc(_sync_proc)
         try:
             self._mix_sync_handle = self._manager.channel_set_sync_pos(
-                self._stream, target_bytes, self._mix_sync_proc, is_bytes=True
+                self._stream, target_bytes, self._mix_sync_proc, is_bytes=True, mix_time=True
             )
         except Exception as exc:
             logger.debug("BASS mix trigger: failed to set sync: %s", exc)
@@ -1226,7 +1219,7 @@ class BassAsioPlayer(BassPlayer):
         try:
             self._loop_sync_proc = self._manager.make_sync_proc(_sync_cb)
             self._loop_sync_handle = self._manager.channel_set_sync_pos(
-                self._stream, self._loop_end_bytes, self._loop_sync_proc, is_bytes=True
+                self._stream, self._loop_end_bytes, self._loop_sync_proc, is_bytes=True, mix_time=False
             )
         except Exception as exc:
             self._loop_sync_proc = None
