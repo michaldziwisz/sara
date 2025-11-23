@@ -694,7 +694,7 @@ class MainFrame(wx.Frame):
         playing_id = self._get_playing_item_id(playlist_id)
 
         # focus-lock logika jak wcześniej
-        if self._focus_playing_track:
+        if self._focus_playing_track and not (self._auto_mix_enabled and panel.model.kind is PlaylistKind.MUSIC):
             if playing_id is None or not indices:
                 self._focus_lock[playlist_id] = False
             elif len(indices) == 1:
@@ -2436,6 +2436,9 @@ class MainFrame(wx.Frame):
         if not self._focus_playing_track:
             return
         playlist_id = panel.model.id
+        # w automixie ignoruj focus-lock – podążaj za grającym, jeśli włączone
+        if self._auto_mix_enabled and panel.model.kind is PlaylistKind.MUSIC:
+            self._focus_lock[playlist_id] = False
         if self._focus_lock.get(playlist_id):
             current = panel.get_selected_indices()
             if len(current) == 1:
