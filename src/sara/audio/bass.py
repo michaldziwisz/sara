@@ -839,8 +839,8 @@ class BassPlayer:
                                     )
                                     self._last_loop_debug_log = now
                                 # strażnik awaryjny: pozwól syncowi zadziałać, a reaguj dopiero PO końcu
-                                if (now - self._last_loop_jump_ts) > 0.008:
-                                    if pos > (self._loop_end + 0.008):
+                                if (now - self._last_loop_jump_ts) > 0.004:
+                                    if pos > (self._loop_end + 0.004):
                                         self._jump_to_loop_start("guard", pos)
                                         continue
                                     # twardy clamp tylko przy dużym odjechaniu
