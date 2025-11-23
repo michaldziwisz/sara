@@ -712,6 +712,7 @@ class BassPlayer:
         self._loop_guard_enabled: bool = True
         self._last_loop_debug_log: float = 0.0
         self._last_progress_ts: float = 0.0
+        self._loop_iteration: int = 0
         # zapewnij kompatybilność, nawet jeśli stary obiekt był zcache'owany
         if not hasattr(self, "_apply_loop_settings"):
             self._apply_loop_settings = lambda: None  # type: ignore[attr-defined]
@@ -845,34 +846,12 @@ class BassPlayer:
                                     )
                                     self._last_loop_debug_log = now
                                 # strażnik awaryjny: reaguje tuż przed końcem, gdy sync nie zadziałał
-                                if (now - self._last_loop_jump_ts) > 0.002 and pos >= (self._loop_end - 0.005):
-                                    self._last_loop_jump_ts = now
-                                    if self._loop_start_bytes:
-                                        self._manager.channel_set_position_bytes(self._stream, self._loop_start_bytes)
-                                    else:
-                                        self._manager.channel_set_position(self._stream, self._loop_start)
-                                    if self._debug_loop:
-                                        logger.debug(
-                                            "Loop debug: python guard jump pos=%.6f start=%.6f end=%.6f",
-                                            pos,
-                                            self._loop_start,
-                                            self._loop_end,
-                                        )
+                                if (now - self._last_loop_jump_ts) > 0.002 and pos >= (self._loop_end - 0.003):
+                                    self._jump_to_loop_start("guard", pos)
                                     continue
                                 # jeśli pozycja wyleciała daleko za koniec (np. audio glitch), natychmiast skoryguj
-                                if pos > (self._loop_end + 0.02):
-                                    self._last_loop_jump_ts = now
-                                    if self._loop_start_bytes:
-                                        self._manager.channel_set_position_bytes(self._stream, self._loop_start_bytes)
-                                    else:
-                                        self._manager.channel_set_position(self._stream, self._loop_start)
-                                    if self._debug_loop:
-                                        logger.debug(
-                                            "Loop debug: hard clamp pos=%.6f start=%.6f end=%.6f",
-                                            pos,
-                                            self._loop_start,
-                                            self._loop_end,
-                                        )
+                                if pos > (self._loop_end + 0.005):
+                                    self._jump_to_loop_start("clamp", pos)
                                     continue
                             except Exception as exc:
                                 if self._debug_loop:
@@ -911,6 +890,27 @@ class BassPlayer:
                     break
         self._monitor_thread = threading.Thread(target=_runner, daemon=True, name="bass-monitor")
         self._monitor_thread.start()
+
+    def _jump_to_loop_start(self, reason: str, pos: Optional[float] = None) -> None:
+        """Przeskocz na początek pętli i zinstrumentuj przebiegi."""
+        if not self._stream or self._loop_start is None:
+            return
+        self._last_loop_jump_ts = time.time()
+        self._loop_iteration = getattr(self, "_loop_iteration", 0) + 1
+        if self._loop_start_bytes:
+            self._manager.channel_set_position_bytes(self._stream, self._loop_start_bytes)
+        else:
+            self._manager.channel_set_position(self._stream, self._loop_start)
+        if self._debug_loop:
+            logger.debug(
+                "Loop debug: jump #%s reason=%s pos=%.6f start=%.6f end=%.6f stream=%s",
+                self._loop_iteration,
+                reason,
+                pos if pos is not None else -1.0,
+                self._loop_start,
+                self._loop_end,
+                self._stream,
+            )
 
     def _apply_mix_trigger(self, target_seconds: Optional[float], callback: Optional[Callable[[], None]]) -> None:
         self._mix_callback = callback
@@ -1153,6 +1153,7 @@ class BassAsioPlayer(BassPlayer):
             self._loop_end = None
             self._loop_active = False
             self._last_loop_jump_ts = 0.0
+            self._loop_iteration = 0
             if self._loop_sync_handle and self._stream:
                 self._manager.channel_remove_sync(self._stream, self._loop_sync_handle)
             self._loop_sync_handle = 0
@@ -1162,6 +1163,7 @@ class BassAsioPlayer(BassPlayer):
         self._loop_end = end_seconds
         self._loop_active = True
         self._last_loop_jump_ts = 0.0
+        self._loop_iteration = 0
         self._apply_loop_settings()
 
     def _apply_loop_settings(self) -> None:
@@ -1187,6 +1189,7 @@ class BassAsioPlayer(BassPlayer):
 
         start = max(0.0, self._loop_start)
         end = max(start + 0.001, self._loop_end)
+        self._loop_iteration = 0
         self._loop_start_bytes = self._manager.seconds_to_bytes(self._stream, start)
         self._loop_end_bytes = self._manager.seconds_to_bytes(self._stream, end)
         if self._debug_loop:
@@ -1202,18 +1205,7 @@ class BassAsioPlayer(BassPlayer):
         # Synci wyłączone – stawiamy na pętlę programową z monitra
         def _sync_cb(handle, channel, data, user):
             try:
-                self._last_loop_jump_ts = time.time()
-                if self._loop_start_bytes:
-                    self._manager.channel_set_position_bytes(self._stream, self._loop_start_bytes)
-                else:
-                    self._manager.channel_set_position(self._stream, self._loop_start)
-                if self._debug_loop:
-                    logger.debug(
-                        "Loop debug: sync jump handle=%s start=%.6f end=%.6f",
-                        handle,
-                        self._loop_start,
-                        self._loop_end,
-                    )
+                self._jump_to_loop_start("sync")
             except Exception as exc:
                 if self._debug_loop:
                     logger.debug("Loop debug: sync jump failed: %s", exc)
