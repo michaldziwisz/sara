@@ -1938,6 +1938,8 @@ class MainFrame(wx.Frame):
         item = model.items[item_index]
 
         removed = False
+        previous_selection = panel.get_selected_indices()
+        previous_focus = panel.get_focused_index()
         if self._auto_remove_played:
             removed_item = self._remove_item_from_playlist(panel, model, item_index, refocus=True)
             self._announce_event("playback_events", _("Removed played track %s") % removed_item.title)
@@ -1945,7 +1947,17 @@ class MainFrame(wx.Frame):
         else:
             model.mark_played(item_id)
             panel.mark_item_status(item_id, item.status)
-            panel.refresh()
+            # przywróć wcześniejszą selekcję/focus gdy follow-playing jest wyłączone
+            if self._focus_playing_track:
+                panel.refresh(focus=False)
+            else:
+                if previous_selection:
+                    panel.refresh(selected_indices=previous_selection, focus=True)
+                elif previous_focus != wx.NOT_FOUND and 0 <= previous_focus < len(model.items):
+                    panel.refresh(focus=False)
+                    panel.select_index(previous_focus, focus=True)
+                else:
+                    panel.refresh(focus=False)
 
         if context:
             try:
