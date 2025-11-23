@@ -1128,7 +1128,8 @@ class MainFrame(wx.Frame):
             panel = self._playlists.get(playing_model.id)
             current_panel = self._get_current_music_panel()
             if isinstance(panel, PlaylistPanel) and current_panel is panel:
-                panel.refresh(focus=False)
+                sel = panel.get_selected_indices()
+                panel.refresh(selected_indices=sel, focus=False)
             return
 
         # 2) W przeciwnym razie toggle dotyczy zaznaczonego utworu.
@@ -1156,7 +1157,7 @@ class MainFrame(wx.Frame):
             remaining = self._compute_intro_remaining(item)
             if remaining is not None:
                 self._announce_intro_remaining(remaining, prefix_only=True)
-        panel.refresh(focus=False)
+        panel.refresh(selected_indices=[idx], focus=False)
 
     def _apply_replay_gain(self, item: PlaylistItem, gain_db: float | None) -> None:
         item.replay_gain_db = gain_db
