@@ -142,14 +142,21 @@ class PlaylistPanel(wx.Panel):
         title = item.title
         if item.artist:
             title = f"{item.artist} - {title}"
+
+        prefixes: list[str] = []
         if item.is_selected:
-            return _("[selected] %s") % title
+            prefixes.append(_("[selected]"))
+        if item.has_loop() and (item.loop_enabled or getattr(item, "loop_auto_enabled", False)):
+            prefixes.append(_("Loop"))
+
+        if prefixes:
+            return " ".join(prefixes) + " " + title
         return title
 
     def _status_label(self, item: PlaylistItem) -> str:
         label = _(item.status.value)
         extras = []
-        if item.has_loop():
+        if item.has_loop() and (item.loop_enabled or getattr(item, "loop_auto_enabled", False)):
             extras.append(_("loop"))
         if item.break_after:
             extras.append(_("break"))

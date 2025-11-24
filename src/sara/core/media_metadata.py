@@ -47,12 +47,14 @@ class AudioMetadata:
     outro_seconds: Optional[float] = None
     loop_start_seconds: Optional[float] = None
     loop_end_seconds: Optional[float] = None
+    loop_auto_enabled: bool = False
     loop_enabled: bool = False
 
 
 LOOP_START_TAG = "SARA_LOOP_START"
 LOOP_END_TAG = "SARA_LOOP_END"
 LOOP_ENABLED_TAG = "SARA_LOOP_ENABLED"
+LOOP_AUTO_ENABLED_TAG = "SARA_LOOP_AUTO"
 CUE_IN_TAG = "SARA_CUE_IN"
 INTRO_TAG = "SARA_INTRO_END"
 OUTRO_TAG = "SARA_OUTRO_START"
@@ -135,7 +137,7 @@ def _scan_ape_replay_gain(path: Path) -> Optional[float]:
     return None
 
 
-def _scan_loop_values(path: Path) -> tuple[Optional[float], Optional[float], bool]:
+def _scan_loop_values(path: Path) -> tuple[Optional[float], Optional[float], bool, bool]:
     tags = _read_ape_tags(path)
     if not tags:
         return None, None, False
@@ -161,11 +163,15 @@ def _scan_loop_values(path: Path) -> tuple[Optional[float], Optional[float], boo
     enabled = False
     if enabled_text is not None:
         enabled = enabled_text.strip().lower() in ("1", "true", "yes", "on")
+    auto_text = _lookup(LOOP_AUTO_ENABLED_TAG)
+    auto_enabled = False
+    if auto_text is not None:
+        auto_enabled = auto_text.strip().lower() in ("1", "true", "yes", "on")
 
     if start is None or end is None or end <= start:
-        return None, None, False
+        return None, None, False, auto_enabled
 
-    return start, end, enabled
+    return start, end, enabled, auto_enabled
 
 
 def save_loop_metadata(
@@ -173,6 +179,7 @@ def save_loop_metadata(
     start: Optional[float],
     end: Optional[float],
     enabled: Optional[bool] = None,
+    auto_enabled: Optional[bool] = None,
 ) -> bool:
     """Save or remove loop markers in APEv2 tags.
 
@@ -200,7 +207,7 @@ def save_loop_metadata(
             tags = APEv2()
             existing_items = _read_ape_tags(path)
             for key, value in existing_items.items():
-                if key in (LOOP_START_TAG, LOOP_END_TAG, LOOP_ENABLED_TAG):
+                if key in (LOOP_START_TAG, LOOP_END_TAG, LOOP_ENABLED_TAG, LOOP_AUTO_ENABLED_TAG):
                     continue
                 tags[key] = value
 
@@ -211,7 +218,7 @@ def save_loop_metadata(
     try:
         if start is None or end is None:
             removed = False
-            for key in (LOOP_START_TAG, LOOP_END_TAG, LOOP_ENABLED_TAG):
+            for key in (LOOP_START_TAG, LOOP_END_TAG, LOOP_ENABLED_TAG, LOOP_AUTO_ENABLED_TAG):
                 if key in tags:
                     removed = True
                     try:
@@ -230,6 +237,8 @@ def save_loop_metadata(
         tags[LOOP_END_TAG] = f"{end:.3f}"
         if enabled is not None:
             tags[LOOP_ENABLED_TAG] = "1" if enabled else "0"
+        if auto_enabled is not None:
+            tags[LOOP_AUTO_ENABLED_TAG] = "1" if auto_enabled else "0"
         tags.save(file_path)
         return True
     except Exception as exc:  # pylint: disable=broad-except
@@ -558,9 +567,9 @@ def extract_metadata(path: Path) -> AudioMetadata:
                 if outro is not None:
                     break
 
-    loop_start, loop_end, loop_enabled = _scan_loop_values(path)
-    # Domyślnie pętla jest wyłączona – użytkownik musi ją włączyć ręcznie.
-    loop_enabled = False
+    loop_start, loop_end, loop_enabled, loop_auto_enabled = _scan_loop_values(path)
+    # Jeśli flaga automatyczna jest włączona, traktuj pętlę jako aktywną przy wczytaniu.
+    loop_enabled = (loop_enabled or loop_auto_enabled)
 
     return AudioMetadata(
         title=title,
@@ -574,5 +583,6 @@ def extract_metadata(path: Path) -> AudioMetadata:
         outro_seconds=outro,
         loop_start_seconds=loop_start,
         loop_end_seconds=loop_end,
+        loop_auto_enabled=loop_auto_enabled,
         loop_enabled=loop_enabled,
     )

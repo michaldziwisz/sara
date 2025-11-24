@@ -37,6 +37,7 @@ class PlaylistItem:
     outro_seconds: Optional[float] = None
     loop_start_seconds: Optional[float] = None
     loop_end_seconds: Optional[float] = None
+    loop_auto_enabled: bool = False
     loop_enabled: bool = False
     break_after: bool = False
     is_selected: bool = False
@@ -75,6 +76,7 @@ class PlaylistItem:
     def clear_loop(self) -> None:
         self.loop_start_seconds = None
         self.loop_end_seconds = None
+        self.loop_auto_enabled = False
         self.loop_enabled = False
 
     def has_loop(self) -> bool:

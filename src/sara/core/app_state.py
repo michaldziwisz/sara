@@ -57,6 +57,7 @@ class PlaylistFactory:
         outro_seconds: float | None = None,
         loop_start_seconds: float | None = None,
         loop_end_seconds: float | None = None,
+        loop_auto_enabled: bool = False,
         loop_enabled: bool = False,
     ) -> PlaylistItem:
         item_id = uuid.uuid4().hex
@@ -74,5 +75,6 @@ class PlaylistFactory:
             outro_seconds=outro_seconds,
             loop_start_seconds=loop_start_seconds,
             loop_end_seconds=loop_end_seconds,
+            loop_auto_enabled=loop_auto_enabled,
             loop_enabled=loop_enabled,
         )

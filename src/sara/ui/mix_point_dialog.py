@@ -43,6 +43,7 @@ class MixPointEditorDialog(wx.Dialog):
         segue_seconds: float | None,
         overlap_seconds: float | None,
         on_preview: Callable[[float, tuple[float, float] | None], bool],
+        on_mix_preview: Callable[[], bool] | None = None,
         on_stop_preview: Callable[[], None],
         track_path: Path,
         initial_replay_gain: float | None,
@@ -50,6 +51,7 @@ class MixPointEditorDialog(wx.Dialog):
         loop_start_seconds: float | None = None,
         loop_end_seconds: float | None = None,
         loop_enabled: bool = False,
+        loop_auto_enabled: bool = False,
     ) -> None:
         super().__init__(parent, title=title, style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._duration = max(0.0, duration_seconds)
@@ -75,6 +77,7 @@ class MixPointEditorDialog(wx.Dialog):
         loop_defined = loop_start_seconds is not None and loop_end_seconds is not None
         self._loop_start_defined = loop_defined
         self._loop_end_defined = loop_defined
+        self._loop_auto_enabled = loop_auto_enabled or False
 
         self._position_slider = wx.Slider(
             self,
@@ -109,6 +112,7 @@ class MixPointEditorDialog(wx.Dialog):
         self._current_cursor_seconds: float = 0.0
         self._preview_anchor_seconds: float = 0.0
         self._preview_anchor_started: float | None = None
+        self._on_mix_preview = on_mix_preview
 
         self._build_layout()
         self._bind_events()
@@ -231,6 +235,11 @@ class MixPointEditorDialog(wx.Dialog):
         )
         points_box.Add(list_sizer, 1, wx.EXPAND | wx.ALL, 4)
 
+        # auto-enable loop on start toggle
+        self._loop_auto_checkbox = wx.CheckBox(self, label=_("Enable loop automatically when loading"))
+        self._loop_auto_checkbox.SetValue(bool(self._loop_auto_enabled))
+        points_box.Add(self._loop_auto_checkbox, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 6)
+
         help_text = wx.StaticText(
             self,
             label=_(
@@ -240,7 +249,7 @@ class MixPointEditorDialog(wx.Dialog):
         )
         help_text.Wrap(520)
         points_box.Add(help_text, 0, wx.ALL | wx.EXPAND, 4)
-        self._loop_preview_button = wx.Button(self, label=_("Preview loop (Alt+V)"))
+        self._loop_preview_button = wx.Button(self, label=_("Preview loop/mix (Alt+V)"))
         points_box.Add(self._loop_preview_button, 0, wx.ALL | wx.ALIGN_RIGHT, 4)
         main_sizer.Add(points_box, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 8)
 
@@ -351,6 +360,8 @@ class MixPointEditorDialog(wx.Dialog):
             mode=mode,
             base_label=label,
         )
+        if key == "overlap":
+            spin.SetRange(0.0, max(self._duration or 0.0, 0.0))
         spin.Bind(wx.EVT_SPINCTRLDOUBLE, lambda _evt, row_key=key: self._handle_spin_edit(row_key))
         spin.Bind(wx.EVT_TEXT, lambda _evt, row_key=key: self._handle_spin_edit(row_key))
         self._point_order.append(key)
@@ -379,7 +390,7 @@ class MixPointEditorDialog(wx.Dialog):
         self._nudge_forward_small.Bind(wx.EVT_BUTTON, lambda _evt: self._nudge_position(1.0))
         self._nudge_forward_large.Bind(wx.EVT_BUTTON, lambda _evt: self._nudge_position(5.0))
         self.Bind(wx.EVT_BUTTON, self._handle_ok, id=wx.ID_OK)
-        self._loop_preview_button.Bind(wx.EVT_BUTTON, self._handle_loop_preview)
+        self._loop_preview_button.Bind(wx.EVT_BUTTON, self._handle_loop_or_mix_preview)
 
     def _install_shortcuts(self) -> None:
         entries: list[tuple[int, int, int]] = []
@@ -408,7 +419,7 @@ class MixPointEditorDialog(wx.Dialog):
         )
         bind("V", self._preview_active_point, flags=wx.ACCEL_NORMAL)
         bind("V", lambda: self._preview_loop_endpoint(is_start=False), flags=wx.ACCEL_SHIFT)
-        bind("V", self._preview_loop_range, flags=wx.ACCEL_ALT)
+        bind("V", self._handle_loop_or_mix_preview, flags=wx.ACCEL_ALT)
 
         accel = wx.AcceleratorTable(entries)
         self.SetAcceleratorTable(accel)
@@ -517,6 +528,8 @@ class MixPointEditorDialog(wx.Dialog):
             value = max(0.0, self._duration - position)
         else:
             value = position
+        if key == "overlap":
+            value = min(value, self._max_allowed_overlap())
         row.spin.SetValue(value)
         if not row.checkbox.GetValue():
             row.checkbox.SetValue(True)
@@ -538,6 +551,20 @@ class MixPointEditorDialog(wx.Dialog):
         return start_row, end_row
 
     def _handle_loop_preview(self, _event: wx.Event) -> None:
+        self._start_loop_preview(show_error=True)
+
+    def _handle_loop_or_mix_preview(self, _event: wx.Event | None = None) -> None:
+        # zatrzymaj ewentualny bieżący podgląd zanim wystartuje nowy
+        if self._preview_active:
+            self._on_stop_preview()
+            self._preview_active = False
+        active_key = self._ensure_active_row()
+        if active_key in {"segue", "overlap"} and self._on_mix_preview:
+            self._preview_active = False  # oznacz nowy start
+            ok = self._on_mix_preview()
+            if not ok:
+                wx.Bell()
+            return
         self._start_loop_preview(show_error=True)
 
     def _preview_loop_range(self) -> None:
@@ -650,9 +677,40 @@ class MixPointEditorDialog(wx.Dialog):
         row.checkbox.SetLabel(self._format_point_label(row.base_label, value))
 
     def _handle_spin_edit(self, key: str) -> None:
+        if key in {"overlap", "segue", "cue"}:
+            self._clamp_overlap_spin()
         self._update_point_label(key)
         if key in {"loop_start", "loop_end"}:
             self._ensure_loop_consistency()
+
+    def _current_cue_value(self) -> float:
+        cue_row = self._rows.get("cue")
+        if cue_row and cue_row.checkbox.GetValue():
+            return float(cue_row.spin.GetValue())
+        return self._cue_base
+
+    def _current_segue_value(self) -> float:
+        segue_row = self._rows.get("segue")
+        if segue_row and segue_row.checkbox.GetValue():
+            return float(segue_row.spin.GetValue())
+        return 0.0
+
+    def _max_allowed_overlap(self) -> float:
+        cue_val = self._current_cue_value()
+        segue_val = self._current_segue_value()
+        return max(0.0, (self._duration or 0.0) - cue_val - max(0.0, segue_val))
+
+    def _clamp_overlap_spin(self) -> None:
+        overlap_row = self._rows.get("overlap")
+        if not overlap_row:
+            return
+        max_overlap = self._max_allowed_overlap()
+        overlap_row.spin.SetRange(0.0, max_overlap if max_overlap > 0 else 0.0)
+        if overlap_row.checkbox.GetValue():
+            value = float(overlap_row.spin.GetValue())
+            if value > max_overlap:
+                overlap_row.spin.SetValue(max_overlap)
+                self._update_point_label("overlap")
 
     def _toggle_point(self, key: str) -> None:
         row = self._rows[key]
@@ -832,10 +890,13 @@ class MixPointEditorDialog(wx.Dialog):
             elif row.mode == "duration":
                 reference = max(0.0, (self._duration or 0.0) - reference)
             target = reference + delta
-            self._set_position(target, restart_preview=True)
+            # ruch punktu kończy bieżący podgląd
+            self._stop_preview()
+            self._set_position(target, restart_preview=False)
             self._assign_active_point(position=target)
             return
-        self._set_position(self._current_position() + delta, restart_preview=True)
+        self._stop_preview()
+        self._set_position(self._current_position() + delta, restart_preview=False)
 
     def _initialise_slider_value(self, seconds: float) -> None:
         if self._duration <= 0:
@@ -859,6 +920,8 @@ class MixPointEditorDialog(wx.Dialog):
                     final_cue = 0.0
                 continue
             value = float(row.spin.GetValue())
+            if key == "overlap":
+                value = min(value, self._max_allowed_overlap())
             if row.mode == "absolute":
                 results[key] = value
                 if key == "cue":
@@ -878,4 +941,5 @@ class MixPointEditorDialog(wx.Dialog):
             "start": loop_range[0] if loop_range else None,
             "end": loop_range[1] if loop_range else None,
         }
+        results["loop_auto_enabled"] = bool(self._loop_auto_checkbox.GetValue()) if loop_range else False
         return results

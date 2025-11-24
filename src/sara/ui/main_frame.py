@@ -118,6 +118,7 @@ class MainFrame(wx.Frame):
         self._active_break_item: Dict[str, str] = {}  # playlist_id -> item_id z aktywnym breakiem
         self._auto_mix_tracker = AutoMixTracker()  # wirtualny kursor automix niezależny od UI
         self._auto_mix_busy: Dict[str, bool] = {}  # blokada reentrancji per playlist
+        self._last_focus_index: Dict[str, int] = {}
 
         self._ensure_legacy_hooks()
 
@@ -691,7 +692,19 @@ class MainFrame(wx.Frame):
         panel = self._playlists.get(playlist_id)
         if not isinstance(panel, PlaylistPanel):
             return
+        # pobierz aktualne zaznaczenia z kontrolki (lista zdarzenia bywa opóźniona)
+        indices = panel.get_selected_indices()
         playing_id = self._get_playing_item_id(playlist_id)
+        loop_active = False
+        focus_idx = panel.get_focused_index()
+        if focus_idx != wx.NOT_FOUND and 0 <= focus_idx < len(panel.model.items):
+            sel_item = panel.model.items[focus_idx]
+            loop_active = sel_item.has_loop() and (sel_item.loop_enabled or getattr(sel_item, "loop_auto_enabled", False))
+        elif indices:
+            idx0 = indices[0]
+            if 0 <= idx0 < len(panel.model.items):
+                sel_item = panel.model.items[idx0]
+                loop_active = sel_item.has_loop() and (sel_item.loop_enabled or getattr(sel_item, "loop_auto_enabled", False))
 
         # focus-lock logika jak wcześniej
         if self._focus_playing_track:
@@ -703,6 +716,9 @@ class MainFrame(wx.Frame):
                     selected_item = panel.model.items[selected_index]
                     if selected_item.id == playing_id:
                         self._focus_lock[playlist_id] = False
+                        # nie uciekaj wcześniej – pozwól ogłosić pętlę
+                        if loop_active:
+                            self._announce_event("selection", _("Loop enabled"))
                         return
                 self._focus_lock[playlist_id] = True
 
@@ -717,8 +733,7 @@ class MainFrame(wx.Frame):
                     self._last_focus_index[playlist_id] = focus_idx
                 elif idx is not None:
                     self._last_focus_index[playlist_id] = idx
-                if item.loop_enabled and item.has_loop():
-                    self._announce_event("selection", _("Loop enabled"))
+        # komunikat o pętli obsługuje teraz sam wiersz (prefiks „Loop” w tytule/statusie)
 
     def _on_playlist_play_request(self, playlist_id: str, item_id: str) -> None:
         self._play_item_direct(playlist_id, item_id)
@@ -1117,11 +1132,13 @@ class MainFrame(wx.Frame):
         if active:
             playing_item, playing_model = active
             playing_item.loop_enabled = False
+            playing_item.loop_auto_enabled = False
             if not save_loop_metadata(
                 playing_item.path,
                 playing_item.loop_start_seconds,
                 playing_item.loop_end_seconds,
                 playing_item.loop_enabled,
+                playing_item.loop_auto_enabled,
             ):
                 self._announce_event("loop", _("Failed to update loop metadata"))
             self._apply_loop_setting_to_playback(playlist_id=playing_model.id, item_id=playing_item.id)
@@ -1153,7 +1170,14 @@ class MainFrame(wx.Frame):
             return
 
         item.loop_enabled = not item.loop_enabled
-        if not save_loop_metadata(item.path, item.loop_start_seconds, item.loop_end_seconds, item.loop_enabled):
+        item.loop_auto_enabled = item.loop_enabled
+        if not save_loop_metadata(
+            item.path,
+            item.loop_start_seconds,
+            item.loop_end_seconds,
+            item.loop_enabled,
+            item.loop_auto_enabled,
+        ):
             self._announce_event("loop", _("Failed to update loop metadata"))
         self._apply_loop_setting_to_playback(playlist_id=model.id, item_id=item.id)
         state = _("enabled") if item.loop_enabled else _("disabled")
@@ -1263,11 +1287,8 @@ class MainFrame(wx.Frame):
             panel.refresh(indices, focus=bool(indices))
         item = playlist.get_item(item_id)
         if selected:
-            parts: list[str] = []
-            if item.loop_enabled and item.has_loop():
-                parts.append(_("Loop enabled"))
-            parts.append(_("Track %s selected in playlist %s") % (item.title, playlist.name))
-            self._announce_event("selection", ". ".join(parts))
+            # selekcja nie wypowiada dodatkowych informacji (loop jest ogłaszany przy ruchu fokusu)
+            pass
         else:
             self._announce_event("selection", _("Selection removed from %s") % item.title)
 
@@ -1363,6 +1384,7 @@ class MainFrame(wx.Frame):
                 max(0.0, position),
                 loop_range=loop_range,
             ),
+            on_mix_preview=lambda: self._preview_mix_with_next(panel.model, item),
             on_stop_preview=self._playback.stop_preview,
             track_path=item.path,
             initial_replay_gain=item.replay_gain_db,
@@ -1370,6 +1392,7 @@ class MainFrame(wx.Frame):
             loop_start_seconds=item.loop_start_seconds,
             loop_end_seconds=item.loop_end_seconds,
             loop_enabled=item.loop_enabled,
+            loop_auto_enabled=item.loop_auto_enabled,
         )
 
         try:
@@ -1412,20 +1435,30 @@ class MainFrame(wx.Frame):
         loop_defined = bool(loop_info.get("enabled"))
         loop_start = loop_info.get("start")
         loop_end = loop_info.get("end")
+        loop_auto_enabled = bool(result.get("loop_auto_enabled"))
         if loop_defined and loop_start is not None and loop_end is not None and loop_end > loop_start:
             try:
                 item.set_loop(loop_start, loop_end)
             except ValueError as exc:
                 self._announce_event("loop", str(exc))
             else:
-                if not save_loop_metadata(item.path, loop_start, loop_end, item.loop_enabled):
+                item.loop_auto_enabled = loop_auto_enabled
+                item.loop_enabled = loop_auto_enabled or item.loop_enabled
+                if not save_loop_metadata(
+                    item.path,
+                    loop_start,
+                    loop_end,
+                    item.loop_enabled,
+                    item.loop_auto_enabled,
+                ):
                     self._announce_event("loop", _("Failed to update loop metadata"))
                 self._apply_loop_setting_to_playback(playlist_id=playlist_id, item_id=item.id)
                 panel.refresh()
         else:
             if item.has_loop() or item.loop_enabled:
                 item.clear_loop()
-                save_loop_metadata(item.path, None, None)
+                item.loop_auto_enabled = False
+                save_loop_metadata(item.path, None, None, auto_enabled=False)
                 self._apply_loop_setting_to_playback(playlist_id=playlist_id, item_id=item.id)
                 panel.refresh()
 
@@ -1546,10 +1579,7 @@ class MainFrame(wx.Frame):
             return self._auto_mix_start_index(panel, next_idx, restart_playing=restart_playing)
 
         # auto-mix trigger: wyzwól na określonym czasie (segoue/outro/overlap)
-        auto_mix_target_seconds = None
-        mix_trigger_seconds = None
-        if auto_mix_target_seconds is not None:
-            mix_trigger_seconds = max(0.0, auto_mix_target_seconds + (item.cue_in_seconds or 0.0))
+        mix_trigger_seconds = self._compute_mix_trigger_seconds(item)
 
         try:
             result = self._playback.start_item(
@@ -1786,6 +1816,13 @@ class MainFrame(wx.Frame):
                 play_index = self._derive_next_play_index(playlist)
                 preferred_item_id = playlist.items[play_index].id if play_index is not None else None
                 consumed_model_selection = False
+
+        # Tryb ręczny: pozwól ponownie zagrać wybrany utwór nawet jeśli jest PLAYED.
+        if not self._auto_mix_enabled and preferred_item_id:
+            preferred_item = playlist.get_item(preferred_item_id)
+            if preferred_item and preferred_item.status is PlaylistItemStatus.PLAYED:
+                preferred_item.status = PlaylistItemStatus.PENDING
+                preferred_item.current_position = 0.0
 
         item = playlist.begin_next_item(preferred_item_id)
         if not item:
@@ -2046,6 +2083,10 @@ class MainFrame(wx.Frame):
         if item.break_after:
             return
 
+        # Jeśli mamy precyzyjny punkt (segue/overlap/fade sync), pozwól działać wyzwalaczowi playera
+        if self._compute_mix_trigger_seconds(item) is not None:
+            return
+
         key = (playlist.id, item.id)
         already_mixing = self._playback.auto_mix_state.get(key, False)
 
@@ -2073,10 +2114,37 @@ class MainFrame(wx.Frame):
             force_automix_sequence=True,
         )
         if started and self._fade_duration > 0.0:
+            fade_duration = min(self._fade_duration, remaining)
             try:
-                context_entry.player.fade_out(self._fade_duration)
+                context_entry.player.fade_out(fade_duration)
             except Exception:
                 pass
+
+    def _auto_mix_now(self, playlist: PlaylistModel, item: PlaylistItem, panel: PlaylistPanel) -> None:
+        """Wyzwól miks natychmiast z precyzyjnego punktu (segue/overlap/fade sync z BASS)."""
+        key = (playlist.id, item.id)
+        if self._playback.auto_mix_state.get(key):
+            return
+        self._playback.auto_mix_state[key] = True
+        remaining = max(0.0, item.effective_duration_seconds - item.current_position)
+        started = self._start_next_from_playlist(
+            panel,
+            ignore_ui_selection=True,
+            advance_focus=True,
+            restart_playing=False,
+            force_automix_sequence=True,
+        )
+        if started and self._fade_duration > 0.0:
+            fade_duration = min(self._fade_duration, remaining)
+            ctx = self._playback.contexts.get(key)
+            if ctx:
+                try:
+                    ctx.player.fade_out(fade_duration)
+                except Exception:
+                    pass
+        else:
+            # jeśli nie udało się wystartować, oczyść flagę, aby fallback mógł spróbować ponownie
+            self._playback.auto_mix_state.pop(key, None)
 
     def _on_playlist_hotkey(self, event: wx.CommandEvent) -> None:
         action = self._action_by_id.get(event.GetId())
@@ -2242,6 +2310,7 @@ class MainFrame(wx.Frame):
                     "outro": item.outro_seconds,
                     "loop_start": item.loop_start_seconds,
                     "loop_end": item.loop_end_seconds,
+                    "loop_auto_enabled": item.loop_auto_enabled,
                     "loop_enabled": item.loop_enabled,
                 }
             )
@@ -2249,6 +2318,8 @@ class MainFrame(wx.Frame):
 
     def _create_item_from_serialized(self, data: Dict[str, Any]) -> PlaylistItem:
         path = Path(data["path"])
+        loop_auto_enabled = bool(data.get("loop_auto_enabled"))
+        loop_enabled = bool(data.get("loop_enabled")) or loop_auto_enabled
         item = self._playlist_factory.create_item(
             path=path,
             title=data.get("title", path.stem),
@@ -2262,7 +2333,8 @@ class MainFrame(wx.Frame):
             outro_seconds=data.get("outro"),
             loop_start_seconds=data.get("loop_start"),
             loop_end_seconds=data.get("loop_end"),
-            loop_enabled=bool(data.get("loop_enabled")),
+            loop_auto_enabled=loop_auto_enabled,
+            loop_enabled=loop_enabled,
         )
         return item
 
@@ -2357,6 +2429,7 @@ class MainFrame(wx.Frame):
             outro_seconds=metadata.outro_seconds,
             loop_start_seconds=metadata.loop_start_seconds,
             loop_end_seconds=metadata.loop_end_seconds,
+            loop_auto_enabled=metadata.loop_auto_enabled,
             loop_enabled=metadata.loop_enabled,
         )
 
@@ -2986,6 +3059,50 @@ class MainFrame(wx.Frame):
 
     def _announce(self, message: str) -> None:
         self._announce_event("general", message)
+
+    def _compute_mix_trigger_seconds(self, item: PlaylistItem) -> float | None:
+        """Calculate absolute time (seconds) to trigger automix/crossfade."""
+        base = item.cue_in_seconds or 0.0
+        # Priorytety: segue -> overlap (nadpisuje domyślny fade) -> domyślny fade (outro nie wyzwala miksu)
+        if item.segue_seconds is not None:
+            return base + max(0.0, item.segue_seconds)
+        if item.overlap_seconds is not None:
+            return base + max(0.0, item.effective_duration_seconds - item.overlap_seconds)
+        if self._fade_duration > 0.0:
+            return base + max(0.0, item.effective_duration_seconds - self._fade_duration)
+        return None
+
+    def _preview_mix_with_next(self, playlist: PlaylistModel, item: PlaylistItem) -> bool:
+        """Start a short PFL preview of the mix with the next track."""
+        if len(playlist.items) < 2:
+            self._announce_event("pfl", _("No next track to mix"))
+            return False
+        idx = self._index_of_item(playlist, item.id)
+        if idx is None:
+            self._announce_event("pfl", _("No next track to mix"))
+            return False
+        next_idx = (idx + 1) % len(playlist.items)
+        if next_idx == idx:
+            self._announce_event("pfl", _("No next track to mix"))
+            return False
+        next_item = playlist.items[next_idx]
+
+        mix_at = self._compute_mix_trigger_seconds(item)
+        if mix_at is None:
+            mix_at = (item.cue_in_seconds or 0.0) + max(0.0, item.effective_duration_seconds - self._fade_duration)
+        pre_seconds = 4.0
+        fade_seconds = item.overlap_seconds if item.overlap_seconds is not None else self._fade_duration
+
+        ok = self._playback.start_mix_preview(
+            item,
+            next_item,
+            mix_at_seconds=mix_at,
+            pre_seconds=pre_seconds,
+            fade_seconds=fade_seconds,
+        )
+        if not ok:
+            self._announce_event("pfl", _("No next track to mix"))
+        return ok
 
 
 class ManagePlaylistsDialog(wx.Dialog):
