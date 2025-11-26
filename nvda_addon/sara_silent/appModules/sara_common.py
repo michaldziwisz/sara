@@ -304,6 +304,10 @@ class AppModule(AppModule):
     def _refresh_manual_speech_window(self, obj: Any) -> None:
         if not self._is_manual_speech_active():
             return
+        _text, reason = _describe_window(obj)
+        # Nie przedłużaj okna mowy, jeśli fokus wskakuje na grający wpis (automix).
+        if reason == "playing":
+            return
         self._allow_playlist_speech_window(obj)
 
     def _allow_playlist_speech_window(self, obj: Any, *, force: bool = False) -> None:
