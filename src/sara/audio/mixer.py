@@ -593,6 +593,14 @@ class MixerPlayer:
         if self._source_id:
             self._mixer.update_callbacks(self._source_id, on_progress=callback, on_finished=self._finished_cb)
 
+    def set_mix_trigger(
+        self,
+        mix_trigger_seconds: float | None,
+        on_mix_trigger: Callable[[], None] | None,
+    ) -> None:
+        # DeviceMixer nie obsługuje hardware'owego triggera miksu – metoda dla kompatybilności.
+        return
+
     def set_gain_db(self, gain_db: Optional[float]) -> None:
         if self._source_id:
             self._mixer.set_gain_db(self._source_id, gain_db)
@@ -604,3 +612,6 @@ class MixerPlayer:
             self._mixer.set_loop(self._source_id, None)
             return
         self._mixer.set_loop(self._source_id, (start_seconds, end_seconds))
+
+    def supports_mix_trigger(self) -> bool:
+        return False

@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from sara.ui import speech
+from sara.core.env import is_e2e_mode
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,10 @@ _PLAY_NEXT_SIGNAL_FILE = "nvda_play_next_signal.txt"
 
 def ensure_nvda_sleep_mode() -> None:
     """Ensure NVDA loads an app module that keeps it in sleep mode for this process."""
+
+    if is_e2e_mode():
+        logger.info("SARA_E2E enabled – skipping NVDA sleep module install")
+        return
 
     appdata = os.environ.get("APPDATA")
     if not appdata:

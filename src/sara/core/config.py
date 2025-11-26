@@ -12,6 +12,7 @@ import yaml
 from sara.core.shortcuts import ensure_defaults
 from sara.core.announcement_registry import ANNOUNCEMENT_CATEGORIES
 from sara.core.playlist import PlaylistKind
+from sara.core.env import resolve_config_path
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "general": {
@@ -106,6 +107,7 @@ class SettingsManager:
     config_path: Path = Path("config/settings.yaml")
 
     def __post_init__(self) -> None:
+        self.config_path = resolve_config_path(self.config_path)
         self._data: Dict[str, Any] = {}
         self._user_config: Dict[str, Any] = {}
         self.load()

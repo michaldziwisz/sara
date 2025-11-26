@@ -16,6 +16,8 @@ from threading import Event, Lock, Thread, Timer, current_thread
 from typing import Callable, Dict, List, Optional, Protocol
 import warnings
 
+from sara.core.env import is_e2e_mode
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -96,11 +98,19 @@ class Player(Protocol):
 
     def set_progress_callback(self, callback: Optional[Callable[[str, float], None]]) -> None: ...
 
+    def set_mix_trigger(
+        self,
+        mix_trigger_seconds: Optional[float],
+        on_mix_trigger: Optional[Callable[[], None]],
+    ) -> None: ...
+
     def set_gain_db(self, gain_db: Optional[float]) -> None: ...
 
     def set_loop(self, start_seconds: Optional[float], end_seconds: Optional[float]) -> None: ...
 
     def set_gain_db(self, gain_db: Optional[float]) -> None: ...
+
+    def supports_mix_trigger(self) -> bool: ...
 
 
 class BackendProvider(Protocol):
@@ -229,9 +239,13 @@ class MockPlayer:
     def set_progress_callback(self, callback: Optional[Callable[[str, float], None]]) -> None:  # noqa: D401
         self._on_progress = callback
 
-    def set_mix_callback(self, callback: Optional[Callable[[], None]]) -> None:
-        # kompatybilność z interfejsem BassPlayer
-        pass
+    def set_mix_trigger(
+        self,
+        mix_trigger_seconds: Optional[float],
+        on_mix_trigger: Optional[Callable[[], None]],
+    ) -> None:
+        # Mock nie implementuje realnych triggerów miksu; zapamiętaj callback dla zgodności.
+        self._on_mix_trigger = on_mix_trigger  # type: ignore[attr-defined]
 
     def set_gain_db(self, gain_db: Optional[float]) -> None:  # noqa: D401
         self._gain_db = gain_db
@@ -243,6 +257,9 @@ class MockPlayer:
             return
         self._loop_start = max(0.0, start_seconds)
         self._loop_end = end_seconds
+
+    def supports_mix_trigger(self) -> bool:
+        return False
 
     # kompatybilność – w prawdziwym playerze wywoływane przy play
     def _apply_loop_settings(self) -> None:
@@ -270,6 +287,29 @@ class MockPlayer:
             else:
                 self._timer = Timer(0.1, self._tick)
                 self._timer.start()
+
+
+class MockBackendProvider:
+    """Backend dla testów E2E bez realnych urządzeń audio."""
+
+    backend = BackendType.WASAPI
+
+    def __init__(self, label: str = "Mock Device") -> None:
+        self._label = label
+
+    def list_devices(self) -> List[AudioDevice]:
+        return [
+            AudioDevice(
+                id="mock:default",
+                name=self._label,
+                backend=self.backend,
+                raw_index=None,
+                is_default=True,
+            )
+        ]
+
+    def create_player(self, device: AudioDevice) -> Player:
+        return MockPlayer(device)
 
 
 _TRANSCODE_EXTENSIONS = {".mp4", ".m4a", ".m4v"}
@@ -720,6 +760,14 @@ class SoundDevicePlayer:
         with self._lock:
             self._on_progress = callback
 
+    def set_mix_trigger(
+        self,
+        mix_trigger_seconds: Optional[float],
+        on_mix_trigger: Optional[Callable[[], None]],
+    ) -> None:
+        # sounddevice backend nie obsługuje natywnego triggera miksu; metoda dla kompatybilności.
+        return
+
     def set_gain_db(self, gain_db: Optional[float]) -> None:  # noqa: D401
         with self._lock:
             if gain_db is None:
@@ -766,6 +814,9 @@ class SoundDevicePlayer:
         self._loop_start_frame = start_frame
         self._loop_end_frame = end_frame
         self._loop_active = True
+
+    def supports_mix_trigger(self) -> bool:
+        return False
 
 
 class WasapiPlayer(SoundDevicePlayer):
@@ -921,27 +972,33 @@ class AudioEngine:
 
     def __init__(self) -> None:
         self._providers: List[BackendProvider] = []
-        backend_cls = BassBackend
-        if backend_cls is None:
-            try:
-                from sara.audio import bass as _bass_mod  # type: ignore
-            except Exception as exc:  # pylint: disable=broad-except
-                logger.error("Nie udało się zaimportować backendu BASS: %s", exc)
-            else:
-                backend_cls = getattr(_bass_mod, "BassBackend", None)
-        if backend_cls is None:
-            logger.error("Backend BASS nie jest dostępny (brak klasy BassBackend)")
+        if is_e2e_mode() or os.environ.get("SARA_FORCE_MOCK_AUDIO"):
+            self._providers.append(MockBackendProvider(label="SARA E2E Mock"))
         else:
-            try:
-                bass_backend = backend_cls()
-                if getattr(bass_backend, "is_available", False):
-                    bass_backend.backend = BackendType.BASS
-                    self._providers.append(bass_backend)
+            backend_cls = BassBackend
+            if backend_cls is None:
+                try:
+                    from sara.audio import bass as _bass_mod  # type: ignore
+                except Exception as exc:  # pylint: disable=broad-except
+                    logger.error("Nie udało się zaimportować backendu BASS: %s", exc)
                 else:
-                    logger.error("Backend BASS niedostępny (is_available=False)")
-            except Exception as exc:  # pylint: disable=broad-except
-                logger.error("Inicjalizacja backendu BASS nie powiodła się: %s", exc)
+                    backend_cls = getattr(_bass_mod, "BassBackend", None)
+            if backend_cls is None:
+                logger.error("Backend BASS nie jest dostępny (brak klasy BassBackend)")
+            else:
+                try:
+                    bass_backend = backend_cls()
+                    if getattr(bass_backend, "is_available", False):
+                        bass_backend.backend = BackendType.BASS
+                        self._providers.append(bass_backend)
+                    else:
+                        logger.error("Backend BASS niedostępny (is_available=False)")
+                except Exception as exc:  # pylint: disable=broad-except
+                    logger.error("Inicjalizacja backendu BASS nie powiodła się: %s", exc)
         # Backend BASS ASIO wyłączony na teraz – zostawiamy tylko standardowy BASS
+        if not self._providers:
+            logger.warning("Brak dostępnych backendów audio – przełączam na Mock")
+            self._providers.append(MockBackendProvider(label="Mock fallback"))
         self._devices: Dict[str, AudioDevice] = {}
         self._players: Dict[str, Player] = {}
 
@@ -991,7 +1048,9 @@ class AudioEngine:
             raise ValueError(f"Nieznane urządzenie: {device_id}")
 
         provider = self._get_provider(device.backend)
-        return provider.create_player(device)
+        player = provider.create_player(device)
+        self._players[device_id] = player
+        return player
 
     def _get_provider(self, backend: BackendType) -> BackendProvider:
         for provider in self._providers:
@@ -1000,7 +1059,7 @@ class AudioEngine:
         raise ValueError(f"Brak providera dla backendu {backend}")
 
     def stop_all(self) -> None:
-        for player in self._players.values():
+        for player in list(self._players.values()):
             try:
                 player.stop()
             except Exception as exc:  # pylint: disable=broad-except

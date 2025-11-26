@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from importlib.resources import as_file, files
+from dataclasses import dataclass
 import logging
 import os
 import tempfile
@@ -52,6 +53,19 @@ logger = logging.getLogger(__name__)
 
 
 FADE_DURATION_SECONDS = 2.0
+MIX_NATIVE_EARLY_GUARD = 0.25
+MIX_NATIVE_LATE_GUARD = 0.35
+MIX_EXPLICIT_PROGRESS_GUARD = 0.05
+
+
+@dataclass
+class MixPlan:
+    mix_at: float | None
+    fade_seconds: float
+    base_cue: float
+    effective_duration: float
+    native_trigger: bool
+    triggered: bool = False
 
 
 class MainFrame(wx.Frame):
@@ -68,6 +82,7 @@ class MainFrame(wx.Frame):
         **kwargs,
     ) -> None:
         super().__init__(parent=parent, id=wx.ID_ANY, title=self.TITLE, size=(1200, 800), **kwargs)
+        self.SetName("sara_main_frame")
         self._settings = settings or SettingsManager()
         set_language(self._settings.get_language())
         if not self._settings.config_path.exists():
@@ -116,6 +131,8 @@ class MainFrame(wx.Frame):
         self._intro_alert_players: list[Tuple[Player, Path]] = []
         self._last_started_item_id: Dict[str, str | None] = {}
         self._active_break_item: Dict[str, str] = {}  # playlist_id -> item_id z aktywnym breakiem
+        self._mix_trigger_points: Dict[tuple[str, str], float] = {}  # (playlist_id, item_id) -> absolute mix_at seconds
+        self._mix_plans: Dict[tuple[str, str], MixPlan] = {}
         self._auto_mix_tracker = AutoMixTracker()  # wirtualny kursor automix niezależny od UI
         self._auto_mix_busy: Dict[str, bool] = {}  # blokada reentrancji per playlist
         self._last_focus_index: Dict[str, int] = {}
@@ -1105,16 +1122,52 @@ class MainFrame(wx.Frame):
         dialog.Destroy()
 
     def _on_toggle_auto_mix(self, event: wx.CommandEvent) -> None:
-        self._auto_mix_enabled = not self._auto_mix_enabled
-        if not self._auto_mix_enabled:
+        self._set_auto_mix_enabled(not self._auto_mix_enabled)
+
+    def _set_auto_mix_enabled(self, enabled: bool, *, reason: str | None = None) -> None:
+        if self._auto_mix_enabled == enabled:
+            return
+        self._auto_mix_enabled = enabled
+        if not enabled:
             self._playback.clear_auto_mix()
-        status = _("enabled") if self._auto_mix_enabled else _("disabled")
-        self._announce_event("auto_mix", _("Auto mix %s") % status)
-        if self._auto_mix_enabled:
+        if reason:
+            self._announce_event("auto_mix", reason)
+        else:
+            status = _("enabled") if enabled else _("disabled")
+            self._announce_event("auto_mix", _("Auto mix %s") % status)
+        if enabled:
+            # jeśli automix włączamy podczas odtwarzania, ustaw tracker na bieżące utwory
+            for (pl_id, item_id) in list(getattr(self._playback, "contexts", {}).keys()):
+                try:
+                    self._auto_mix_tracker.set_last_started(pl_id, item_id)
+                except Exception:
+                    pass
             panel = self._get_current_music_panel()
-            if panel is not None and self._get_playback_context(panel.model.id) is None:
-                if not self._start_next_from_playlist(panel, ignore_ui_selection=False, advance_focus=False):
-                    self._announce_event("playback_events", _("No scheduled tracks available"))
+            if panel is not None:
+                playlist = getattr(panel, "model", None)
+                if playlist and self._get_playback_context(playlist.id) is None:
+                    items = getattr(playlist, "items", [])
+                    if items:
+                        target_idx = self._preferred_auto_mix_index(panel, len(items))
+                        if not self._auto_mix_start_index(panel, target_idx, restart_playing=False):
+                            self._announce_event("playback_events", _("No scheduled tracks available"))
+                    else:
+                        self._announce_event("playback_events", _("No scheduled tracks available"))
+
+    def _preferred_auto_mix_index(self, panel: PlaylistPanel, item_count: int) -> int:
+        try:
+            selected = panel.get_selected_indices()
+        except Exception:
+            selected = []
+        idx = selected[0] if selected else None
+        if idx is None:
+            try:
+                focus_idx = panel.get_focused_index()
+            except Exception:
+                focus_idx = wx.NOT_FOUND
+            idx = focus_idx if focus_idx != wx.NOT_FOUND else 0
+        idx = max(0, min(idx, max(0, item_count - 1)))
+        return idx
 
     def _on_toggle_loop_playback(self, _event: wx.CommandEvent) -> None:
         # 1) Jeśli gdziekolwiek gra pętla – wyłącz ją globalnie, niezależnie od zaznaczenia/playlisty.
@@ -1267,6 +1320,141 @@ class MainFrame(wx.Frame):
                     context.player.set_loop(None, None)
             except Exception as exc:  # pylint: disable=broad-except
                 logger.debug("Failed to synchronise playback loop: %s", exc)
+            self._sync_loop_mix_trigger(panel=self._playlists.get(pl_id), playlist=playlist, item=item, context=context)
+
+    def _sync_loop_mix_trigger(
+        self,
+        *,
+        panel: PlaylistPanel | None,
+        playlist: PlaylistModel,
+        item: PlaylistItem,
+        context: PlaybackContext,
+    ) -> None:
+        key = (playlist.id, item.id)
+        if item.loop_enabled and item.has_loop():
+            self._playback.auto_mix_state[key] = "loop_hold"
+            self._playback.update_mix_trigger(
+                playlist.id,
+                item.id,
+                mix_trigger_seconds=None,
+                on_mix_trigger=None,
+            )
+            self._clear_mix_plan(playlist.id, item.id)
+            logger.debug("UI: loop_hold active, mix trigger cleared playlist=%s item=%s", playlist.id, item.id)
+            return
+
+        if self._playback.auto_mix_state.get(key) == "loop_hold":
+            self._playback.auto_mix_state.pop(key, None)
+
+        effective_override = None
+        getter = getattr(context.player, "get_length_seconds", None)
+        if getter:
+            try:
+                total_len = float(getter())
+                if total_len > 0.0:
+                    effective_override = max(0.0, total_len - (item.cue_in_seconds or 0.0))
+            except Exception:
+                effective_override = None
+
+        native_trigger = self._supports_mix_trigger(context.player)
+        mix_at, fade_seconds, base_cue, effective_duration = self._resolve_mix_timing(
+            item,
+            effective_duration_override=effective_override,
+        )
+        if mix_at is None:
+            self._clear_mix_plan(playlist.id, item.id)
+            return
+        current_abs = (item.cue_in_seconds or 0.0) + (item.current_position or 0.0)
+        if current_abs >= mix_at - 0.05:
+            logger.debug(
+                "UI: loop disabled but mix point already passed playlist=%s item=%s current=%.3f mix_at=%.3f -> no trigger",
+                playlist.id,
+                item.id,
+                current_abs,
+                mix_at,
+            )
+            return
+        self._register_mix_plan(
+            playlist.id,
+            item.id,
+            mix_at=mix_at,
+            fade_seconds=fade_seconds,
+            base_cue=base_cue,
+            effective_duration=effective_duration,
+            native_trigger=native_trigger,
+        )
+        if native_trigger:
+            self._playback.update_mix_trigger(
+                playlist.id,
+                item.id,
+                mix_trigger_seconds=mix_at,
+                on_mix_trigger=(lambda: self._auto_mix_now(playlist, item, panel)) if panel else None,
+            )
+        logger.debug(
+            "UI: loop disabled -> rescheduled mix trigger playlist=%s item=%s mix_at=%.3f fade=%.3f current=%.3f native=%s",
+            playlist.id,
+            item.id,
+            mix_at,
+            fade_seconds,
+            current_abs,
+            native_trigger,
+        )
+
+    def _apply_mix_trigger_to_playback(self, *, playlist_id: str, item: PlaylistItem, panel: PlaylistPanel) -> None:
+        if item.break_after:
+            cleared = self._playback.update_mix_trigger(
+                playlist_id,
+                item.id,
+                mix_trigger_seconds=None,
+                on_mix_trigger=None,
+            )
+            if cleared:
+                logger.debug("UI: cleared mix trigger for break item playlist=%s item=%s", playlist_id, item.id)
+            self._clear_mix_plan(playlist_id, item.id)
+            return
+
+        ctx = self._playback.contexts.get((playlist_id, item.id))
+        effective_override = None
+        if ctx:
+            getter = getattr(ctx.player, "get_length_seconds", None)
+            if getter:
+                try:
+                    total_len = float(getter())
+                    effective_override = max(0.0, total_len - (item.cue_in_seconds or 0.0))
+                except Exception:
+                    pass
+
+        mix_trigger_seconds, fade_seconds, base_cue, effective_duration = self._resolve_mix_timing(
+            item,
+            effective_duration_override=effective_override,
+        )
+        native_trigger = self._supports_mix_trigger(ctx.player if ctx else None)
+        self._register_mix_plan(
+            playlist_id,
+            item.id,
+            mix_at=mix_trigger_seconds,
+            fade_seconds=fade_seconds,
+            base_cue=base_cue,
+            effective_duration=effective_duration,
+            native_trigger=native_trigger,
+        )
+        updated = False
+        if native_trigger and mix_trigger_seconds is not None:
+            updated = self._playback.update_mix_trigger(
+                playlist_id,
+                item.id,
+                mix_trigger_seconds=mix_trigger_seconds,
+                on_mix_trigger=lambda: self._auto_mix_now(panel.model, item, panel),
+            )
+        logger.debug(
+            "UI: rescheduled mix trigger playlist=%s item=%s mix_at=%s fade=%.3f native=%s applied=%s",
+            playlist_id,
+            item.id,
+            f"{mix_trigger_seconds:.3f}" if mix_trigger_seconds is not None else "None",
+            fade_seconds,
+            native_trigger,
+            updated,
+        )
 
     def _on_toggle_selection(self, playlist_id: str, item_id: str) -> None:
         if self._auto_mix_enabled:
@@ -1297,6 +1485,16 @@ class MainFrame(wx.Frame):
         playlist = panel.model
         if not playlist.items:
             return False
+
+        # jeśli aktywna jest pętla z loop_hold – zatrzymaj ją z fade i idź dalej
+        loop_hold_keys = [key for key, state in self._playback.auto_mix_state.items() if state == "loop_hold" and key[0] == playlist.id]
+        if loop_hold_keys:
+            try:
+                self._stop_playlist_playback(playlist.id, mark_played=True, fade_duration=max(0.0, self._fade_duration))
+            except Exception:
+                logger.debug("UI: failed to stop loop_hold playback playlist=%s", playlist.id)
+            for key in loop_hold_keys:
+                self._playback.auto_mix_state.pop(key, None)
 
         if self._auto_mix_busy.get(playlist.id):
             logger.debug("UI: automix play_next ignored (busy) playlist=%s", playlist.id)
@@ -1384,7 +1582,7 @@ class MainFrame(wx.Frame):
                 max(0.0, position),
                 loop_range=loop_range,
             ),
-            on_mix_preview=lambda: self._preview_mix_with_next(panel.model, item),
+            on_mix_preview=lambda values: self._preview_mix_with_next(panel.model, item, overrides=values),
             on_stop_preview=self._playback.stop_preview,
             track_path=item.path,
             initial_replay_gain=item.replay_gain_db,
@@ -1428,8 +1626,15 @@ class MainFrame(wx.Frame):
             self._announce_event("pfl", _("Failed to update mix metadata"))
         else:
             self._announce_event("pfl", _("Updated mix points for %s") % item.title)
+            self._propagate_mix_points_for_path(
+                path=item.path,
+                mix_values=mix_values,
+                source_playlist_id=playlist_id,
+                source_item_id=item.id,
+            )
 
         panel.refresh()
+        self._apply_mix_trigger_to_playback(playlist_id=playlist_id, item=item, panel=panel)
 
         loop_info = result.get("loop") or {}
         loop_defined = bool(loop_info.get("enabled"))
@@ -1461,6 +1666,51 @@ class MainFrame(wx.Frame):
                 save_loop_metadata(item.path, None, None, auto_enabled=False)
                 self._apply_loop_setting_to_playback(playlist_id=playlist_id, item_id=item.id)
                 panel.refresh()
+
+    def _propagate_mix_points_for_path(
+        self,
+        *,
+        path: Path,
+        mix_values: dict[str, float | None],
+        source_playlist_id: str,
+        source_item_id: str,
+    ) -> None:
+        context_map = getattr(self._playback, "contexts", {}) if hasattr(self._playback, "contexts") else {}
+        refreshed: set[str] = set()
+        for pl_id, panel in self._playlists.items():
+            playlist = getattr(panel, "model", None)
+            if playlist is None:
+                continue
+            updated = False
+            for track in playlist.items:
+                if track.path != path or (pl_id == source_playlist_id and track.id == source_item_id):
+                    continue
+                changed = False
+                for key, attr in (
+                    ("cue_in", "cue_in_seconds"),
+                    ("intro", "intro_seconds"),
+                    ("outro", "outro_seconds"),
+                    ("segue", "segue_seconds"),
+                    ("overlap", "overlap_seconds"),
+                ):
+                    new_val = mix_values.get(key)
+                    if getattr(track, attr) != new_val:
+                        setattr(track, attr, new_val)
+                        changed = True
+                if changed:
+                    updated = True
+                    key = (pl_id, track.id)
+                    if context_map.get(key):
+                        self._apply_mix_trigger_to_playback(playlist_id=pl_id, item=track, panel=panel)
+                    else:
+                        self._clear_mix_plan(pl_id, track.id)
+            if updated and hasattr(panel, "refresh"):
+                if pl_id not in refreshed:
+                    try:
+                        panel.refresh()
+                    except TypeError:
+                        panel.refresh()
+                    refreshed.add(pl_id)
 
     def _start_playback(
         self,
@@ -1579,7 +1829,39 @@ class MainFrame(wx.Frame):
             return self._auto_mix_start_index(panel, next_idx, restart_playing=restart_playing)
 
         # auto-mix trigger: wyzwól na określonym czasie (segoue/outro/overlap)
-        mix_trigger_seconds = self._compute_mix_trigger_seconds(item)
+        mix_trigger_seconds: float | None
+        fade_seconds: float = 0.0
+        base_cue: float = item.cue_in_seconds or 0.0
+        effective_duration: float = item.effective_duration_seconds
+
+        if playlist.kind is PlaylistKind.MUSIC and item.break_after:
+            mix_trigger_seconds = None
+            on_mix_trigger: Callable[[], None] | None = None
+        else:
+            effective_override = None
+            ctx = self._playback.contexts.get((playlist.id, item.id))
+            if ctx:
+                getter = getattr(ctx.player, "get_length_seconds", None)
+                if getter:
+                    try:
+                        total_len = float(getter())
+                        effective_override = max(0.0, total_len - base_cue)
+                        length_diff = abs(effective_override - effective_duration)
+                        if length_diff > 0.5:
+                            logger.debug(
+                                "UI: adjusting mix timing with player length playlist=%s item=%s meta_eff=%.3f real_eff=%.3f",
+                                playlist.id,
+                                item.id,
+                                effective_duration,
+                                effective_override,
+                            )
+                    except Exception:
+                        pass
+            mix_trigger_seconds, fade_seconds, base_cue, effective_duration = self._resolve_mix_timing(
+                item,
+                effective_duration_override=effective_override,
+            )
+            on_mix_trigger = lambda: self._auto_mix_now(playlist, item, panel)
 
         try:
             result = self._playback.start_item(
@@ -1590,7 +1872,17 @@ class MainFrame(wx.Frame):
                 on_progress=_on_progress,
                 restart_if_playing=restart_playing,
                 mix_trigger_seconds=mix_trigger_seconds,
-                on_mix_trigger=lambda: self._auto_mix_now(playlist, item, panel),
+                on_mix_trigger=on_mix_trigger,
+            )
+            logger.debug(
+                "UI: mix trigger scheduled item=%s mix_at=%s fade=%.3f cue=%.3f effective=%.3f seg=%s ovl=%s",
+                item.id,
+                f"{mix_trigger_seconds:.3f}" if mix_trigger_seconds is not None else "None",
+                fade_seconds,
+                base_cue,
+                effective_duration,
+                getattr(item, 'segue_seconds', None),
+                getattr(item, 'overlap_seconds', None),
             )
         except Exception as exc:  # pylint: disable=broad-except
             logger.exception(
@@ -1613,6 +1905,17 @@ class MainFrame(wx.Frame):
             device_id or getattr(result, "device_id", None),
             slot_index or getattr(result, "slot_index", None),
         )
+        native_trigger = self._supports_mix_trigger(result.player)
+        self._register_mix_plan(
+            playlist.id,
+            item.id,
+            mix_at=mix_trigger_seconds,
+            fade_seconds=fade_seconds,
+            base_cue=base_cue,
+            effective_duration=effective_duration,
+            native_trigger=native_trigger,
+        )
+        self._adjust_duration_and_mix_trigger(panel, playlist, item, result)
 
         previous_selection = panel.get_selected_indices()
         previous_focus = panel.get_focused_index()
@@ -1644,10 +1947,46 @@ class MainFrame(wx.Frame):
         if playlist.kind is PlaylistKind.MUSIC and item.break_after:
             self._playback.auto_mix_state[(playlist.id, item.id)] = "break_halt"
             self._active_break_item[playlist.id] = item.id
+        self._sync_loop_mix_trigger(panel=panel, playlist=playlist, item=item, context=result)
         self._maybe_focus_playing_item(panel, item.id)
         if item.has_loop() and item.loop_enabled:
             self._announce_event("loop", _("Loop playing"))
         return True
+
+    def _adjust_duration_and_mix_trigger(
+        self,
+        panel: PlaylistPanel,
+        playlist: PlaylistModel,
+        item: PlaylistItem,
+        context: PlaybackContext,
+    ) -> None:
+        getter = getattr(context.player, "get_length_seconds", None)
+        if not getter:
+            return
+        try:
+            length_seconds = float(getter())
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.debug("UI: failed to read track length from player: %s", exc)
+            return
+        if length_seconds <= 0:
+            return
+        cue = item.cue_in_seconds or 0.0
+        effective_actual = max(0.0, length_seconds - cue)
+        effective_meta = item.effective_duration_seconds
+        if abs(effective_actual - effective_meta) <= 0.5:
+            return
+        item.duration_seconds = cue + effective_actual
+        item.current_position = min(item.current_position, effective_actual)
+        logger.debug(
+            "UI: adjusted duration from player playlist=%s item=%s effective_meta=%.3f effective_real=%.3f cue=%.3f",
+            playlist.id,
+            item.id,
+            effective_meta,
+            effective_actual,
+            cue,
+        )
+        if not item.break_after and not (item.loop_enabled and item.has_loop()):
+            self._apply_mix_trigger_to_playback(playlist_id=playlist.id, item=item, panel=panel)
 
     def _start_next_from_playlist(
         self,
@@ -1678,7 +2017,21 @@ class MainFrame(wx.Frame):
             if total == 0:
                 return False
 
-            next_idx = self._auto_mix_tracker.next_index(playlist, break_resume_index=playlist.break_resume_index)
+            # prefer aktualnie grający indeks, żeby uniknąć restartu bieżącego utworu
+            current_ctx = self._get_playback_context(playlist.id)
+            current_idx = None
+            if current_ctx:
+                current_idx = self._index_of_item(playlist, current_ctx[0][1])
+
+            if total == 1:
+                if current_ctx:
+                    # jedna pozycja i już gra -> nie restartuj ani nie zawijaj
+                    return True
+                next_idx = 0
+            elif current_idx is not None and current_idx >= 0:
+                next_idx = (current_idx + 1) % total
+            else:
+                next_idx = self._auto_mix_tracker.next_index(playlist, break_resume_index=playlist.break_resume_index)
             playlist.break_resume_index = None
 
             logger.debug(
@@ -1689,6 +2042,23 @@ class MainFrame(wx.Frame):
                 self._auto_mix_tracker._last_item_id.get(playlist.id),
             )
             self._auto_mix_tracker.stage_next(playlist.id, playlist.items[next_idx].id)
+
+            # nie restartuj aktualnie grającego utworu – wybierz kolejny pending
+            current_ctx = self._get_playback_context(playlist.id)
+            if (
+                current_ctx
+                and current_ctx[0][1] == playlist.items[next_idx].id
+                and playlist.items[next_idx].status is PlaylistItemStatus.PLAYING
+            ):
+                next_idx = (next_idx + 1) % total
+                logger.debug(
+                    "UI: automix sequence skipping current playing item, advancing to idx=%s id=%s",
+                    next_idx,
+                    getattr(playlist.items[next_idx], "id", None),
+                )
+                if playlist.items[next_idx].status is PlaylistItemStatus.PLAYING:
+                    logger.debug("UI: automix sequence found no non-playing item to start; aborting mix")
+                    return True
 
             return self._auto_mix_start_index(panel, next_idx, restart_playing=restart_playing)
 
@@ -1958,6 +2328,7 @@ class MainFrame(wx.Frame):
     def _handle_playback_finished(self, playlist_id: str, item_id: str) -> None:
         logger.debug("UI: playback finished callback playlist=%s item=%s", playlist_id, item_id)
         self._playback.auto_mix_state.pop((playlist_id, item_id), None)
+        self._clear_mix_plan(playlist_id, item_id)
         context = self._playback.contexts.pop((playlist_id, item_id), None)
         if context:
             try:
@@ -2035,6 +2406,12 @@ class MainFrame(wx.Frame):
         # bez breaka: aktualizuj kursor automix na kolejny sekwencyjnie
         if self._auto_mix_enabled and model.kind is PlaylistKind.MUSIC and model.items:
             self._auto_mix_tracker.set_last_started(playlist_id, item_id)
+            # Jeśli miks nie wystartował (brak aktywnego kontekstu), odpal awaryjnie następny w sekwencji.
+            if self._get_playback_context(playlist_id) is None:
+                try:
+                    self._auto_mix_play_next(panel)
+                except Exception:
+                    logger.exception("UI: auto fallback after finish failed playlist=%s", playlist_id)
 
     def _handle_playback_progress(self, playlist_id: str, item_id: str, seconds: float) -> None:
         context_entry = self._playback.contexts.get((playlist_id, item_id))
@@ -2075,7 +2452,11 @@ class MainFrame(wx.Frame):
         if self._active_break_item.get(playlist.id):
             return
         # jeśli ten utwór był oznaczony breakiem, zablokuj miks do czasu zakończenia
-        if self._playback.auto_mix_state.get((playlist.id, item.id)) == "break_halt":
+        key = (playlist.id, item.id)
+        state = self._playback.auto_mix_state.get(key)
+        if state == "loop_hold":
+            return
+        if state == "break_halt":
             return
         if not self._auto_mix_enabled and not queued_selection:
             return
@@ -2083,59 +2464,232 @@ class MainFrame(wx.Frame):
         if item.break_after:
             return
 
-        # Jeśli mamy precyzyjny punkt (segue/overlap/fade sync), pozwól działać wyzwalaczowi playera
-        if self._compute_mix_trigger_seconds(item) is not None:
-            return
+        plan = self._mix_plans.get(key)
+        native_trigger = plan.native_trigger if plan else self._supports_mix_trigger(context_entry.player)
+        mix_at: float | None = None
+        fade_seconds = self._fade_duration
+        base_cue = item.cue_in_seconds or 0.0
+        effective_duration = item.effective_duration_seconds
 
-        key = (playlist.id, item.id)
+        if plan:
+            mix_at = plan.mix_at
+            fade_seconds = plan.fade_seconds
+            base_cue = plan.base_cue
+            effective_duration = plan.effective_duration
+        else:
+            mix_at, fade_seconds, base_cue, effective_duration = self._resolve_mix_timing(item)
+            self._register_mix_plan(
+                playlist.id,
+                item.id,
+                mix_at=mix_at,
+                fade_seconds=fade_seconds,
+                base_cue=base_cue,
+                effective_duration=effective_duration,
+                native_trigger=native_trigger,
+            )
+            plan = self._mix_plans.get(key)
+
+        if plan and plan.triggered:
+            return
+        if mix_at is not None and native_trigger:
+            track_end = base_cue + effective_duration
+            headroom_after_mix = max(0.0, track_end - mix_at)
+            fade_guard_source = self._fade_duration if item.segue_seconds is not None else fade_seconds
+            fade_guard = min(MIX_NATIVE_LATE_GUARD, max(0.0, fade_guard_source))
+            guard_window = min(fade_guard, headroom_after_mix)
+            late_guard_shortfall = max(0.0, fade_guard - guard_window)
+            if seconds < mix_at - MIX_NATIVE_EARLY_GUARD:
+                return
+            if seconds < mix_at + guard_window:
+                # Nie czekaj na backend kiedy zapasu jest mniej niż oczekiwany guard lub brak zapasu po miksie.
+                if late_guard_shortfall <= 0.0 or seconds < mix_at - late_guard_shortfall:
+                    return
+
         already_mixing = self._playback.auto_mix_state.get(key, False)
 
-        cue = item.cue_in_seconds or 0.0
-        elapsed = max(0.0, seconds - cue)
-        remaining = max(0.0, item.effective_duration_seconds - elapsed)
+        elapsed = max(0.0, seconds - base_cue)
+        remaining = max(0.0, effective_duration - elapsed)
+        mix_remaining: float | None = None
+        if mix_at is not None:
+            mix_remaining = max(0.0, mix_at - seconds)
 
-        # jeśli mamy zaznaczenie, pozwól miksować nawet bez globalnego auto-mix
-        trigger_window = max(self._fade_duration, 0.0)
+        trigger_window = max(fade_seconds, 0.0)
         if item.overlap_seconds:
             trigger_window = max(trigger_window, item.overlap_seconds)
         if item.outro_seconds:
             trigger_window = max(trigger_window, item.outro_seconds)
 
-        should_trigger = remaining <= max(0.1, trigger_window)
+        remaining_target = mix_remaining if mix_remaining is not None else remaining
+        if mix_at is not None:
+            should_trigger = remaining_target <= MIX_EXPLICIT_PROGRESS_GUARD
+        else:
+            should_trigger = remaining_target <= max(0.1, trigger_window)
         if not should_trigger or already_mixing:
             return
 
+        if self._playback.auto_mix_state.get(key) in {"break_halt", "loop_hold"}:
+            return
         self._playback.auto_mix_state[key] = True
+        if plan:
+            plan.triggered = True
+        ignore_ui_selection = self._auto_mix_enabled and not queued_selection
         started = self._start_next_from_playlist(
             panel,
-            ignore_ui_selection=queued_selection,
+            ignore_ui_selection=ignore_ui_selection,
             advance_focus=True,
             restart_playing=False,
-            force_automix_sequence=True,
+            force_automix_sequence=self._auto_mix_enabled,
         )
         if started and self._fade_duration > 0.0:
-            fade_duration = min(self._fade_duration, remaining)
+            fade_duration = min(fade_seconds, remaining)
             try:
                 context_entry.player.fade_out(fade_duration)
             except Exception:
                 pass
+        elif plan:
+            plan.triggered = False
+            self._playback.auto_mix_state.pop(key, None)
 
     def _auto_mix_now(self, playlist: PlaylistModel, item: PlaylistItem, panel: PlaylistPanel) -> None:
         """Wyzwól miks natychmiast z precyzyjnego punktu (segue/overlap/fade sync z BASS)."""
         key = (playlist.id, item.id)
+        plan = self._mix_plans.get(key)
+        if plan and plan.triggered:
+            return
+        queued_selection = self._playlist_has_selection(playlist.id)
+        if not self._auto_mix_enabled and not queued_selection:
+            return
         if self._playback.auto_mix_state.get(key):
             return
+        if item.break_after or self._active_break_item.get(playlist.id) == item.id:
+            self._playback.auto_mix_state[(playlist.id, item.id)] = "break_halt"
+            logger.debug(
+                "UI: auto_mix_now ignored due to break playlist=%s item=%s",
+                playlist.id,
+                item.id,
+            )
+            return
+        base_cue = plan.base_cue if plan else (item.cue_in_seconds or 0.0)
+        length_seconds = None
+        ctx = self._playback.contexts.get(key)
+        if ctx:
+            getter = getattr(ctx.player, "get_length_seconds", None)
+            if getter:
+                try:
+                    length_seconds = float(getter())
+                except Exception:
+                    length_seconds = None
+        if length_seconds is None and plan:
+            length_seconds = base_cue + plan.effective_duration
+        max_mix_point = None
+        if length_seconds and length_seconds > 0.0:
+            max_mix_point = max(0.0, length_seconds - 0.01)
+        expected_mix = plan.mix_at if plan else self._mix_trigger_points.get(key)
+        if expected_mix is None:
+            mix_trigger, fade_seconds, base_cue, eff = self._resolve_mix_timing(item)
+            native_trigger = self._supports_mix_trigger(ctx.player if ctx else None)
+            self._register_mix_plan(
+                playlist.id,
+                item.id,
+                mix_at=mix_trigger,
+                fade_seconds=fade_seconds,
+                base_cue=base_cue,
+                effective_duration=eff,
+                native_trigger=native_trigger,
+            )
+            expected_mix = mix_trigger
+            plan = self._mix_plans.get(key)
+        if expected_mix is not None and max_mix_point is not None:
+            clamped_expected = min(expected_mix, max_mix_point)
+            if clamped_expected != expected_mix:
+                logger.debug(
+                    "UI: clamping mix trigger to track length playlist=%s item=%s expected=%.3f clamped=%.3f",
+                    playlist.id,
+                    item.id,
+                    expected_mix,
+                    clamped_expected,
+                )
+                expected_mix = clamped_expected
+                self._register_mix_plan(
+                    playlist.id,
+                    item.id,
+                    mix_at=clamped_expected,
+                    fade_seconds=plan.fade_seconds if plan else self._fade_duration,
+                    base_cue=base_cue,
+                    effective_duration=plan.effective_duration if plan else item.effective_duration_seconds,
+                    native_trigger=self._supports_mix_trigger(ctx.player if ctx else None),
+                )
+                plan = self._mix_plans.get(key)
+        if expected_mix is not None:
+            current_abs = base_cue + (item.current_position or 0.0)
+            tolerance = 0.75
+            if expected_mix is not None and current_abs < expected_mix - tolerance:
+                effective_override = None
+                if length_seconds is not None:
+                    effective_override = max(0.0, length_seconds - base_cue)
+                rescheduled, _fade, _base_cue, _eff = self._resolve_mix_timing(
+                    item,
+                    effective_duration_override=effective_override,
+                )
+                if rescheduled is not None and max_mix_point is not None:
+                    rescheduled = min(rescheduled, max_mix_point)
+                fallback_mix = rescheduled if rescheduled is not None else expected_mix
+                fallback_fade = _fade if rescheduled is not None else (plan.fade_seconds if plan else self._fade_duration)
+                fallback_base = _base_cue if rescheduled is not None else base_cue
+                fallback_eff = _eff if rescheduled is not None else (plan.effective_duration if plan else item.effective_duration_seconds)
+                if self._supports_mix_trigger(ctx.player if ctx else None):
+                    try:
+                        self._playback.update_mix_trigger(
+                            playlist.id,
+                            item.id,
+                            mix_trigger_seconds=None,
+                            on_mix_trigger=None,
+                        )
+                    except Exception:
+                        pass
+                self._register_mix_plan(
+                    playlist.id,
+                    item.id,
+                    mix_at=fallback_mix,
+                    fade_seconds=fallback_fade,
+                    base_cue=fallback_base,
+                    effective_duration=fallback_eff,
+                    native_trigger=False,
+                )
+                plan = self._mix_plans.get(key)
+                logger.debug(
+                    "UI: auto_mix_now backend fired early -> fallback to progress trigger playlist=%s item=%s current=%.3f expected=%.3f",
+                    playlist.id,
+                    item.id,
+                    current_abs,
+                    fallback_mix if fallback_mix is not None else -1.0,
+                )
+                return
         self._playback.auto_mix_state[key] = True
-        remaining = max(0.0, item.effective_duration_seconds - item.current_position)
+        self._mark_mix_triggered(playlist.id, item.id)
+        effective_total = (
+            max(0.0, (length_seconds - base_cue))
+            if length_seconds is not None
+            else (plan.effective_duration if plan else item.effective_duration_seconds)
+        )
+        remaining = max(0.0, effective_total - item.current_position)
+        logger.debug(
+            "UI: auto_mix_now fired playlist=%s item=%s current_pos=%.3f remaining=%.3f",
+            playlist.id,
+            item.id,
+            item.current_position,
+            remaining,
+        )
         started = self._start_next_from_playlist(
             panel,
-            ignore_ui_selection=True,
+            ignore_ui_selection=self._auto_mix_enabled and not queued_selection,
             advance_focus=True,
             restart_playing=False,
-            force_automix_sequence=True,
+            force_automix_sequence=self._auto_mix_enabled,
         )
         if started and self._fade_duration > 0.0:
-            fade_duration = min(self._fade_duration, remaining)
+            fade_target = plan.fade_seconds if plan else self._fade_duration
+            fade_duration = min(fade_target, remaining)
             ctx = self._playback.contexts.get(key)
             if ctx:
                 try:
@@ -2144,6 +2698,9 @@ class MainFrame(wx.Frame):
                     pass
         else:
             # jeśli nie udało się wystartować, oczyść flagę, aby fallback mógł spróbować ponownie
+            plan_obj = self._mix_plans.get(key)
+            if plan_obj:
+                plan_obj.triggered = False
             self._playback.auto_mix_state.pop(key, None)
 
     def _on_playlist_hotkey(self, event: wx.CommandEvent) -> None:
@@ -2177,11 +2734,17 @@ class MainFrame(wx.Frame):
                 self._announce_event("playlist", _("Select a track to toggle break"))
                 return
             last_state = None
+            toggled_ids: list[str] = []
             for idx in indices:
                 if 0 <= idx < len(playlist.items):
                     track = playlist.items[idx]
                     track.break_after = not track.break_after
                     last_state = track.break_after
+                    toggled_ids.append(track.id)
+                    if track.break_after:
+                        self._playback.auto_mix_state[(playlist.id, track.id)] = "break_halt"
+                    else:
+                        self._playback.auto_mix_state.pop((playlist.id, track.id), None)
             panel.refresh(indices, focus=True)
             if last_state is not None:
                 message = _("Break enabled after track") if last_state else _("Break cleared")
@@ -2191,6 +2754,27 @@ class MainFrame(wx.Frame):
                 self._active_break_item[playlist.id] = playlist.items[indices[0]].id
             elif not last_state:
                 self._active_break_item.pop(playlist.id, None)
+
+            context_entry = self._get_playback_context(playlist.id)
+            if context_entry:
+                key, ctx = context_entry
+                if key[1] in toggled_ids:
+                    current_item = playlist.get_item(key[1])
+                    if current_item:
+                        if last_state:
+                            self._clear_mix_plan(playlist.id, current_item.id)
+                            self._playback.update_mix_trigger(
+                                playlist.id,
+                                current_item.id,
+                                mix_trigger_seconds=None,
+                                on_mix_trigger=None,
+                            )
+                        else:
+                            self._apply_mix_trigger_to_playback(
+                                playlist_id=playlist.id,
+                                item=current_item,
+                                panel=panel,
+                            )
             return
 
         context_entry = self._get_playback_context(playlist.id)
@@ -2217,6 +2801,7 @@ class MainFrame(wx.Frame):
         elif action == "stop":
             self._stop_playlist_playback(playlist.id, mark_played=False, fade_duration=0.0)
             self._announce_event("playback_events", f"Playlista {playlist.name} zatrzymana")
+            self._set_auto_mix_enabled(False, reason=_("Auto mix disabled (manual stop)"))
         elif action == "fade":
             self._stop_playlist_playback(playlist.id, mark_played=True, fade_duration=self._fade_duration)
             if item:
@@ -2226,6 +2811,7 @@ class MainFrame(wx.Frame):
                 "playback_events",
                 _("Playlist %s finished track with fade out") % playlist.name,
             )
+            self._set_auto_mix_enabled(False, reason=_("Auto mix disabled (manual stop)"))
     def _get_current_playlist_panel(self):
         current_id = self._layout.state.current_id
         if current_id and current_id in self._playlists:
@@ -3021,6 +3607,7 @@ class MainFrame(wx.Frame):
             return
         model = panel.model
         for key, _context in removed_contexts:
+            self._clear_mix_plan(key[0], key[1])
             item_index = next((idx for idx, track in enumerate(model.items) if track.id == key[1]), None)
             item = model.items[item_index] if item_index is not None else None
             if not item:
@@ -3060,19 +3647,105 @@ class MainFrame(wx.Frame):
     def _announce(self, message: str) -> None:
         self._announce_event("general", message)
 
+    def _supports_mix_trigger(self, player: Player | None) -> bool:
+        if player is None:
+            return False
+        try:
+            return self._playback.supports_mix_trigger(player)
+        except Exception:
+            return False
+
+    def _register_mix_plan(
+        self,
+        playlist_id: str,
+        item_id: str,
+        *,
+        mix_at: float | None,
+        fade_seconds: float,
+        base_cue: float,
+        effective_duration: float,
+        native_trigger: bool,
+    ) -> None:
+        key = (playlist_id, item_id)
+        if mix_at is None:
+            self._clear_mix_plan(playlist_id, item_id)
+            return
+        self._mix_plans[key] = MixPlan(
+            mix_at=mix_at,
+            fade_seconds=fade_seconds,
+            base_cue=base_cue,
+            effective_duration=effective_duration,
+            native_trigger=native_trigger,
+            triggered=False,
+        )
+        self._mix_trigger_points[key] = mix_at
+
+    def _clear_mix_plan(self, playlist_id: str, item_id: str) -> None:
+        key = (playlist_id, item_id)
+        self._mix_plans.pop(key, None)
+        self._mix_trigger_points.pop(key, None)
+
+    def _mark_mix_triggered(self, playlist_id: str, item_id: str) -> None:
+        plan = self._mix_plans.get((playlist_id, item_id))
+        if plan:
+            plan.triggered = True
+
+    def _resolve_mix_timing(
+        self,
+        item: PlaylistItem,
+        overrides: dict[str, float | None] | None = None,
+        *,
+        effective_duration_override: float | None = None,
+    ) -> tuple[float | None, float, float, float]:
+        """Return (mix_at_seconds, fade_seconds, base_cue, effective_duration) using optional overrides."""
+        overrides = overrides or {}
+        base_cue = overrides.get("cue")
+        base_cue = base_cue if base_cue is not None else (item.cue_in_seconds or 0.0)
+        effective_duration = (
+            max(0.0, effective_duration_override)
+            if effective_duration_override is not None
+            else max(0.0, (item.duration_seconds or 0.0) - base_cue)
+        )
+
+        segue_val = overrides.get("segue")
+        segue_val = segue_val if segue_val is not None else item.segue_seconds
+        overlap_val = overrides.get("overlap")
+        overlap_val = overlap_val if overlap_val is not None else item.overlap_seconds
+        overlap_val = max(0.0, overlap_val) if overlap_val is not None else None
+
+        mix_at = None
+        fade_seconds = self._fade_duration
+        if segue_val is not None:
+            mix_at = base_cue + max(0.0, segue_val)
+        elif overlap_val is not None:
+            mix_at = base_cue + max(0.0, effective_duration - overlap_val)
+            fade_seconds = overlap_val
+        elif self._fade_duration > 0.0:
+            mix_at = base_cue + max(0.0, effective_duration - self._fade_duration)
+            fade_seconds = self._fade_duration
+
+        if mix_at is not None:
+            # nigdy nie przekraczaj realnej długości ścieżki – klamruj z lekkim marginesem
+            cap_target = base_cue + max(0.0, effective_duration - 0.01)
+            if mix_at > cap_target:
+                mix_at = cap_target
+            # dostosuj fade do dostępnego fragmentu
+            remaining_after_mix = max(0.0, base_cue + effective_duration - mix_at)
+            fade_seconds = min(fade_seconds, remaining_after_mix)
+        return mix_at, fade_seconds, base_cue, effective_duration
+
     def _compute_mix_trigger_seconds(self, item: PlaylistItem) -> float | None:
         """Calculate absolute time (seconds) to trigger automix/crossfade."""
-        base = item.cue_in_seconds or 0.0
-        # Priorytety: segue -> overlap (nadpisuje domyślny fade) -> domyślny fade (outro nie wyzwala miksu)
-        if item.segue_seconds is not None:
-            return base + max(0.0, item.segue_seconds)
-        if item.overlap_seconds is not None:
-            return base + max(0.0, item.effective_duration_seconds - item.overlap_seconds)
-        if self._fade_duration > 0.0:
-            return base + max(0.0, item.effective_duration_seconds - self._fade_duration)
-        return None
+        mix_at, _, _, _ = self._resolve_mix_timing(item)
+        return mix_at
 
-    def _preview_mix_with_next(self, playlist: PlaylistModel, item: PlaylistItem) -> bool:
+    def _preview_mix_with_next(
+        self,
+        playlist: PlaylistModel,
+        item: PlaylistItem,
+        *,
+        overrides: dict[str, Optional[float]] | None = None,
+    ) -> bool:
         """Start a short PFL preview of the mix with the next track."""
         if len(playlist.items) < 2:
             self._announce_event("pfl", _("No next track to mix"))
@@ -3087,11 +3760,9 @@ class MainFrame(wx.Frame):
             return False
         next_item = playlist.items[next_idx]
 
-        mix_at = self._compute_mix_trigger_seconds(item)
-        if mix_at is None:
-            mix_at = (item.cue_in_seconds or 0.0) + max(0.0, item.effective_duration_seconds - self._fade_duration)
+        overrides = overrides or {}
+        mix_at, fade_seconds, base_cue, effective_duration = self._resolve_mix_timing(item, overrides)
         pre_seconds = 4.0
-        fade_seconds = item.overlap_seconds if item.overlap_seconds is not None else self._fade_duration
 
         ok = self._playback.start_mix_preview(
             item,
@@ -3099,6 +3770,17 @@ class MainFrame(wx.Frame):
             mix_at_seconds=mix_at,
             pre_seconds=pre_seconds,
             fade_seconds=fade_seconds,
+            current_effective_duration=effective_duration,
+            next_cue_override=next_item.cue_in_seconds or 0.0,
+        )
+        logger.debug(
+            "UI: PFL mix preview scheduled mix_at=%s fade=%.3f cue=%.3f effective=%.3f seg=%s ovl=%s",
+            f"{mix_at:.3f}" if mix_at is not None else "None",
+            fade_seconds,
+            base_cue,
+            effective_duration,
+            overrides.get("segue"),
+            overrides.get("overlap"),
         )
         if not ok:
             self._announce_event("pfl", _("No next track to mix"))

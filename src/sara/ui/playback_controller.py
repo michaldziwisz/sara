@@ -87,6 +87,14 @@ class PlaybackController:
             self.stop_preview()
         self._pfl_device_id = new_device
 
+    @staticmethod
+    def supports_mix_trigger(player: Player) -> bool:
+        attr = getattr(player, "supports_mix_trigger", None)
+        try:
+            return bool(attr()) if callable(attr) else bool(attr)
+        except Exception:
+            return False
+
     def get_busy_device_ids(self) -> set[str]:
         return {context.device_id for context in self._playback_contexts.values()}
 
@@ -142,6 +150,35 @@ class PlaybackController:
                 item.id,
             )
             raise
+
+    def update_mix_trigger(
+        self,
+        playlist_id: str,
+        item_id: str,
+        *,
+        mix_trigger_seconds: float | None,
+        on_mix_trigger: Callable[[], None] | None = None,
+    ) -> bool:
+        """Re-apply mix trigger for an already playing item, if supported by the backend."""
+        context = self._playback_contexts.get((playlist_id, item_id))
+        if context is None:
+            return False
+        if not self.supports_mix_trigger(context.player):
+            return False
+        setter = getattr(context.player, "set_mix_trigger", None)
+        if not setter:
+            return False
+        try:
+            setter(mix_trigger_seconds, on_mix_trigger)
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.debug(
+                "PlaybackController: failed to update mix trigger playlist=%s item=%s: %s",
+                playlist_id,
+                item_id,
+                exc,
+            )
+            return False
+        return True
 
     # Wydzielona implementacja pozwala zalogować traceback bez rozwijania głównej sygnatury.
     def _start_item_impl(
@@ -237,6 +274,7 @@ class PlaybackController:
                 return None
 
         def _do_play(p: Player) -> None:
+            supports_mix_trigger = self.supports_mix_trigger(p)
             # wyzeruj ewentualne poprzednie ustawienia pętli zanim wystartujemy nowy utwór
             if hasattr(p, "set_loop") and not (item.loop_enabled and item.has_loop()):
                 try:
@@ -251,8 +289,8 @@ class PlaybackController:
                 # reszta i tak jest kontrolowana markerami/guardem
                 allow_loop=bool(item.loop_enabled and item.has_loop()),
                 # mikser/punkty miksu: użyj bardziej precyzyjnego wyzwalacza (ms), jeśli dostępny
-                mix_trigger_seconds=mix_trigger_seconds,
-                on_mix_trigger=on_mix_trigger,
+                mix_trigger_seconds=mix_trigger_seconds if supports_mix_trigger else None,
+                on_mix_trigger=on_mix_trigger if supports_mix_trigger else None,
             )
 
         # Ustaw ReplayGain przed startem, żeby uniknąć „głośnego pierwszego uderzenia”
@@ -576,6 +614,8 @@ class PlaybackController:
         mix_at_seconds: float,
         pre_seconds: float = 4.0,
         fade_seconds: float = 0.0,
+        current_effective_duration: float | None = None,
+        next_cue_override: float | None = None,
     ) -> bool:
         """Preview crossfade/mix between current and next track on the PFL device.
 
@@ -607,9 +647,14 @@ class PlaybackController:
 
         start_a = max(0.0, mix_at_seconds - pre_seconds)
         delay_b = max(0.0, mix_at_seconds - start_a)
-        remaining_current = max(0.0, (current_item.effective_duration_seconds) - mix_at_seconds)
+        effective_duration = (
+            max(0.0, current_effective_duration)
+            if current_effective_duration is not None
+            else current_item.effective_duration_seconds
+        )
+        remaining_current = max(0.0, effective_duration - mix_at_seconds)
         fade_len = min(max(0.0, fade_seconds), remaining_current) if remaining_current > 0 else 0.0
-        next_start = next_item.cue_in_seconds or 0.0
+        next_start = next_cue_override if next_cue_override is not None else (next_item.cue_in_seconds or 0.0)
 
         logger.debug(
             "PFL mix preview: current=%s next=%s mix_at=%.3f pre=%.3f fade=%.3f cue_next=%.3f",

@@ -112,21 +112,21 @@ class PlaylistModel:
         if preferred_item_id:
             preferred = self.get_item(preferred_item_id)
             if preferred:
-                if preferred.status is PlaylistItemStatus.PLAYED:
-                    preferred = None
-                else:
-                    if preferred.status is PlaylistItemStatus.PAUSED:
-                        preferred.status = PlaylistItemStatus.PLAYING
-                        return preferred
-                    if preferred.status is PlaylistItemStatus.PLAYING:
-                        return preferred
-                    if preferred.status is not PlaylistItemStatus.PENDING:
-                        preferred.current_position = 0.0
-                        preferred.status = PlaylistItemStatus.PENDING
+                if preferred.status is PlaylistItemStatus.PAUSED:
                     preferred.status = PlaylistItemStatus.PLAYING
-                    if preferred.current_position <= 0.0:
-                        preferred.current_position = 0.0
                     return preferred
+                if preferred.status is PlaylistItemStatus.PLAYING:
+                    return preferred
+                if preferred.status is PlaylistItemStatus.PLAYED:
+                    preferred.current_position = 0.0
+                    preferred.status = PlaylistItemStatus.PENDING
+                if preferred.status is not PlaylistItemStatus.PENDING:
+                    preferred.current_position = 0.0
+                    preferred.status = PlaylistItemStatus.PENDING
+                preferred.status = PlaylistItemStatus.PLAYING
+                if preferred.current_position <= 0.0:
+                    preferred.current_position = 0.0
+                return preferred
 
         paused = next((item for item in self.items if item.status is PlaylistItemStatus.PAUSED), None)
         if paused:

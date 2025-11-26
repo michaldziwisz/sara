@@ -93,6 +93,7 @@ class OptionsDialog(wx.Dialog):
 
     def __init__(self, parent: wx.Window, *, settings: SettingsManager, audio_engine: AudioEngine) -> None:
         super().__init__(parent, title=_("Options"), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self.SetName("options_dialog")
         self._settings = settings
         self._audio_engine = audio_engine
 
@@ -115,6 +116,7 @@ class OptionsDialog(wx.Dialog):
         self._fade_ctrl = wx.SpinCtrlDouble(general_panel, min=0.0, max=30.0, inc=0.1)
         self._fade_ctrl.SetDigits(2)
         self._fade_ctrl.SetValue(self._settings.get_playback_fade_seconds())
+        self._fade_ctrl.SetName("options_fade_seconds")
         playback_row = wx.BoxSizer(wx.HORIZONTAL)
         playback_row.Add(fade_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
         playback_row.Add(self._fade_ctrl, 0, wx.ALIGN_CENTER_VERTICAL)
@@ -125,6 +127,7 @@ class OptionsDialog(wx.Dialog):
             label=_("Alternate playlists with Space key"),
         )
         self._alternate_checkbox.SetValue(self._settings.get_alternate_play_next())
+        self._alternate_checkbox.SetName("options_alternate_play")
         playback_box.Add(self._alternate_checkbox, 0, wx.ALL, 5)
 
         self._swap_play_select_checkbox = wx.CheckBox(
@@ -132,6 +135,7 @@ class OptionsDialog(wx.Dialog):
             label=_("Swap play/select on music playlists (Space selects, Enter plays)"),
         )
         self._swap_play_select_checkbox.SetValue(self._settings.get_swap_play_select())
+        self._swap_play_select_checkbox.SetName("options_swap_play_select")
         playback_box.Add(self._swap_play_select_checkbox, 0, wx.ALL, 5)
 
         self._auto_remove_checkbox = wx.CheckBox(
@@ -139,6 +143,7 @@ class OptionsDialog(wx.Dialog):
             label=_("Automatically remove played tracks"),
         )
         self._auto_remove_checkbox.SetValue(self._settings.get_auto_remove_played())
+        self._auto_remove_checkbox.SetName("options_auto_remove")
         playback_box.Add(self._auto_remove_checkbox, 0, wx.ALL, 5)
 
         intro_row = wx.BoxSizer(wx.HORIZONTAL)
@@ -146,6 +151,7 @@ class OptionsDialog(wx.Dialog):
         self._intro_alert_ctrl = wx.SpinCtrlDouble(general_panel, min=0.0, max=60.0, inc=0.5)
         self._intro_alert_ctrl.SetDigits(1)
         self._intro_alert_ctrl.SetValue(self._settings.get_intro_alert_seconds())
+        self._intro_alert_ctrl.SetName("options_intro_alert_seconds")
         intro_row.Add(intro_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
         intro_row.Add(self._intro_alert_ctrl, 0, wx.ALIGN_CENTER_VERTICAL)
         playback_box.Add(intro_row, 0, wx.ALL, 5)
@@ -156,6 +162,7 @@ class OptionsDialog(wx.Dialog):
         language_names = [_("English"), _("Polish")]
         self._language_choice = wx.Choice(general_panel, choices=language_names)
         current_language = self._settings.get_language()
+        self._language_choice.SetName("options_language_choice")
         try:
             selection = self._language_codes.index(current_language)
         except ValueError:
@@ -170,6 +177,7 @@ class OptionsDialog(wx.Dialog):
         pfl_row = wx.BoxSizer(wx.HORIZONTAL)
         pfl_label = wx.StaticText(general_panel, label=_("PFL device:"))
         self._pfl_choice = wx.Choice(general_panel)
+        self._pfl_choice.SetName("options_pfl_choice")
         pfl_row.Add(pfl_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
         pfl_row.Add(self._pfl_choice, 1, wx.ALIGN_CENTER_VERTICAL)
         pfl_box.Add(pfl_row, 0, wx.EXPAND | wx.ALL, 5)
@@ -177,6 +185,7 @@ class OptionsDialog(wx.Dialog):
 
         startup_box = wx.StaticBoxSizer(wx.StaticBox(general_panel, label=_("Startup playlists")), wx.VERTICAL)
         self._playlists_list = wx.ListCtrl(general_panel, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
+        self._playlists_list.SetName("options_startup_list")
         self._playlists_list.InsertColumn(0, _("Name"))
         self._playlists_list.InsertColumn(1, _("Type"))
         self._playlists_list.InsertColumn(2, _("Players"))
@@ -186,6 +195,9 @@ class OptionsDialog(wx.Dialog):
         add_btn = wx.Button(general_panel, label=_("Add…"))
         edit_btn = wx.Button(general_panel, label=_("Edit…"))
         remove_btn = wx.Button(general_panel, label=_("Remove"))
+        add_btn.SetName("options_startup_add")
+        edit_btn.SetName("options_startup_edit")
+        remove_btn.SetName("options_startup_remove")
         buttons_row.Add(add_btn, 0, wx.RIGHT, 5)
         buttons_row.Add(edit_btn, 0, wx.RIGHT, 5)
         buttons_row.Add(remove_btn, 0)
@@ -199,6 +211,7 @@ class OptionsDialog(wx.Dialog):
             label=_("Read-mode line length (characters, 0 = unlimited):"),
         )
         self._news_line_ctrl = wx.SpinCtrl(general_panel, min=0, max=400)
+        self._news_line_ctrl.SetName("options_news_line_length")
         self._news_line_ctrl.SetValue(self._settings.get_news_line_length())
         news_row.Add(news_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
         news_row.Add(self._news_line_ctrl, 0, wx.ALIGN_CENTER_VERTICAL)
@@ -223,6 +236,7 @@ class OptionsDialog(wx.Dialog):
         for category in ANNOUNCEMENT_CATEGORIES:
             checkbox = wx.CheckBox(accessibility_panel, label=_(category.label))
             checkbox.SetValue(announcements.get(category.id, category.default_enabled))
+            checkbox.SetName(f"options_announce_{category.id}")
             accessibility_box.Add(checkbox, 0, wx.ALL, 4)
             self._announcement_checkboxes[category.id] = checkbox
 
@@ -231,6 +245,7 @@ class OptionsDialog(wx.Dialog):
             label=_("Keep selection on currently playing track"),
         )
         self._focus_playing_checkbox.SetValue(self._settings.get_focus_playing_track())
+        self._focus_playing_checkbox.SetName("options_focus_playing_selection")
         accessibility_box.Add(self._focus_playing_checkbox, 0, wx.ALL, 4)
 
         accessibility_sizer.Add(accessibility_box, 0, wx.EXPAND | wx.ALL, 10)
@@ -245,6 +260,7 @@ class OptionsDialog(wx.Dialog):
             label=_("Periodic stack traces (faulthandler)"),
         )
         self._diag_faulthandler_checkbox.SetValue(self._settings.get_diagnostics_faulthandler())
+        self._diag_faulthandler_checkbox.SetName("options_diag_faulthandler")
         diag_box.Add(self._diag_faulthandler_checkbox, 0, wx.ALL, 5)
 
         interval_row = wx.BoxSizer(wx.HORIZONTAL)
@@ -252,6 +268,7 @@ class OptionsDialog(wx.Dialog):
         self._diag_interval_ctrl = wx.SpinCtrlDouble(diag_panel, min=0.0, max=600.0, inc=1.0)
         self._diag_interval_ctrl.SetDigits(1)
         self._diag_interval_ctrl.SetValue(self._settings.get_diagnostics_faulthandler_interval())
+        self._diag_interval_ctrl.SetName("options_diag_interval_seconds")
         interval_row.Add(interval_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
         interval_row.Add(self._diag_interval_ctrl, 0, wx.ALIGN_CENTER_VERTICAL)
         diag_box.Add(interval_row, 0, wx.ALL, 5)
@@ -261,12 +278,14 @@ class OptionsDialog(wx.Dialog):
             label=_("Detailed loop debug logging"),
         )
         self._diag_loop_checkbox.SetValue(self._settings.get_diagnostics_loop_debug())
+        self._diag_loop_checkbox.SetName("options_diag_loop_debug")
         diag_box.Add(self._diag_loop_checkbox, 0, wx.ALL, 5)
 
         level_row = wx.BoxSizer(wx.HORIZONTAL)
         level_label = wx.StaticText(diag_panel, label=_("Log level:"))
         levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
         self._diag_log_level_choice = wx.Choice(diag_panel, choices=levels)
+        self._diag_log_level_choice.SetName("options_diag_log_level")
         try:
             sel = levels.index(self._settings.get_diagnostics_log_level())
         except ValueError:
@@ -290,6 +309,12 @@ class OptionsDialog(wx.Dialog):
         button_sizer = self.CreateSeparatedButtonSizer(wx.OK | wx.CANCEL)
         if button_sizer:
             main_sizer.Add(button_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+            ok_button = self.FindWindowById(wx.ID_OK)
+            cancel_button = self.FindWindowById(wx.ID_CANCEL)
+            if ok_button:
+                ok_button.SetName("options_ok")
+            if cancel_button:
+                cancel_button.SetName("options_cancel")
 
         self.SetSizer(main_sizer)
         self.SetMinSize((520, 420))

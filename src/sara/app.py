@@ -17,6 +17,7 @@ if __package__ is None or __package__ == "":
 
 from sara.core.config import SettingsManager
 from sara.core.i18n import set_language
+from sara.core.env import is_e2e_mode
 from sara.ui.main_frame import MainFrame
 from sara.ui.nvda_sleep import ensure_nvda_sleep_mode
 
@@ -30,6 +31,8 @@ def _configure_logging(level_override: Optional[str] = None) -> Optional[Path]:
     level = getattr(logging, level_name, logging.WARNING)
 
     primary_dir = Path.cwd() / "logs"
+    if is_e2e_mode():
+        primary_dir = Path(tempfile.gettempdir()) / "sara_e2e_logs"
     fallback_dir = Path(tempfile.gettempdir()) / "sara_logs"
     logs_dir = primary_dir
     log_path: Path | None = None

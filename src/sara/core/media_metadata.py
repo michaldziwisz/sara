@@ -140,7 +140,7 @@ def _scan_ape_replay_gain(path: Path) -> Optional[float]:
 def _scan_loop_values(path: Path) -> tuple[Optional[float], Optional[float], bool, bool]:
     tags = _read_ape_tags(path)
     if not tags:
-        return None, None, False
+        return None, None, False, False
 
     def _lookup(key: str) -> Optional[str]:
         for variant in (key, key.upper(), key.lower()):

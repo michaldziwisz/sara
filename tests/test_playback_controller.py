@@ -14,6 +14,7 @@ from sara.ui.playback_controller import PlaybackController
 class DummyDevice:
     id: str
     name: str = "Device"
+    backend: str | None = None
 
 
 class DummyPlayer:
@@ -117,6 +118,48 @@ class DummyMixer:
             self._progress = progress
 
 
+class DummyMixerPlayer:
+    def __init__(self, mixer: DummyMixer):
+        self._mixer = mixer
+        self._finished = None
+        self._progress = None
+        self._gain = None
+        self._loop = None
+
+    def play(
+        self,
+        playlist_item_id: str,
+        source_path: str,
+        *,
+        start_seconds: float = 0.0,
+        allow_loop: bool = False,
+        mix_trigger_seconds: float | None = None,
+        on_mix_trigger=None,
+    ):
+        return self._mixer.start_source(
+            playlist_item_id,
+            source_path,
+            start_seconds=start_seconds,
+            on_progress=self._progress,
+            on_finished=self._finished,
+        )
+
+    def fade_out(self, duration: float):
+        self._mixer.fade_out_source("dummy", duration)
+
+    def set_finished_callback(self, callback):
+        self._finished = callback
+
+    def set_progress_callback(self, callback):
+        self._progress = callback
+
+    def set_gain_db(self, gain_db):
+        self._gain = gain_db
+
+    def set_loop(self, start_seconds, end_seconds):
+        self._loop = (start_seconds, end_seconds)
+
+
 def _playlist_with_item(tmp_path, slots: tuple[str, ...] = ("dev-1",)) -> tuple[PlaylistModel, PlaylistItem]:
     playlist = PlaylistModel(id="pl-1", name="Test", kind=PlaylistKind.MUSIC)
     playlist.set_output_slots(list(slots))
@@ -184,6 +227,7 @@ def test_single_slot_uses_device_mixer_and_fade(monkeypatch, tmp_path):
     monkeypatch.syspath_prepend(str(tmp_path / "nonexistent"))
 
     controller = PlaybackController(audio, settings, lambda *_args: None, mixer_factory=mixer_factory)
+    controller._get_mixer_player_class = lambda: DummyMixerPlayer  # type: ignore[attr-defined]
 
     controller.start_item(
         playlist,

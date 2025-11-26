@@ -43,6 +43,7 @@ Configuration is stored in `config/settings.yaml`, but editing through the Optio
 ```
 PYTHONPATH=src python -m pytest
 ```
+UI/E2E on Windows (optional): `RUN_SARA_E2E=1 PYTHONPATH=src python -m pytest -m e2e tests/e2e` (uses mock audio, isolated config under `SARA_CONFIG_DIR`).
 
 ### Repository layout
 ```
@@ -128,6 +129,7 @@ Konfiguracja trafia do `config/settings.yaml`, ale wygodniej edytować ją z poz
 ```
 PYTHONPATH=src python -m pytest
 ```
+Testy UI/E2E na Windows (opcjonalnie): `RUN_SARA_E2E=1 PYTHONPATH=src python -m pytest -m e2e tests/e2e` (mock audio, izolowana konfiguracja przez `SARA_CONFIG_DIR`).
 
 ### Struktura katalogów
 ```

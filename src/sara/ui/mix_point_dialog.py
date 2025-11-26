@@ -43,7 +43,7 @@ class MixPointEditorDialog(wx.Dialog):
         segue_seconds: float | None,
         overlap_seconds: float | None,
         on_preview: Callable[[float, tuple[float, float] | None], bool],
-        on_mix_preview: Callable[[], bool] | None = None,
+        on_mix_preview: Callable[[Dict[str, Optional[float]]], bool] | None = None,
         on_stop_preview: Callable[[], None],
         track_path: Path,
         initial_replay_gain: float | None,
@@ -113,6 +113,7 @@ class MixPointEditorDialog(wx.Dialog):
         self._preview_anchor_seconds: float = 0.0
         self._preview_anchor_started: float | None = None
         self._on_mix_preview = on_mix_preview
+        self._mix_preview_running = False
 
         self._build_layout()
         self._bind_events()
@@ -496,6 +497,7 @@ class MixPointEditorDialog(wx.Dialog):
         self._play_from(max(0.0, min(seconds, self._duration if self._duration > 0 else seconds)))
 
     def _play_from(self, seconds: float, loop_range: tuple[float, float] | None = None) -> None:
+        self._mix_preview_running = False
         if self._on_preview(seconds, loop_range):
             self._preview_anchor_seconds = seconds
             self._preview_anchor_started = time.perf_counter()
@@ -504,6 +506,7 @@ class MixPointEditorDialog(wx.Dialog):
             self._update_preview_buttons()
 
     def _stop_preview(self) -> None:
+        self._mix_preview_running = False
         if not self._preview_active:
             self._on_stop_preview()
             return
@@ -555,16 +558,16 @@ class MixPointEditorDialog(wx.Dialog):
 
     def _handle_loop_or_mix_preview(self, _event: wx.Event | None = None) -> None:
         # zatrzymaj ewentualny bieżący podgląd zanim wystartuje nowy
-        if self._preview_active:
-            self._on_stop_preview()
-            self._preview_active = False
+        self._stop_preview()
         active_key = self._ensure_active_row()
         if active_key in {"segue", "overlap"} and self._on_mix_preview:
             self._preview_active = False  # oznacz nowy start
-            ok = self._on_mix_preview()
+            ok = self._on_mix_preview(self._collect_mix_values())
+            self._mix_preview_running = bool(ok)
             if not ok:
                 wx.Bell()
             return
+        self._mix_preview_running = False
         self._start_loop_preview(show_error=True)
 
     def _preview_loop_range(self) -> None:
@@ -875,9 +878,13 @@ class MixPointEditorDialog(wx.Dialog):
 
     def _nudge_position(self, delta: float, *, assign: bool = False) -> None:
         if assign:
+            was_previewing = self._preview_active or self._mix_preview_running
             key = self._ensure_active_row()
             if not key:
-                self._set_position(self._current_position() + delta, restart_preview=True)
+                self._stop_preview()
+                self._set_position(self._current_position() + delta, restart_preview=False)
+                if was_previewing:
+                    self._start_preview_from(self._current_cursor_seconds)
                 return
             row = self._rows[key]
             if not row.checkbox.GetValue():
@@ -894,6 +901,8 @@ class MixPointEditorDialog(wx.Dialog):
             self._stop_preview()
             self._set_position(target, restart_preview=False)
             self._assign_active_point(position=target)
+            if was_previewing:
+                self._start_preview_from(self._current_cursor_seconds)
             return
         self._stop_preview()
         self._set_position(self._current_position() + delta, restart_preview=False)
@@ -906,9 +915,7 @@ class MixPointEditorDialog(wx.Dialog):
 
     # endregion
 
-    def get_result(self) -> Dict[str, Optional[float]]:
-        """Return user selections as a dict."""
-
+    def _collect_mix_values(self) -> Dict[str, Optional[float]]:
         results: Dict[str, Optional[float]] = {}
         final_cue = None
 
@@ -934,6 +941,13 @@ class MixPointEditorDialog(wx.Dialog):
                 results[key] = max(0.0, value - (cue_base or 0.0))
             elif row.mode == "duration":
                 results[key] = max(0.0, value)
+
+        return results
+
+    def get_result(self) -> Dict[str, Optional[float]]:
+        """Return user selections as a dict."""
+
+        results = self._collect_mix_values()
 
         loop_range = self._current_loop_range()
         results["loop"] = {

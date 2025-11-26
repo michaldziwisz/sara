@@ -920,26 +920,54 @@ class BassPlayer:
             )
 
     def _apply_mix_trigger(self, target_seconds: Optional[float], callback: Optional[Callable[[], None]]) -> None:
+        if callback is not None and not callable(callback):
+            logger.debug("BASS mix trigger: non-callable callback of type %s ignored", type(callback))
+            callback = None
         self._mix_callback = callback
         if not target_seconds or not self._stream:
             return
+        clamped_target = float(target_seconds)
         try:
-            target_bytes = self._manager.seconds_to_bytes(self._stream, target_seconds)
+            length_seconds = self._manager.channel_get_length_seconds(self._stream)
+        except Exception:
+            length_seconds = 0.0
+        if length_seconds > 0.0 and clamped_target > (length_seconds - 0.01):
+            clamped_target = max(0.0, length_seconds - 0.01)
+        try:
+            target_bytes = self._manager.seconds_to_bytes(self._stream, clamped_target)
         except Exception as exc:
             logger.debug("BASS mix trigger: failed to convert seconds to bytes: %s", exc)
             return
 
         def _sync_proc(hsync, channel, data, user):  # pragma: no cover - C callback
+            fired_pos = None
+            try:
+                fired_pos = self._manager.channel_get_seconds(channel)
+            except Exception:
+                fired_pos = None
             if self._mix_callback:
                 try:
                     self._mix_callback()
                 except Exception as exc:  # pylint: disable=broad-except
                     logger.warning("BASS mix trigger callback error: %s", exc)
+            logger.debug(
+                "BASS mix trigger fired stream=%s target=%.3f pos=%s",
+                channel,
+                clamped_target,
+                f"{fired_pos:.3f}" if fired_pos is not None else "unknown",
+            )
 
         self._mix_sync_proc = self._manager.make_sync_proc(_sync_proc)
         try:
             self._mix_sync_handle = self._manager.channel_set_sync_pos(
-                self._stream, target_bytes, self._mix_sync_proc, is_bytes=True, mix_time=True
+                self._stream, target_bytes, self._mix_sync_proc, is_bytes=True, mix_time=False
+            )
+            logger.debug(
+                "BASS mix trigger set stream=%s target=%.3f (requested=%.3f) callback=%s",
+                self._stream,
+                clamped_target,
+                target_seconds,
+                "set" if callback else "none",
             )
         except Exception as exc:
             logger.debug("BASS mix trigger: failed to set sync: %s", exc)
@@ -991,6 +1019,27 @@ class BassPlayer:
     def set_mix_callback(self, callback: Optional[Callable[[], None]]) -> None:
         self._mix_callback = callback
 
+    def get_length_seconds(self) -> float:
+        try:
+            return float(self._manager.channel_get_length_seconds(self._stream))
+        except Exception:
+            return 0.0
+
+    def set_mix_trigger(
+        self,
+        mix_trigger_seconds: Optional[float],
+        on_mix_trigger: Optional[Callable[[], None]],
+    ) -> None:
+        # usuń istniejący sync i ustaw nowy, jeśli podany
+        if self._stream and self._mix_sync_handle:
+            try:
+                self._manager.channel_remove_sync(self._stream, self._mix_sync_handle)
+            except Exception:
+                pass
+            self._mix_sync_handle = 0
+            self._mix_sync_proc = None
+        self._apply_mix_trigger(mix_trigger_seconds, on_mix_trigger)
+
     def set_gain_db(self, gain_db: Optional[float]) -> None:
         if gain_db is None:
             self._gain_factor = 1.0
@@ -1010,6 +1059,9 @@ class BassPlayer:
 
     def is_active(self) -> bool:
         return self._is_active()
+
+    def supports_mix_trigger(self) -> bool:
+        return True
 
 
 class BassAsioPlayer(BassPlayer):
@@ -1042,6 +1094,12 @@ class BassAsioPlayer(BassPlayer):
 
     def is_active(self) -> bool:
         return self._is_active()
+
+    def get_length_seconds(self) -> float:
+        try:
+            return float(self._stream_total_seconds)
+        except Exception:
+            return 0.0
 
     def play(
         self,
@@ -1242,6 +1300,9 @@ class BassAsioPlayer(BassPlayer):
         self._loop_end_sync_handle = 0
         if self._debug_loop:
             logger.debug("Loop debug: sync+guard active")
+
+    def supports_mix_trigger(self) -> bool:
+        return True
 
 
 class BassBackend:

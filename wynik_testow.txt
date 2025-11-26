@@ -1,0 +1,219 @@
+================================================= test session starts =================================================
+platform win32 -- Python 3.12.10, pytest-9.0.1, pluggy-1.6.0
+rootdir: D:\emisja
+configfile: pytest.ini
+collected 3 items
+
+tests\e2e\test_options_dialog.py F
+tests\e2e\test_saramix_automix.py F
+tests\e2e\test_smoke_start_close.py .
+
+====================================================== FAILURES =======================================================
+____________________________________________ test_options_dialog_roundtrip ____________________________________________
+
+tmp_path = WindowsPath('C:/Users/m/AppData/Local/Temp/pytest-of-m/pytest-32/test_options_dialog_roundtrip0')
+
+    def test_options_dialog_roundtrip(tmp_path):
+        app = _start_app(tmp_path)
+        try:
+            main = _wait_for_main(app, title_re="SARA", timeout=90.0)
+            try:
+                main.wait("exists", timeout=90)
+                main.wait("visible", timeout=20)
+            except Exception:
+                # diagnostic: list windows if main not found
+                windows = Desktop(backend="uia").windows()
+                print(
+                    "Open windows (uia):",
+                    [(w.window_text(), getattr(w, "process_id", lambda: None)()) for w in windows],
+                )
+                raise
+            main.set_focus()
+            _menu_select_with_fallbacks(
+                main,
+                paths=[
+                    "Options…",
+                    "Options...",
+                    "Opcje…",
+                    "Opcje...",
+                    "Tools->Options…",
+                    "Tools->Options...",
+                    "Narzêdzia->Opcje…",
+                    "Narzêdzia->Opcje...",
+                ],
+                key_sequences=["%to", "%t o", "%no", "%n o"],  # Alt+T then O (English/Polish UI)
+                names=["Options", "Opcje"],
+            )
+    
+            dialog = app.window(title_re="Options|Opcje")
+            dialog = _wait_for_child_dialog(app, exclude_handle=main.handle, timeout=10) or dialog
+>           dialog.wait("exists", timeout=10)
+
+tests\e2e\test_options_dialog.py:198: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+venv_user\Lib\site-packages\pywinauto\application.py:529: in wait
+    wait_until(timeout, retry_interval,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+timeout = 10, retry_interval = 0.09, func = <function WindowSpecification.wait.<locals>.<lambda> at 0x00000271942D0C20>
+value = True, op = <built-in function eq>, args = (), kwargs = {}, start = 74166.9662504, func_val = False
+time_left = -0.06186699999670964, err = TimeoutError('timed out')
+
+    def wait_until(timeout,
+                   retry_interval,
+                   func,
+                   value=True,
+                   op=operator.eq,
+                   *args, **kwargs):
+        r"""
+        Wait until ``op(function(*args, **kwargs), value)`` is True or until timeout expires
+    
+        * **timeout**  how long the function will try the function
+        * **retry_interval**  how long to wait between retries
+        * **func** the function that will be executed
+        * **value**  the value to be compared against (defaults to True)
+        * **op** the comparison function (defaults to equality)\
+        * **args** optional arguments to be passed to func when called
+        * **kwargs** optional keyword arguments to be passed to func when called
+    
+        Returns the return value of the function
+        If the operation times out then the return value of the the function
+        is in the 'function_value' attribute of the raised exception.
+    
+        e.g. ::
+    
+            try:
+                # wait a maximum of 10.5 seconds for the
+                # the objects item_count() method to return 10
+                # in increments of .5 of a second
+                wait_until(10.5, .5, self.item_count, 10)
+            except TimeoutError as e:
+                print("timed out")
+        """
+        start = timestamp()
+    
+        func_val = func(*args, **kwargs)
+        # while the function hasn't returned what we are waiting for
+        while not op(func_val, value):
+    
+            # find out how much of the time is left
+            time_left = timeout - (timestamp() - start)
+    
+            # if we have to wait some more
+            if time_left > 0:
+                # wait either the retry_interval or else the amount of
+                # time until the timeout expires (whichever is less)
+                time.sleep(min(retry_interval, time_left))
+                func_val = func(*args, **kwargs)
+            else:
+                err = TimeoutError("timed out")
+                err.function_value = func_val
+>               raise err
+E               pywinauto.timings.TimeoutError: timed out
+
+venv_user\Lib\site-packages\pywinauto\timings.py:375: TimeoutError
+______________________________________________ test_saramix_automix_flow ______________________________________________
+
+tmp_path = WindowsPath('C:/Users/m/AppData/Local/Temp/pytest-of-m/pytest-32/test_saramix_automix_flow0')
+
+    def test_saramix_automix_flow(tmp_path):
+        src_m3u = Path(__file__).resolve().parents[1].parent / "logs" / "saramix.m3u"
+        if not src_m3u.exists():
+            pytest.skip("logs/saramix.m3u not present")
+    
+        app = _start_app(tmp_path)
+        try:
+            main = _wait_for_main(app, title_re="SARA", timeout=90.0)
+            try:
+                main.wait("exists", timeout=90)
+                main.wait("visible", timeout=20)
+            except Exception:
+                windows = Desktop(backend="uia").windows()
+                print(
+                    "Open windows (uia):",
+                    [(w.window_text(), getattr(w, "process_id", lambda: None)()) for w in windows],
+                )
+                raise
+            _menu_select_with_fallbacks(
+                main,
+                paths=[
+                    "Tools->Toggle auto mix",
+                    "Tools->Auto mix toggle",
+                    "Narzêdzia->Prze³¹cz automix",
+                    "Auto mix",
+                    "Automix",
+                ],
+                key_sequences=["^+m"],
+                names=["Auto mix", "Automix"],
+            )
+>           _import_m3u(main, src_m3u)
+
+tests\e2e\test_saramix_automix.py:197: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\e2e\test_saramix_automix.py:81: in _import_m3u
+    dialog.wait("exists", timeout=10)
+venv_user\Lib\site-packages\pywinauto\application.py:529: in wait
+    wait_until(timeout, retry_interval,
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+timeout = 10, retry_interval = 0.09, func = <function WindowSpecification.wait.<locals>.<lambda> at 0x00000271942D2020>
+value = True, op = <built-in function eq>, args = (), kwargs = {}, start = 74200.7506928, func_val = False
+time_left = -0.035976200000732206, err = TimeoutError('timed out')
+
+    def wait_until(timeout,
+                   retry_interval,
+                   func,
+                   value=True,
+                   op=operator.eq,
+                   *args, **kwargs):
+        r"""
+        Wait until ``op(function(*args, **kwargs), value)`` is True or until timeout expires
+    
+        * **timeout**  how long the function will try the function
+        * **retry_interval**  how long to wait between retries
+        * **func** the function that will be executed
+        * **value**  the value to be compared against (defaults to True)
+        * **op** the comparison function (defaults to equality)\
+        * **args** optional arguments to be passed to func when called
+        * **kwargs** optional keyword arguments to be passed to func when called
+    
+        Returns the return value of the function
+        If the operation times out then the return value of the the function
+        is in the 'function_value' attribute of the raised exception.
+    
+        e.g. ::
+    
+            try:
+                # wait a maximum of 10.5 seconds for the
+                # the objects item_count() method to return 10
+                # in increments of .5 of a second
+                wait_until(10.5, .5, self.item_count, 10)
+            except TimeoutError as e:
+                print("timed out")
+        """
+        start = timestamp()
+    
+        func_val = func(*args, **kwargs)
+        # while the function hasn't returned what we are waiting for
+        while not op(func_val, value):
+    
+            # find out how much of the time is left
+            time_left = timeout - (timestamp() - start)
+    
+            # if we have to wait some more
+            if time_left > 0:
+                # wait either the retry_interval or else the amount of
+                # time until the timeout expires (whichever is less)
+                time.sleep(min(retry_interval, time_left))
+                func_val = func(*args, **kwargs)
+            else:
+                err = TimeoutError("timed out")
+                err.function_value = func_val
+>               raise err
+E               pywinauto.timings.TimeoutError: timed out
+
+venv_user\Lib\site-packages\pywinauto\timings.py:375: TimeoutError
+=============================================== short test summary info ===============================================
+FAILED tests/e2e/test_options_dialog.py::test_options_dialog_roundtrip - pywinauto.timings.TimeoutError: timed out
+FAILED tests/e2e/test_saramix_automix.py::test_saramix_automix_flow - pywinauto.timings.TimeoutError: timed out
+======================================= 2 failed, 1 passed in 71.26s (0:01:11) ========================================
