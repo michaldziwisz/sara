@@ -168,21 +168,15 @@ class AppModule(AppModule):
 
     def event_stateChange(self, obj, nextHandler):
         if _is_playlist_window(obj):
-            self._check_external_play_next_signal()
-            self._log_event("stateChange", obj)
-            if self._suppress_event_for_play_next("stateChange", obj):
+            if not self._handle_playlist_event("stateChange", obj):
                 return
-            self._refresh_manual_speech_window(obj)
         if nextHandler:
             nextHandler()
 
     def event_selection(self, obj, nextHandler):
         if _is_playlist_window(obj):
-            self._check_external_play_next_signal()
-            self._log_event("selection", obj)
-            if self._suppress_event_for_play_next("selection", obj):
+            if not self._handle_playlist_event("selection", obj):
                 return
-            self._refresh_manual_speech_window(obj)
         if nextHandler:
             nextHandler()
 
@@ -194,15 +188,8 @@ class AppModule(AppModule):
 
     def event_valueChange(self, obj, nextHandler):
         if _is_playlist_window(obj):
-            self._check_external_play_next_signal()
-            self._log_event("valueChange", obj)
-            if self._suppress_event_for_play_next("valueChange", obj):
+            if not self._handle_playlist_event("valueChange", obj, allow_playing=True):
                 return
-            _, reason = _describe_window(obj)
-            if reason == "playing":
-                self._trigger_playback_silence("value-change", obj)
-            else:
-                self._refresh_manual_speech_window(obj)
         if nextHandler:
             nextHandler()
 
@@ -305,7 +292,6 @@ class AppModule(AppModule):
         if not self._is_manual_speech_active():
             return
         _text, reason = _describe_window(obj)
-        # Nie przedłużaj okna mowy, jeśli fokus wskakuje na grający wpis (automix).
         if reason == "playing":
             return
         self._allow_playlist_speech_window(obj)
@@ -372,6 +358,23 @@ class AppModule(AppModule):
         except Exception:
             pass
         self._update_mute_state(source + "-cancel")
+
+    def _handle_playlist_event(self, event_name: str, obj: Any, *, allow_playing: bool = False) -> bool:
+        self._check_external_play_next_signal()
+        self._log_event(event_name, obj)
+        if self._suppress_event_for_play_next(event_name, obj):
+            return False
+        if self._is_manual_speech_active():
+            if allow_playing:
+                _text, reason = _describe_window(obj)
+                if reason == "playing":
+                    self._trigger_playback_silence(f"{event_name}-playing", obj)
+                    return False
+            self._refresh_manual_speech_window(obj)
+            return True
+        cancelSpeech()
+        self._update_mute_state(f"{event_name}-auto", obj)
+        return False
 
     def _check_external_play_next_signal(self) -> None:
         if _PLAY_NEXT_SIGNAL is None:
