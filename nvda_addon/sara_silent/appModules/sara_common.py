@@ -189,7 +189,7 @@ class AppModule(AppModule):
 
     def event_valueChange(self, obj, nextHandler):
         if _is_playlist_window(obj):
-            if not self._handle_playlist_event("valueChange", obj, allow_playing=True):
+            if not self._handle_playlist_event("valueChange", obj):
                 return
         if nextHandler:
             nextHandler()
@@ -364,17 +364,16 @@ class AppModule(AppModule):
             pass
         self._update_mute_state(source + "-cancel")
 
-    def _handle_playlist_event(self, event_name: str, obj: Any, *, allow_playing: bool = False) -> bool:
+    def _handle_playlist_event(self, event_name: str, obj: Any) -> bool:
         self._check_external_play_next_signal()
         self._log_event(event_name, obj)
         if self._suppress_event_for_play_next(event_name, obj):
             return False
         if self._is_manual_speech_active():
-            if allow_playing:
-                _text, reason = _describe_window(obj)
-                if reason == "playing" and not self._manual_speech_user:
-                    return False
+            if not self._manual_speech_user:
+                return False
             self._refresh_manual_speech_window(obj)
+            self._manual_speech_user = False
             return True
         cancelSpeech()
         self._update_mute_state(f"{event_name}-auto", obj)
