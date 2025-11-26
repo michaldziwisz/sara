@@ -372,8 +372,7 @@ class AppModule(AppModule):
         if self._is_manual_speech_active():
             if allow_playing:
                 _text, reason = _describe_window(obj)
-                if reason == "playing":
-                    self._trigger_playback_silence(f"{event_name}-playing", obj)
+                if reason == "playing" and not self._manual_speech_user:
                     return False
             self._refresh_manual_speech_window(obj)
             return True
