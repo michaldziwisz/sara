@@ -172,7 +172,7 @@ class AppModule(AppModule):
             self._log_event("stateChange", obj)
             if self._suppress_event_for_play_next("stateChange", obj):
                 return
-            self._allow_playlist_speech_window(obj)
+            self._refresh_manual_speech_window(obj)
         if nextHandler:
             nextHandler()
 
@@ -182,7 +182,7 @@ class AppModule(AppModule):
             self._log_event("selection", obj)
             if self._suppress_event_for_play_next("selection", obj):
                 return
-            self._allow_playlist_speech_window(obj)
+            self._refresh_manual_speech_window(obj)
         if nextHandler:
             nextHandler()
 
@@ -202,7 +202,7 @@ class AppModule(AppModule):
             if reason == "playing":
                 self._trigger_playback_silence("value-change", obj)
             else:
-                self._allow_playlist_speech_window(obj)
+                self._refresh_manual_speech_window(obj)
         if nextHandler:
             nextHandler()
 
@@ -297,6 +297,14 @@ class AppModule(AppModule):
 
     def _is_play_next_silence_active(self) -> bool:
         return bool(self._play_next_silence_until and time.monotonic() < self._play_next_silence_until)
+
+    def _is_manual_speech_active(self) -> bool:
+        return bool(self._playlist_speech_until and time.monotonic() < self._playlist_speech_until)
+
+    def _refresh_manual_speech_window(self, obj: Any) -> None:
+        if not self._is_manual_speech_active():
+            return
+        self._allow_playlist_speech_window(obj)
 
     def _allow_playlist_speech_window(self, obj: Any, *, force: bool = False) -> None:
         if not force and self._is_play_next_silence_active():
