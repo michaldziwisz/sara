@@ -21,6 +21,7 @@ _PLAY_NEXT_SIGNAL = Path(_APPDATA or "") / "SARA" / "nvda_play_next_signal.txt" 
 _CHECK_INTERVAL_MS = 2000
 _PLAYLIST_CLASSES = {"wxWindowNR", "SysListView32"}
 _PLAYLIST_SPEECH_WINDOW_MS = 1200
+_MANUAL_SPEECH_GESTURE_TIMEOUT_MS = 300
 _PLAY_NEXT_SILENCE_WINDOW_MS = 1200
 
 
@@ -146,6 +147,7 @@ class AppModule(AppModule):
         self._mute_enabled = True
         self._last_play_next_signal_mtime = 0.0
         self._manual_speech_user = False
+        self._manual_gesture_until = 0.0
         self._update_mute_state("init")
         self._schedule_poll()
         try:
@@ -325,7 +327,11 @@ class AppModule(AppModule):
         self._playlist_speech_timer = core.callLater(
             _PLAYLIST_SPEECH_WINDOW_MS, self._end_playlist_speech_window
         )
-        self._manual_speech_user = bool(force)
+        if force:
+            self._manual_speech_user = True
+            self._manual_gesture_until = time.monotonic() + (
+                _MANUAL_SPEECH_GESTURE_TIMEOUT_MS / 1000
+            )
         self._update_mute_state("arrow", obj)
 
     def script_silence_after_play(self, gesture):
@@ -346,6 +352,7 @@ class AppModule(AppModule):
         self._playlist_speech_timer = None
         self._playlist_speech_until = 0.0
         self._manual_speech_user = False
+        self._manual_gesture_until = 0.0
         self._update_mute_state("arrow-expire")
 
     def _trigger_playback_silence(self, reason: str, obj: Any | None) -> None:
@@ -372,8 +379,14 @@ class AppModule(AppModule):
         if self._is_manual_speech_active():
             if not self._manual_speech_user:
                 return False
+            now = time.monotonic()
+            if now >= self._manual_gesture_until:
+                self._manual_speech_user = False
+                self._manual_gesture_until = 0.0
+                return False
             self._refresh_manual_speech_window(obj)
             self._manual_speech_user = False
+            self._manual_gesture_until = 0.0
             return True
         cancelSpeech()
         self._update_mute_state(f"{event_name}-auto", obj)
