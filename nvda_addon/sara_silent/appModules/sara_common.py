@@ -145,6 +145,7 @@ class AppModule(AppModule):
         self._last_mute_details = None
         self._mute_enabled = True
         self._last_play_next_signal_mtime = 0.0
+        self._manual_speech_user = False
         self._update_mute_state("init")
         self._schedule_poll()
         try:
@@ -291,6 +292,8 @@ class AppModule(AppModule):
     def _refresh_manual_speech_window(self, obj: Any) -> None:
         if not self._is_manual_speech_active():
             return
+        if not self._manual_speech_user:
+            return
         _text, reason = _describe_window(obj)
         if reason == "playing":
             return
@@ -322,6 +325,7 @@ class AppModule(AppModule):
         self._playlist_speech_timer = core.callLater(
             _PLAYLIST_SPEECH_WINDOW_MS, self._end_playlist_speech_window
         )
+        self._manual_speech_user = bool(force)
         self._update_mute_state("arrow", obj)
 
     def script_silence_after_play(self, gesture):
@@ -341,6 +345,7 @@ class AppModule(AppModule):
                 pass
         self._playlist_speech_timer = None
         self._playlist_speech_until = 0.0
+        self._manual_speech_user = False
         self._update_mute_state("arrow-expire")
 
     def _trigger_playback_silence(self, reason: str, obj: Any | None) -> None:
