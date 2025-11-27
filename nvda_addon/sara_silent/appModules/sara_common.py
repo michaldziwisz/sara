@@ -121,18 +121,25 @@ def _is_playing_entry(obj: Any) -> bool:
 
 class AppModule(AppModule):
     sleepMode = False  # keep NVDA fully awake; we mute manually
-    __gestures = {gesture: "script_allowPlaylistSpeech" for gesture in _ARROW_GESTURES}
-    __gestures.update({gesture: "script_silence_after_play" for gesture in _SILENCE_GESTURES})
+    _GESTURES = {gesture: "script_allowPlaylistSpeech" for gesture in _ARROW_GESTURES}
+    _GESTURES.update({gesture: "script_silence_after_play" for gesture in _SILENCE_GESTURES})
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         try:
-            log.info(
-                "SARA sleep addon gestures active: %s",
-                ", ".join(sorted(self.__gestures.keys())),
-            )
-        except Exception:
-            pass
+            self.bindGestures(self._GESTURES)
+            try:
+                log.info(
+                    "SARA sleep addon bound gestures: %s",
+                    ", ".join(sorted(self._GESTURES.keys())),
+                )
+            except Exception:
+                pass
+        except Exception as exc:
+            try:
+                log.warning("SARA sleep addon gesture bind failed: %s", exc)
+            except Exception:
+                pass
         self._poll_timer = None
         self._playlist_speech_timer = None
         self._playlist_speech_until = 0.0
