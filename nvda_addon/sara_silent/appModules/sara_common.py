@@ -87,7 +87,9 @@ class AppModule(AppModule):
     __gestures = {
         "kb:NVDA+alt+d": "script_toggleDoNotDisturb",
         "kb(desktop):NVDA+alt+d": "script_toggleDoNotDisturb",
-        "kb(laptop):NVDA+alt+d": "script_toggleDoNotDisturb",
+        "kb:NVDA+shift+d": "script_toggleDoNotDisturb",
+        "kb(desktop):NVDA+shift+d": "script_toggleDoNotDisturb",
+        "kb(laptop):NVDA+shift+d": "script_toggleDoNotDisturb",
     }
     sleepMode = False  # keep NVDA fully awake; we mute manually
 
