@@ -12,6 +12,7 @@ import api
 import core
 from appModuleHandler import AppModule
 from controlTypes import Role, STATE_SELECTED
+from keyboardHandler import KeyboardInputGesture
 from logHandler import log
 from speech import cancelSpeech
 
@@ -287,6 +288,7 @@ class AppModule(AppModule):
         self._cancel_play_next_silence("arrow-override")
         self._allow_playlist_speech_window(obj, force=True)
         gesture.send()
+        self._speak_current_playlist_item()
 
     def _is_play_next_silence_active(self) -> bool:
         return bool(self._play_next_silence_until and time.monotonic() < self._play_next_silence_until)
@@ -361,6 +363,22 @@ class AppModule(AppModule):
         self._end_playlist_speech_window()
         cancelSpeech()
         self._update_mute_state(reason, obj)
+
+    def _speak_current_playlist_item(self) -> None:
+        for name in ("kb(desktop):NVDA+tab", "kb:NVDA+tab"):
+            try:
+                gesture = KeyboardInputGesture.fromName(name)
+            except Exception:
+                continue
+            try:
+                log.info("SARA sleep addon announcing current playlist item via %s", name)
+            except Exception:
+                pass
+            try:
+                gesture.send()
+            except Exception:
+                continue
+            break
 
     def _cancel_play_next_silence(self, source: str) -> None:
         if not self._play_next_silence_until:
