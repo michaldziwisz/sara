@@ -13,9 +13,8 @@ import core
 import inputCore
 from appModuleHandler import AppModule
 from controlTypes import Role, STATE_SELECTED
-from keyboardHandler import KeyboardInputGesture
 from logHandler import log
-from speech import cancelSpeech
+from speech import cancelSpeech, speakMessage
 import winUser
 
 _APPDATA = os.environ.get("APPDATA")
@@ -302,20 +301,17 @@ class AppModule(AppModule):
         self._update_mute_state(reason, obj)
 
     def _speak_current_playlist_item(self) -> None:
-        for name in ("kb(desktop):NVDA+tab", "kb:NVDA+tab"):
-            try:
-                gesture = KeyboardInputGesture.fromName(name)
-            except Exception:
-                continue
-            try:
-                log.info("SARA sleep addon announcing current playlist item via %s", name)
-            except Exception:
-                pass
-            try:
-                gesture.send()
-            except Exception:
-                continue
-            break
+        obj = api.getFocusObject()
+        if not _is_playlist_window(obj):
+            return
+        text, _ = _describe_window(obj)
+        if not text:
+            return
+        try:
+            log.info("SARA sleep addon speaking playlist item: %s", text)
+        except Exception:
+            pass
+        speakMessage(str(text))
 
     def _cancel_play_next_silence(self, source: str) -> None:
         if not self._play_next_silence_until:
