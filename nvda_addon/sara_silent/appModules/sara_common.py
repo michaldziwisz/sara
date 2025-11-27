@@ -26,6 +26,7 @@ _PLAYLIST_CLASSES = {"wxWindowNR", "SysListView32", "RICHEDIT50W"}
 _PLAYLIST_SPEECH_WINDOW_MS = 1200
 _MANUAL_SPEECH_GESTURE_TIMEOUT_MS = 1500
 _PLAY_NEXT_SILENCE_WINDOW_MS = 1200
+_ANNOUNCEMENT_PREFIX = "\uf8ff"
 
 
 def _available_role(name: str) -> Role | None:
@@ -69,28 +70,11 @@ def _describe_window(obj: Any) -> tuple[str, str]:
         text = getattr(obj, "name", None) or getattr(obj, "value", None) or ""
     except Exception:
         text = ""
-    text_str = str(text).lstrip("\uf8ff")
-    reason = "playing" if "; Playing" in text_str else "other"
-    return text_str, reason
-
-
-def _describe_window(obj: Any) -> tuple[str, str]:
-    try:
-        text = getattr(obj, "name", None) or getattr(obj, "value", None) or ""
-    except Exception:
-        text = ""
-    text_str = str(text).lstrip("\uf8ff")
-    reason = "playing" if "; Playing" in text_str else "other"
-    return text_str, reason
-
-
-def _describe_window(obj: Any) -> tuple[str, str]:
-    try:
-        text = getattr(obj, "name", None) or getattr(obj, "value", None) or ""
-    except Exception:
-        text = ""
-    text_str = str(text).lstrip("\uf8ff")
-    reason = "playing" if "; Playing" in text_str else "other"
+    text_str = str(text)
+    is_announcement = text_str.startswith(_ANNOUNCEMENT_PREFIX)
+    if is_announcement:
+        text_str = text_str[len(_ANNOUNCEMENT_PREFIX) :]
+    reason = "announcement" if is_announcement else ("playing" if "; Playing" in text_str else "other")
     return text_str, reason
 
 
@@ -405,6 +389,10 @@ class AppModule(AppModule):
         self._log_event(event_name, obj)
         if self._suppress_event_for_play_next(event_name, obj):
             return False
+        text, reason = _describe_window(obj)
+        if reason == "announcement":
+            self._allow_playlist_speech_window(obj, force=True)
+            return True
         if self._is_manual_speech_active():
             if not self._manual_speech_user:
                 return False

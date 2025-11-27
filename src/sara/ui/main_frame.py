@@ -56,6 +56,7 @@ FADE_DURATION_SECONDS = 2.0
 MIX_NATIVE_EARLY_GUARD = 0.25
 MIX_NATIVE_LATE_GUARD = 0.35
 MIX_EXPLICIT_PROGRESS_GUARD = 0.05
+ANNOUNCEMENT_PREFIX = "\uf8ff"
 
 
 @dataclass
@@ -1131,10 +1132,10 @@ class MainFrame(wx.Frame):
         if not enabled:
             self._playback.clear_auto_mix()
         if reason:
-            self._announce_event("auto_mix", reason)
+            self._announce_event("auto_mix", f"{ANNOUNCEMENT_PREFIX}{reason}")
         else:
             status = _("enabled") if enabled else _("disabled")
-            self._announce_event("auto_mix", _("Auto mix %s") % status)
+            self._announce_event("auto_mix", f"{ANNOUNCEMENT_PREFIX}{_('Auto mix %s') % status}")
         if enabled:
             # jeśli automix włączamy podczas odtwarzania, ustaw tracker na bieżące utwory
             for (pl_id, item_id) in list(getattr(self._playback, "contexts", {}).keys()):
@@ -2823,7 +2824,7 @@ class MainFrame(wx.Frame):
                 self._layout.set_current(playlist_id)
                 self._current_index = self._layout.current_index()
                 self._update_active_playlist_styles()
-                self._announce_event("playlist", panel.model.name)
+                self._announce_event("playlist", f"{ANNOUNCEMENT_PREFIX}{panel.model.name}")
                 return panel
         return None
 
@@ -2848,7 +2849,7 @@ class MainFrame(wx.Frame):
         self._update_active_playlist_styles()
         panel = self._playlists.get(playlist_id)
         if panel:
-            self._announce_event("playlist", panel.model.name)
+            self._announce_event("playlist", f"{ANNOUNCEMENT_PREFIX}{panel.model.name}")
 
     def _get_selected_context(self) -> tuple[PlaylistPanel, PlaylistModel, list[int]] | None:
         panel = self._get_current_music_panel()
