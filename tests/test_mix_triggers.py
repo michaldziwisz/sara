@@ -528,10 +528,14 @@ def test_native_fallback_triggers_progress_mix(tmp_path):
     player = _AutoMixPlayer("dev-1", supports_mix_trigger=True)
     key = (playlist.id, item.id)
     update_calls: list[tuple] = []
+    def _record_update(pl_id, item_id, *, mix_trigger_seconds=None, on_mix_trigger=None):
+        update_calls.append((pl_id, item_id, mix_trigger_seconds, on_mix_trigger))
+        return True
+
     frame._playback = SimpleNamespace(
         auto_mix_state={},
         contexts={key: SimpleNamespace(player=player)},
-        update_mix_trigger=lambda *_args, **_kwargs: update_calls.append(_args) or True,
+        update_mix_trigger=_record_update,
     )
     frame._mix_plans[key] = MixPlan(
         mix_at=15.0,
