@@ -10,11 +10,13 @@ from typing import Any
 
 import api
 import core
+import inputCore
 from appModuleHandler import AppModule
 from controlTypes import Role, STATE_SELECTED
 from keyboardHandler import KeyboardInputGesture
 from logHandler import log
 from speech import cancelSpeech
+import winUser
 
 _APPDATA = os.environ.get("APPDATA")
 _TARGET = Path(_APPDATA or "") / "SARA" / "nvda_sleep_targets.json"
@@ -26,13 +28,6 @@ _MANUAL_SPEECH_GESTURE_TIMEOUT_MS = 1500
 _PLAY_NEXT_SILENCE_WINDOW_MS = 1200
 
 
-def _gesture_variants(keys: tuple[str, ...]) -> tuple[str, ...]:
-    variants: set[str] = set()
-    prefixes = ("kb", "kb(desktop)")
-    for key in keys:
-        for prefix in prefixes:
-            variants.add(f"{prefix}:{key}")
-    return tuple(sorted(variants))
 def _available_role(name: str) -> Role | None:
     return getattr(Role, name, None)
 
@@ -42,24 +37,6 @@ _PLAYLIST_ROLES = {
     for role in map(_available_role, ("PANE", "CLIENT", "WINDOW", "UNKNOWN", "LIST", "LISTITEM"))
     if role is not None
 }
-_ARROW_GESTURES = _gesture_variants(
-    (
-        "upArrow",
-        "downArrow",
-        "shift+upArrow",
-        "shift+downArrow",
-    )
-)
-_SILENCE_GESTURES = _gesture_variants(
-    (
-        "space",
-        "shift+space",
-        "f1",
-        "shift+f1",
-    )
-)
-
-
 def _is_playlist_window(obj: Any) -> bool:
     def _matches(candidate: Any) -> bool:
         try:
@@ -121,25 +98,9 @@ def _is_playing_entry(obj: Any) -> bool:
 
 class AppModule(AppModule):
     sleepMode = False  # keep NVDA fully awake; we mute manually
-    _GESTURES = {gesture: "script_allowPlaylistSpeech" for gesture in _ARROW_GESTURES}
-    _GESTURES.update({gesture: "script_silence_after_play" for gesture in _SILENCE_GESTURES})
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        try:
-            self.bindGestures(self._GESTURES)
-            try:
-                log.info(
-                    "SARA sleep addon bound gestures: %s",
-                    ", ".join(sorted(self._GESTURES.keys())),
-                )
-            except Exception:
-                pass
-        except Exception as exc:
-            try:
-                log.warning("SARA sleep addon gesture bind failed: %s", exc)
-            except Exception:
-                pass
         self._poll_timer = None
         self._playlist_speech_timer = None
         self._playlist_speech_until = 0.0
@@ -149,6 +110,7 @@ class AppModule(AppModule):
         self._last_play_next_signal_mtime = 0.0
         self._manual_speech_user = False
         self._manual_gesture_until = 0.0
+        self._raw_key_handler = inputCore.decide_handleRawKey.register(self._handle_raw_key)
         self._update_mute_state("init")
         self._schedule_poll()
         try:
@@ -209,6 +171,10 @@ class AppModule(AppModule):
         if timer is not None:
             timer.Stop()
             self._playlist_speech_timer = None
+        try:
+            inputCore.decide_handleRawKey.unregister(self._handle_raw_key)
+        except Exception:
+            pass
         super().terminate()
 
     def _schedule_poll(self) -> None:
@@ -264,32 +230,6 @@ class AppModule(AppModule):
                 pass
         return registered
 
-    def script_allowPlaylistSpeech(self, gesture):
-        obj = api.getFocusObject()
-        try:
-            log.info(
-                "SARA sleep addon arrow raw focus=%s/%s",
-                getattr(obj, "windowClassName", None),
-                getattr(obj, "role", None),
-            )
-        except Exception:
-            pass
-        if not _is_playlist_window(obj):
-            gesture.send()
-            return
-        try:
-            log.info(
-                "SARA sleep addon arrow raw focus=%s/%s",
-                getattr(obj, "windowClassName", None),
-                getattr(obj, "role", None),
-            )
-        except Exception:
-            pass
-        self._cancel_play_next_silence("arrow-override")
-        self._allow_playlist_speech_window(obj, force=True)
-        gesture.send()
-        self._speak_current_playlist_item()
-
     def _is_play_next_silence_active(self) -> bool:
         return bool(self._play_next_silence_until and time.monotonic() < self._play_next_silence_until)
 
@@ -337,14 +277,6 @@ class AppModule(AppModule):
             )
         self._update_mute_state("arrow", obj)
 
-    def script_silence_after_play(self, gesture):
-        try:
-            log.info("SARA sleep addon play-next silence for pid=%s", self.processID)
-        except Exception:
-            pass
-        self._trigger_playback_silence("play-next", api.getFocusObject())
-        gesture.send()
-
     def _end_playlist_speech_window(self) -> None:
         timer = self._playlist_speech_timer
         if timer is not None:
@@ -389,6 +321,20 @@ class AppModule(AppModule):
         except Exception:
             pass
         self._update_mute_state(source + "-cancel")
+
+    def _handle_raw_key(self, vkCode, scanCode, extended, pressed):
+        if not pressed:
+            return True
+        obj = api.getFocusObject()
+        if not _is_playlist_window(obj):
+            return True
+        if vkCode in (winUser.VK_UP, winUser.VK_DOWN):
+            self._cancel_play_next_silence("arrow-override")
+            self._allow_playlist_speech_window(obj, force=True)
+            self._speak_current_playlist_item()
+        elif vkCode in (winUser.VK_SPACE, winUser.VK_F1):
+            self._trigger_playback_silence("play-next", obj)
+        return True
 
     def _handle_playlist_event(self, event_name: str, obj: Any) -> bool:
         self._check_external_play_next_signal()
