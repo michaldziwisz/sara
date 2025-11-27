@@ -84,6 +84,11 @@ def _is_playing_entry(obj: Any) -> bool:
 
 
 class AppModule(AppModule):
+    __gestures = {
+        "kb:NVDA+shift+d": "script_toggleDoNotDisturb",
+        "kb(desktop):NVDA+shift+d": "script_toggleDoNotDisturb",
+        "kb(laptop):NVDA+shift+d": "script_toggleDoNotDisturb",
+    }
     sleepMode = False  # keep NVDA fully awake; we mute manually
 
     def __init__(self, *args, **kwargs):
@@ -100,6 +105,7 @@ class AppModule(AppModule):
         self._announcement_timer = None
         self._announcement_attempts = 0
         self._playlist_switch_speech_until = 0.0
+        self._do_not_disturb = True
         inputCore.decide_handleRawKey.register(self._handle_raw_key)
         try:
             log.info("SARA sleep addon raw key handler registered")
@@ -111,6 +117,17 @@ class AppModule(AppModule):
             log.info("SARA sleep addon init: pid=%s", self.processID)
         except Exception:
             pass
+
+    def script_toggleDoNotDisturb(self, gesture):
+        self._do_not_disturb = not self._do_not_disturb
+        state = "enabled" if self._do_not_disturb else "disabled"
+        try:
+            log.info("SARA sleep addon do-not-disturb toggled: %s", state)
+        except Exception:
+            pass
+        cancelSpeech()
+        speakMessage(f"Do not disturb {state}")
+        self._update_mute_state("dnd-toggle", api.getFocusObject())
 
     def event_foreground(self, obj, nextHandler):
         if _is_playlist_window(obj) and self._suppress_event_for_play_next("foreground", obj):
@@ -200,6 +217,8 @@ class AppModule(AppModule):
     def _should_mute(self, obj: Any | None) -> tuple[bool, str]:
         if not self._is_pid_registered():
             return False, "pid-not-registered"
+        if not self._do_not_disturb:
+            return False, "dnd-off"
         now = time.monotonic()
         if self._play_next_silence_until and now < self._play_next_silence_until:
             return True, "play-next-forced"
@@ -362,7 +381,7 @@ class AppModule(AppModule):
         self._update_mute_state(source + "-cancel")
 
     def _handle_raw_key(self, vkCode, scanCode, extended, pressed):
-        if not pressed:
+        if not pressed or not self._do_not_disturb:
             return True
         obj = api.getFocusObject()
         if not _is_playlist_window(obj):
@@ -393,11 +412,13 @@ class AppModule(AppModule):
         self._log_event(event_name, obj)
         if self._suppress_event_for_play_next(event_name, obj):
             return False
+        if not self._do_not_disturb:
+            return True
         text, reason = _describe_window(obj)
         if reason == "announcement":
             self._allow_playlist_speech_window(obj, force=True)
             return True
-        if self._playlist_switch_speech_until:
+        if self._do_not_disturb and self._playlist_switch_speech_until:
             if time.monotonic() < self._playlist_switch_speech_until:
                 self._allow_playlist_speech_window(obj, force=True)
                 return True
