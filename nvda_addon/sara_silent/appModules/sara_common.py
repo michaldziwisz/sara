@@ -110,7 +110,11 @@ class AppModule(AppModule):
         self._last_play_next_signal_mtime = 0.0
         self._manual_speech_user = False
         self._manual_gesture_until = 0.0
-        self._raw_key_handler = inputCore.decide_handleRawKey.register(self._handle_raw_key)
+        inputCore.decide_handleRawKey.register(self._handle_raw_key)
+        try:
+            log.info("SARA sleep addon raw key handler registered")
+        except Exception:
+            pass
         self._update_mute_state("init")
         self._schedule_poll()
         try:
@@ -173,6 +177,7 @@ class AppModule(AppModule):
             self._playlist_speech_timer = None
         try:
             inputCore.decide_handleRawKey.unregister(self._handle_raw_key)
+            log.info("SARA sleep addon raw key handler unregistered")
         except Exception:
             pass
         super().terminate()
@@ -328,6 +333,16 @@ class AppModule(AppModule):
         obj = api.getFocusObject()
         if not _is_playlist_window(obj):
             return True
+        try:
+            log.info(
+                "SARA sleep addon raw key vk=%s extended=%s focus=%s/%s",
+                vkCode,
+                extended,
+                getattr(obj, "windowClassName", None),
+                getattr(obj, "role", None),
+            )
+        except Exception:
+            pass
         if vkCode in (winUser.VK_UP, winUser.VK_DOWN):
             self._cancel_play_next_silence("arrow-override")
             self._allow_playlist_speech_window(obj, force=True)
