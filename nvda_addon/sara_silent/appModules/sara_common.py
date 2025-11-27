@@ -110,6 +110,7 @@ class AppModule(AppModule):
         self._last_play_next_signal_mtime = 0.0
         self._manual_speech_user = False
         self._manual_gesture_until = 0.0
+        self._announcement_timer = None
         inputCore.decide_handleRawKey.register(self._handle_raw_key)
         try:
             log.info("SARA sleep addon raw key handler registered")
@@ -175,6 +176,7 @@ class AppModule(AppModule):
         if timer is not None:
             timer.Stop()
             self._playlist_speech_timer = None
+        self._cancel_playlist_announcement()
         try:
             inputCore.decide_handleRawKey.unregister(self._handle_raw_key)
             log.info("SARA sleep addon raw key handler unregistered")
@@ -330,6 +332,28 @@ class AppModule(AppModule):
             pass
         speakMessage(str(text))
 
+    def _schedule_playlist_announcement(self) -> None:
+        self._cancel_playlist_announcement()
+        try:
+            self._announcement_timer = core.callLater(100, self._announce_playlist_item)
+        except Exception:
+            self._announcement_timer = None
+            self._speak_current_playlist_item()
+
+    def _announce_playlist_item(self) -> None:
+        self._announcement_timer = None
+        self._speak_current_playlist_item()
+
+    def _cancel_playlist_announcement(self) -> None:
+        timer = self._announcement_timer
+        if not timer:
+            return
+        try:
+            timer.Stop()
+        except Exception:
+            pass
+        self._announcement_timer = None
+
     def _cancel_play_next_silence(self, source: str) -> None:
         if not self._play_next_silence_until:
             return
@@ -359,7 +383,7 @@ class AppModule(AppModule):
         if vkCode in (winUser.VK_UP, winUser.VK_DOWN):
             self._cancel_play_next_silence("arrow-override")
             self._allow_playlist_speech_window(obj, force=True)
-            self._speak_current_playlist_item()
+            self._schedule_playlist_announcement()
         elif vkCode in (winUser.VK_SPACE, winUser.VK_F1):
             self._trigger_playback_silence("play-next", obj)
         return True
