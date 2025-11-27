@@ -846,7 +846,11 @@ def _make_frame_for_automix(fade: float = 3.0) -> MainFrame:
 
 
 def _register_playlist(frame: MainFrame, playlist: PlaylistModel, panel: object | None = None) -> None:
+    if not hasattr(frame, "_state"):
+        frame._state = AppState()
     frame._state.add_playlist(playlist)
+    if not hasattr(frame, "_playlists"):
+        frame._playlists = {}
     if panel is not None:
         frame._playlists[playlist.id] = panel  # type: ignore[attr-defined]
 
