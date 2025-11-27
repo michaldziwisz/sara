@@ -15,7 +15,7 @@ from appModuleHandler import AppModule
 from controlTypes import Role, STATE_SELECTED
 from keyboardHandler import KeyboardInputGesture
 from logHandler import log
-from speech import cancelSpeech, speakMessage
+from speech import cancelSpeech, speakMessage, isSpeaking
 import winUser
 
 _APPDATA = os.environ.get("APPDATA")
@@ -111,6 +111,7 @@ class AppModule(AppModule):
         self._manual_speech_user = False
         self._manual_gesture_until = 0.0
         self._announcement_timer = None
+        self._announcement_attempts = 0
         inputCore.decide_handleRawKey.register(self._handle_raw_key)
         try:
             log.info("SARA sleep addon raw key handler registered")
@@ -334,6 +335,7 @@ class AppModule(AppModule):
 
     def _schedule_playlist_announcement(self) -> None:
         self._cancel_playlist_announcement()
+        self._announcement_attempts = 0
         try:
             self._announcement_timer = core.callLater(100, self._announce_playlist_item)
         except Exception:
@@ -341,7 +343,15 @@ class AppModule(AppModule):
             self._speak_current_playlist_item()
 
     def _announce_playlist_item(self) -> None:
+        if isSpeaking() and self._announcement_attempts < 5:
+            self._announcement_attempts += 1
+            try:
+                self._announcement_timer = core.callLater(150, self._announce_playlist_item)
+            except Exception:
+                self._announcement_timer = None
+            return
         self._announcement_timer = None
+        self._announcement_attempts = 0
         self._speak_current_playlist_item()
 
     def _cancel_playlist_announcement(self) -> None:
@@ -353,6 +363,7 @@ class AppModule(AppModule):
         except Exception:
             pass
         self._announcement_timer = None
+        self._announcement_attempts = 0
 
     def _cancel_play_next_silence(self, source: str) -> None:
         if not self._play_next_silence_until:
