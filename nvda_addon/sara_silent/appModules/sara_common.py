@@ -40,10 +40,13 @@ _PLAYLIST_ROLES = {
 def _is_playlist_window(obj: Any) -> bool:
     def _matches(candidate: Any) -> bool:
         try:
-            return (
-                getattr(candidate, "windowClassName", None) in _PLAYLIST_CLASSES
-                and getattr(candidate, "role", None) in _PLAYLIST_ROLES
-            )
+            window_class = getattr(candidate, "windowClassName", None)
+            role = getattr(candidate, "role", None)
+            if window_class not in _PLAYLIST_CLASSES:
+                return False
+            if role in _PLAYLIST_ROLES:
+                return True
+            return bool(window_class == "RICHEDIT50W" and role == getattr(Role, "EDITABLETEXT", None))
         except Exception:
             return False
 
@@ -66,7 +69,7 @@ def _describe_window(obj: Any) -> tuple[str, str]:
         text = getattr(obj, "name", None) or getattr(obj, "value", None) or ""
     except Exception:
         text = ""
-    text_str = str(text)
+    text_str = str(text).lstrip("\uf8ff")
     reason = "playing" if "; Playing" in text_str else "other"
     return text_str, reason
 
@@ -76,7 +79,7 @@ def _describe_window(obj: Any) -> tuple[str, str]:
         text = getattr(obj, "name", None) or getattr(obj, "value", None) or ""
     except Exception:
         text = ""
-    text_str = str(text)
+    text_str = str(text).lstrip("\uf8ff")
     reason = "playing" if "; Playing" in text_str else "other"
     return text_str, reason
 
@@ -86,7 +89,7 @@ def _describe_window(obj: Any) -> tuple[str, str]:
         text = getattr(obj, "name", None) or getattr(obj, "value", None) or ""
     except Exception:
         text = ""
-    text_str = str(text)
+    text_str = str(text).lstrip("\uf8ff")
     reason = "playing" if "; Playing" in text_str else "other"
     return text_str, reason
 
