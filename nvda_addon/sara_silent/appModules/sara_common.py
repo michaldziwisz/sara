@@ -15,7 +15,7 @@ from appModuleHandler import AppModule
 from controlTypes import Role, STATE_SELECTED
 from keyboardHandler import KeyboardInputGesture
 from logHandler import log
-from speech import cancelSpeech, speakMessage, isSpeaking
+from speech import cancelSpeech, speakMessage
 import winUser
 
 _APPDATA = os.environ.get("APPDATA")
@@ -112,7 +112,6 @@ class AppModule(AppModule):
         self._manual_gesture_until = 0.0
         self._announcement_timer = None
         self._announcement_attempts = 0
-        self._announcement_pending_since = 0.0
         inputCore.decide_handleRawKey.register(self._handle_raw_key)
         try:
             log.info("SARA sleep addon raw key handler registered")
@@ -335,29 +334,23 @@ class AppModule(AppModule):
         speakMessage(str(text))
 
     def _schedule_playlist_announcement(self) -> None:
-        self._announcement_pending_since = time.monotonic()
-        if self._announcement_timer:
-            return
+        timer = self._announcement_timer
+        if timer:
+            try:
+                timer.Stop()
+            except Exception:
+                pass
+        self._announcement_timer = None
         self._announcement_attempts = 0
         try:
             self._announcement_timer = core.callLater(140, self._announce_playlist_item)
         except Exception:
             self._announcement_timer = None
-            self._announcement_pending_since = 0.0
             self._speak_current_playlist_item()
 
     def _announce_playlist_item(self) -> None:
-        pending_elapsed = time.monotonic() - self._announcement_pending_since if self._announcement_pending_since else 0.0
-        if isSpeaking() and self._announcement_attempts == 0 and pending_elapsed < 0.9:
-            self._announcement_attempts = 1
-            try:
-                self._announcement_timer = core.callLater(220, self._announce_playlist_item)
-                return
-            except Exception:
-                self._announcement_timer = None
         self._announcement_timer = None
         self._announcement_attempts = 0
-        self._announcement_pending_since = 0.0
         self._speak_current_playlist_item()
 
     def _cancel_playlist_announcement(self) -> None:
@@ -370,7 +363,6 @@ class AppModule(AppModule):
             pass
         self._announcement_timer = None
         self._announcement_attempts = 0
-        self._announcement_pending_since = 0.0
     def _cancel_play_next_silence(self, source: str) -> None:
         if not self._play_next_silence_until:
             return
