@@ -99,6 +99,7 @@ class AppModule(AppModule):
         self._manual_gesture_until = 0.0
         self._announcement_timer = None
         self._announcement_attempts = 0
+        self._playlist_switch_speech_until = 0.0
         inputCore.decide_handleRawKey.register(self._handle_raw_key)
         try:
             log.info("SARA sleep addon raw key handler registered")
@@ -382,6 +383,9 @@ class AppModule(AppModule):
             self._schedule_playlist_announcement()
         elif vkCode in (winUser.VK_SPACE, winUser.VK_F1):
             self._trigger_playback_silence("play-next", obj)
+        elif vkCode == winUser.VK_F6:
+            self._playlist_switch_speech_until = time.monotonic() + 0.8
+            self._allow_playlist_speech_window(obj, force=True)
         return True
 
     def _handle_playlist_event(self, event_name: str, obj: Any) -> bool:
@@ -393,6 +397,11 @@ class AppModule(AppModule):
         if reason == "announcement":
             self._allow_playlist_speech_window(obj, force=True)
             return True
+        if self._playlist_switch_speech_until:
+            if time.monotonic() < self._playlist_switch_speech_until:
+                self._allow_playlist_speech_window(obj, force=True)
+                return True
+            self._playlist_switch_speech_until = 0.0
         if self._is_manual_speech_active():
             if not self._manual_speech_user:
                 return False
