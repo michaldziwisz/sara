@@ -16,6 +16,7 @@ from controlTypes import Role, STATE_SELECTED
 from keyboardHandler import KeyboardInputGesture
 from logHandler import log
 from speech import cancelSpeech, speakMessage
+import scriptHandler
 import winUser
 
 _APPDATA = os.environ.get("APPDATA")
@@ -84,13 +85,6 @@ def _is_playing_entry(obj: Any) -> bool:
 
 
 class AppModule(AppModule):
-    __gestures = {
-        "kb:NVDA+alt+d": "script_toggleDoNotDisturb",
-        "kb(desktop):NVDA+alt+d": "script_toggleDoNotDisturb",
-        "kb:NVDA+shift+d": "script_toggleDoNotDisturb",
-        "kb(desktop):NVDA+shift+d": "script_toggleDoNotDisturb",
-        "kb(laptop):NVDA+shift+d": "script_toggleDoNotDisturb",
-    }
     sleepMode = False  # keep NVDA fully awake; we mute manually
 
     def __init__(self, *args, **kwargs):
@@ -108,14 +102,6 @@ class AppModule(AppModule):
         self._announcement_attempts = 0
         self._playlist_switch_speech_until = 0.0
         self._do_not_disturb = True
-        try:
-            self.bindGestures(self.__gestures)
-            log.info("SARA sleep addon registered gestures: %s", ", ".join(self.__gestures.keys()))
-        except Exception as exc:
-            try:
-                log.warning("SARA sleep addon gesture bind failed: %s", exc)
-            except Exception:
-                pass
         inputCore.decide_handleRawKey.register(self._handle_raw_key)
         try:
             log.info("SARA sleep addon raw key handler registered")
@@ -128,6 +114,10 @@ class AppModule(AppModule):
         except Exception:
             pass
 
+    @scriptHandler.script(
+        description="Toggle SARA do-not-disturb mode",
+        gesture="kb:NVDA+alt+d",
+    )
     def script_toggleDoNotDisturb(self, gesture):
         self._do_not_disturb = not self._do_not_disturb
         state = "enabled" if self._do_not_disturb else "disabled"
