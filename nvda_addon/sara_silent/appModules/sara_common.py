@@ -13,6 +13,7 @@ import core
 import inputCore
 from appModuleHandler import AppModule
 from controlTypes import Role, STATE_SELECTED
+from keyboardHandler import KeyboardInputGesture
 from logHandler import log
 from speech import cancelSpeech, speakMessage
 import winUser
@@ -304,11 +305,27 @@ class AppModule(AppModule):
         obj = api.getFocusObject()
         if not _is_playlist_window(obj):
             return
+        manager = inputCore.manager
+        for name in ("kb(desktop):NVDA+tab", "kb:NVDA+tab"):
+            try:
+                gesture = KeyboardInputGesture.fromName(name)
+            except Exception:
+                continue
+            try:
+                log.info("SARA sleep addon emulating %s for playlist announcement", name)
+            except Exception:
+                pass
+            try:
+                if manager:
+                    manager.emulateGesture(gesture)
+                    return
+            except Exception:
+                continue
         text, _ = _describe_window(obj)
         if not text:
             return
         try:
-            log.info("SARA sleep addon speaking playlist item: %s", text)
+            log.info("SARA sleep addon speaking playlist item fallback: %s", text)
         except Exception:
             pass
         speakMessage(str(text))
