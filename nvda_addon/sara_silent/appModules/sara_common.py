@@ -127,19 +127,12 @@ class AppModule(AppModule):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         try:
-            self.bindGestures(self.__gestures)
-            try:
-                log.info(
-                    "SARA sleep addon bound gestures: %s",
-                    ", ".join(sorted(self.__gestures.keys())),
-                )
-            except Exception:
-                pass
-        except Exception as exc:
-            try:
-                log.warning("SARA sleep addon gesture bind failed: %s", exc)
-            except Exception:
-                pass
+            log.info(
+                "SARA sleep addon gestures active: %s",
+                ", ".join(sorted(self.__gestures.keys())),
+            )
+        except Exception:
+            pass
         self._poll_timer = None
         self._playlist_speech_timer = None
         self._playlist_speech_until = 0.0
