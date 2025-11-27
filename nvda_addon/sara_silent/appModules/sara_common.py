@@ -21,7 +21,7 @@ _PLAY_NEXT_SIGNAL = Path(_APPDATA or "") / "SARA" / "nvda_play_next_signal.txt" 
 _CHECK_INTERVAL_MS = 2000
 _PLAYLIST_CLASSES = {"wxWindowNR", "SysListView32"}
 _PLAYLIST_SPEECH_WINDOW_MS = 1200
-_MANUAL_SPEECH_GESTURE_TIMEOUT_MS = 300
+_MANUAL_SPEECH_GESTURE_TIMEOUT_MS = 1500
 _PLAY_NEXT_SILENCE_WINDOW_MS = 1200
 
 
@@ -294,15 +294,16 @@ class AppModule(AppModule):
     def _is_manual_speech_active(self) -> bool:
         return bool(self._playlist_speech_until and time.monotonic() < self._playlist_speech_until)
 
-    def _refresh_manual_speech_window(self, obj: Any) -> None:
+    def _refresh_manual_speech_window(self, obj: Any) -> bool:
         if not self._is_manual_speech_active():
-            return
+            return False
         if not self._manual_speech_user:
-            return
+            return False
         _text, reason = _describe_window(obj)
         if reason == "playing":
-            return
+            return False
         self._allow_playlist_speech_window(obj)
+        return True
 
     def _allow_playlist_speech_window(self, obj: Any, *, force: bool = False) -> None:
         if not force and self._is_play_next_silence_active():
@@ -387,7 +388,8 @@ class AppModule(AppModule):
                 self._manual_speech_user = False
                 self._manual_gesture_until = 0.0
                 return False
-            self._refresh_manual_speech_window(obj)
+            if not self._refresh_manual_speech_window(obj):
+                return False
             self._manual_speech_user = False
             self._manual_gesture_until = 0.0
             return True
