@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from sara.core.app_state import AppState
 from sara.core.config import SettingsManager
 from sara.core.playlist import PlaylistItem, PlaylistModel, PlaylistKind
 from sara.audio.engine import BackendType
@@ -323,6 +324,7 @@ def test_progress_based_mix_triggers_when_native_missing(tmp_path):
     playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
     playlist.add_items([item])
     panel = SimpleNamespace(model=playlist)
+    _register_playlist(frame, playlist, panel)
     player = _ProgressPlayer("dev-1")
     ctx = SimpleNamespace(player=player)
 
@@ -414,6 +416,7 @@ def test_loop_hold_in_automix_does_not_auto_advance(tmp_path):
     )
     playlist.add_items([item])
     panel = SimpleNamespace(model=playlist)
+    _register_playlist(frame, playlist, panel)
     context = SimpleNamespace(player=_DummyPlayer("dev-1"))
     auto_next_calls: list[object] = []
     frame._auto_mix_tracker = SimpleNamespace(set_last_started=lambda *_a, **_k: None)
@@ -440,6 +443,7 @@ def test_auto_mix_state_process_skips_loop_hold(tmp_path):
     )
     playlist.add_items([item])
     panel = SimpleNamespace(model=playlist)
+    _register_playlist(frame, playlist, panel)
     key = (playlist.id, item.id)
     player = _AutoMixPlayer("dev-1")
     ctx = SimpleNamespace(player=player)
@@ -823,9 +827,28 @@ def _make_frame_for_automix(fade: float = 3.0) -> MainFrame:
     frame._mix_trigger_points = {}
     frame._auto_mix_enabled = True
     frame._active_break_item = {}
-    frame._playback = SimpleNamespace(auto_mix_state={}, contexts={})
+    frame._state = AppState()
+    frame._playlists = {}
+    frame._auto_mix_tracker = AutoMixTracker()
+    frame._last_started_item_id = {}
+    playback = SimpleNamespace(auto_mix_state={}, contexts={})
+
+    def _get_ctx(playlist_id: str):
+        for key, ctx in playback.contexts.items():
+            if key[0] == playlist_id:
+                return key, ctx
+        return None
+
+    playback.get_context = _get_ctx  # type: ignore[attr-defined]
+    frame._playback = playback
     frame._supports_mix_trigger = lambda _player=None: False
     return frame
+
+
+def _register_playlist(frame: MainFrame, playlist: PlaylistModel, panel: object | None = None) -> None:
+    frame._state.add_playlist(playlist)
+    if panel is not None:
+        frame._playlists[playlist.id] = panel  # type: ignore[attr-defined]
 
 
 class _AutoMixPlayer(_DummyPlayer):
@@ -852,6 +875,7 @@ def test_automix_prefers_segue_over_fallback(tmp_path):
     )
     playlist.add_items([item, PlaylistItem(id="next", path=tmp_path / "next.wav", title="Next", duration_seconds=10.0)])
     panel = SimpleNamespace(model=playlist)
+    _register_playlist(frame, playlist, panel)
     player = _AutoMixPlayer("dev-1")
     ctx = SimpleNamespace(player=player)
 
@@ -878,6 +902,7 @@ def test_automix_falls_back_to_global_fade_without_markers(tmp_path):
     )
     playlist.add_items([item, PlaylistItem(id="after", path=tmp_path / "after.wav", title="After", duration_seconds=5.0)])
     panel = SimpleNamespace(model=playlist)
+    _register_playlist(frame, playlist, panel)
     player = _AutoMixPlayer("dev-1")
     ctx = SimpleNamespace(player=player)
 
@@ -903,6 +928,7 @@ def test_automix_waits_until_segue_point(tmp_path):
     )
     playlist.add_items([item, PlaylistItem(id="next", path=tmp_path / "n.wav", title="Next", duration_seconds=5.0)])
     panel = SimpleNamespace(model=playlist)
+    _register_playlist(frame, playlist, panel)
     player = _AutoMixPlayer("dev-1")
     ctx = SimpleNamespace(player=player)
     frame._playback.contexts[(playlist.id, item.id)] = ctx
@@ -996,6 +1022,7 @@ def test_native_guard_handles_segue_near_track_end(tmp_path):
         ]
     )
     panel = SimpleNamespace(model=playlist)
+    _register_playlist(frame, playlist, panel)
     player = _AutoMixPlayer("dev-1", supports_mix_trigger=True)
     ctx = SimpleNamespace(player=player)
 
@@ -1033,6 +1060,7 @@ def test_native_guard_waits_until_shortfall_window(tmp_path):
         ]
     )
     panel = SimpleNamespace(model=playlist)
+    _register_playlist(frame, playlist, panel)
     player = _AutoMixPlayer("dev-1", supports_mix_trigger=True)
     ctx = SimpleNamespace(player=player)
 
@@ -1077,6 +1105,7 @@ def test_native_guard_respects_short_fade_window(tmp_path):
         ]
     )
     panel = SimpleNamespace(model=playlist)
+    _register_playlist(frame, playlist, panel)
     player = _AutoMixPlayer("dev-1", supports_mix_trigger=True)
     ctx = SimpleNamespace(player=player)
 
@@ -1126,6 +1155,8 @@ def test_automix_respects_break_and_does_not_trigger(tmp_path):
 def test_manual_fade_disables_auto_mix(tmp_path):
     frame = MainFrame.__new__(MainFrame)
     frame._auto_mix_enabled = True
+    frame._fade_duration = 2.0
+    frame._state = AppState()
     playlist = PlaylistModel(id="pl-manual", name="Manual", kind=PlaylistKind.MUSIC)
     item = PlaylistItem(
         id="item-manual",
@@ -1252,6 +1283,7 @@ def test_saramix_mixpoint_wybory_prefers_segue(tmp_path):
     frame = _make_frame_for_automix(fade=2.0)
     frame._start_next_from_playlist = lambda *_args, **_kwargs: True
     panel = SimpleNamespace(model=playlist)
+    _register_playlist(frame, playlist, panel)
     player = _AutoMixPlayer("dev-1")
     ctx = SimpleNamespace(player=player)
 
@@ -1274,6 +1306,7 @@ def test_saramix_break_on_podklad_blocks_mix(tmp_path):
     frame = _make_frame_for_automix(fade=2.5)
     frame._start_next_from_playlist = lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("Break should prevent automix"))
     panel = SimpleNamespace(model=playlist)
+    _register_playlist(frame, playlist, panel)
     player = _AutoMixPlayer("dev-1")
     ctx = SimpleNamespace(player=player)
 

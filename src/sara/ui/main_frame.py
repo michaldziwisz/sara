@@ -2490,6 +2490,7 @@ class MainFrame(wx.Frame):
             )
             plan = self._mix_plans.get(key)
 
+        release_offset = 0.0
         if plan and plan.triggered:
             return
         if mix_at is not None and native_trigger:
@@ -2499,6 +2500,8 @@ class MainFrame(wx.Frame):
             fade_guard = min(MIX_NATIVE_LATE_GUARD, max(0.0, fade_guard_source))
             guard_window = min(fade_guard, headroom_after_mix)
             late_guard_shortfall = max(0.0, fade_guard - guard_window)
+            if late_guard_shortfall > 0.0 and guard_window > 0.0:
+                release_offset = min(guard_window, late_guard_shortfall / 2.0)
             if seconds < mix_at - MIX_NATIVE_EARLY_GUARD:
                 return
             if seconds < mix_at + guard_window:
@@ -2521,8 +2524,14 @@ class MainFrame(wx.Frame):
             trigger_window = max(trigger_window, item.outro_seconds)
 
         remaining_target = mix_remaining if mix_remaining is not None else remaining
+        fallback_guard_trigger = False
         if mix_at is not None:
-            should_trigger = remaining_target <= MIX_EXPLICIT_PROGRESS_GUARD
+            trigger_threshold = MIX_EXPLICIT_PROGRESS_GUARD
+            if native_trigger and release_offset > 0.0:
+                trigger_threshold = release_offset
+            should_trigger = remaining_target <= trigger_threshold
+            if native_trigger and release_offset > 0.0 and remaining_target <= release_offset:
+                fallback_guard_trigger = True
         else:
             should_trigger = remaining_target <= max(0.1, trigger_window)
         if not should_trigger or already_mixing:
@@ -2542,7 +2551,8 @@ class MainFrame(wx.Frame):
             force_automix_sequence=self._auto_mix_enabled,
         )
         if started and self._fade_duration > 0.0:
-            fade_duration = min(fade_seconds, remaining)
+            fade_source = self._fade_duration if fallback_guard_trigger else fade_seconds
+            fade_duration = min(fade_source, remaining)
             try:
                 context_entry.player.fade_out(fade_duration)
             except Exception:

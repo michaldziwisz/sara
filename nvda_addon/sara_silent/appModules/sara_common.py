@@ -39,6 +39,15 @@ _PLAYLIST_ROLES = {
     for role in map(_available_role, ("PANE", "CLIENT", "WINDOW", "UNKNOWN", "LIST", "LISTITEM"))
     if role is not None
 }
+
+
+def _gesture_variants(keys: tuple[str, ...]) -> set[str]:
+    variants: set[str] = set()
+    for key in keys:
+        normalized = key.strip()
+        variants.add(f"kb:{normalized}")
+        variants.add(f"kb(desktop):{normalized}")
+    return variants
 def _is_playlist_window(obj: Any) -> bool:
     def _matches(candidate: Any) -> bool:
         try:
