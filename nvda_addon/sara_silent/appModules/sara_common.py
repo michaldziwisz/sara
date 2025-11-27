@@ -22,7 +22,7 @@ _APPDATA = os.environ.get("APPDATA")
 _TARGET = Path(_APPDATA or "") / "SARA" / "nvda_sleep_targets.json"
 _PLAY_NEXT_SIGNAL = Path(_APPDATA or "") / "SARA" / "nvda_play_next_signal.txt" if _APPDATA else None
 _CHECK_INTERVAL_MS = 2000
-_PLAYLIST_CLASSES = {"wxWindowNR", "SysListView32"}
+_PLAYLIST_CLASSES = {"wxWindowNR", "SysListView32", "RICHEDIT50W"}
 _PLAYLIST_SPEECH_WINDOW_MS = 1200
 _MANUAL_SPEECH_GESTURE_TIMEOUT_MS = 1500
 _PLAY_NEXT_SILENCE_WINDOW_MS = 1200
@@ -112,7 +112,6 @@ class AppModule(AppModule):
         self._manual_gesture_until = 0.0
         self._announcement_timer = None
         self._announcement_attempts = 0
-        self._announcement_first_request = 0.0
         inputCore.decide_handleRawKey.register(self._handle_raw_key)
         try:
             log.info("SARA sleep addon raw key handler registered")
@@ -347,26 +346,21 @@ class AppModule(AppModule):
         self._announcement_timer = None
         self._announcement_attempts = 0
         try:
-            self._announcement_timer = core.callLater(100, self._announce_playlist_item)
+            self._announcement_timer = core.callLater(140, self._announce_playlist_item)
         except Exception:
             self._announcement_timer = None
             self._speak_current_playlist_item()
 
     def _announce_playlist_item(self) -> None:
-        max_wait_elapsed = bool(
-            self._announcement_first_request
-            and (time.monotonic() - self._announcement_first_request) >= 0.8
-        )
-        if isSpeaking() and not max_wait_elapsed and self._announcement_attempts < 5:
-            self._announcement_attempts += 1
+        if isSpeaking() and self._announcement_attempts == 0:
+            self._announcement_attempts = 1
             try:
-                self._announcement_timer = core.callLater(150, self._announce_playlist_item)
+                self._announcement_timer = core.callLater(220, self._announce_playlist_item)
+                return
             except Exception:
                 self._announcement_timer = None
-            return
         self._announcement_timer = None
         self._announcement_attempts = 0
-        self._announcement_first_request = 0.0
         self._speak_current_playlist_item()
 
     def _cancel_playlist_announcement(self) -> None:
@@ -379,7 +373,6 @@ class AppModule(AppModule):
             pass
         self._announcement_timer = None
         self._announcement_attempts = 0
-        self._announcement_first_request = 0.0
 
     def _cancel_play_next_silence(self, source: str) -> None:
         if not self._play_next_silence_until:
