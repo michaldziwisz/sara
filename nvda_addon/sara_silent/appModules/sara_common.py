@@ -163,8 +163,11 @@ class AppModule(AppModule):
             nextHandler()
 
     def event_gainFocus(self, obj, nextHandler):
-        if _is_playlist_window(obj) and self._suppress_event_for_play_next("gainFocus", obj):
-            return
+        if _is_playlist_window(obj):
+            if self._suppress_event_for_play_next("gainFocus", obj):
+                return
+            if not self._handle_playlist_event("gainFocus", obj):
+                return
         self._update_mute_state("focus", obj)
         if nextHandler:
             nextHandler()
