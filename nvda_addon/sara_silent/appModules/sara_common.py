@@ -106,6 +106,14 @@ class AppModule(AppModule):
         self._announcement_attempts = 0
         self._playlist_switch_speech_until = 0.0
         self._do_not_disturb = True
+        try:
+            self.bindGestures(self.__gestures)
+            log.info("SARA sleep addon registered gestures: %s", ", ".join(self.__gestures.keys()))
+        except Exception as exc:
+            try:
+                log.warning("SARA sleep addon gesture bind failed: %s", exc)
+            except Exception:
+                pass
         inputCore.decide_handleRawKey.register(self._handle_raw_key)
         try:
             log.info("SARA sleep addon raw key handler registered")
