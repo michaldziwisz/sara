@@ -299,9 +299,7 @@ class AppModule(AppModule):
             return False
         if not self._manual_speech_user:
             return False
-        _text, reason = _describe_window(obj)
-        if reason != "playing":
-            self._allow_playlist_speech_window(obj)
+        self._allow_playlist_speech_window(obj)
         return True
 
     def _allow_playlist_speech_window(self, obj: Any, *, force: bool = False) -> None:
