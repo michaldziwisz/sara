@@ -585,16 +585,16 @@ class MixPointEditorDialog(wx.Dialog):
     # region mix point helpers
 
     def _assign_from_current(self, key: str, position: float | None = None) -> None:
-        if key == "segue_fade":
-            return
         if position is None:
             position = self._current_position()
         row = self._rows[key]
-        if row.mode == "duration":
+        if key == "segue_fade":
+            value = max(0.0, position)
+        elif row.mode == "duration":
             value = max(0.0, self._duration - position)
         else:
             value = position
-        if key == "overlap":
+        if key in {"overlap", "segue_fade"}:
             value = min(value, self._max_allowed_overlap())
         row.spin.SetValue(value)
         if not row.checkbox.GetValue():
@@ -971,14 +971,16 @@ class MixPointEditorDialog(wx.Dialog):
                 row.checkbox.SetValue(True)
                 self._toggle_point(key)
             reference = row.spin.GetValue()
-            if row.mode == "duration":
+            if row.mode == "duration" and key != "segue_fade":
                 reference = max(0.0, (self._duration or 0.0) - reference)
             target = reference + delta
             # ruch punktu kończy bieżący podgląd
             self._stop_preview()
             self._set_position(target, restart_preview=False)
             self._assign_active_point(position=target)
-            if was_previewing:
+            if key in {"segue", "segue_fade"}:
+                self._preview_segue_window()
+            elif was_previewing:
                 self._start_preview_from(self._current_cursor_seconds)
             return
         self._stop_preview()
