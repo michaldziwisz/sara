@@ -86,7 +86,6 @@ def _extract_xml(output: str, stderr: str | None = None) -> str:
     candidate = candidate.replace("\b", "")
     candidate = "".join(ch for ch in candidate if ch.isprintable() or ch in "\n\r\t<>/\"'=.-: ")
     candidate = re.sub(r"&(?!#?\w+;)", "&amp;", candidate)
-    logger.debug("bs1770gain raw XML snippet: %s", candidate[:200].replace("\n", "\\n"))
     start = candidate.find("<bs1770gain")
     if start == -1:
         raise RuntimeError("bs1770gain output missing XML payload")
