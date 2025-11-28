@@ -2,9 +2,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import xml.etree.ElementTree as ET
 
 from sara.core import loudness as loudness_module
-from sara.core.loudness import LoudnessStandard, analyze_loudness, find_bs1770gain
+from sara.core.loudness import LoudnessStandard, analyze_loudness, find_bs1770gain, _extract_xml
 
 
 @pytest.mark.skipif(find_bs1770gain() is None, reason="bs1770gain not available")
@@ -44,3 +45,17 @@ def test_analyze_loudness_retries_with_temp_copy(tmp_path, monkeypatch) -> None:
     assert calls[0] == track_path
     assert calls[1] != track_path
     assert "sara_loudness" in calls[1].name
+
+
+def test_extract_xml_sanitizes_ampersand_and_controls() -> None:
+    xml_blob = (
+        "noise\x08noise"
+        '<bs1770gain version="0.1">\n'
+        '<track path="Yugopolis & Maciej Malenczuk - Ostatnia Nocka">'
+        '<integrated lufs="-18.50"/></track></bs1770gain>'
+    )
+    cleaned = _extract_xml(xml_blob, None)
+    root = ET.fromstring(cleaned)
+    track = root.find("./track")
+    assert track is not None
+    assert track.attrib["path"].endswith("Yugopolis & Maciej Malenczuk - Ostatnia Nocka")

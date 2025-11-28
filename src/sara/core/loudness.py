@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import subprocess
 import sys
@@ -84,6 +85,7 @@ def _extract_xml(output: str, stderr: str | None = None) -> str:
     candidate = output if output.strip() else (stderr or "")
     candidate = candidate.replace("\b", "")
     candidate = "".join(ch for ch in candidate if ch.isprintable() or ch in "\n\r\t<>/\"'=.-: ")
+    candidate = re.sub(r"&(?!#?\w+;)", "&amp;", candidate)
     start = candidate.find("<bs1770gain")
     if start == -1:
         raise RuntimeError("bs1770gain output missing XML payload")
