@@ -1203,9 +1203,12 @@ class MainFrame(wx.Frame):
                 self._announce_intro_remaining(remaining, prefix_only=True)
             panel = self._playlists.get(playing_model.id)
             current_panel = self._get_current_music_panel()
-            if isinstance(panel, PlaylistPanel) and current_panel is panel:
-                sel = panel.get_selected_indices()
-                panel.refresh(selected_indices=sel, focus=False)
+            if isinstance(panel, PlaylistPanel):
+                try:
+                    sel = panel.get_selected_indices()
+                except Exception:
+                    sel = []
+                panel.refresh(selected_indices=sel, focus=(current_panel is panel))
             return
 
         # 2) W przeciwnym razie toggle dotyczy zaznaczonego utworu.
