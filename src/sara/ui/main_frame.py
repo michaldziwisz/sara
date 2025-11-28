@@ -3815,7 +3815,8 @@ class MainFrame(wx.Frame):
         next_item = playlist.items[next_idx]
 
         overrides = overrides or {}
-        plan = self._mix_plans.get((playlist.id, item.id))
+        mix_plans = getattr(self, "_mix_plans", None)
+        plan = mix_plans.get((playlist.id, item.id)) if mix_plans else None
         if plan and not overrides and plan.mix_at is not None:
             mix_at = plan.mix_at
             fade_seconds = plan.fade_seconds
