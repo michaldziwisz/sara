@@ -53,6 +53,7 @@ class MixPointEditorDialog(wx.Dialog):
         loop_end_seconds: float | None = None,
         loop_enabled: bool = False,
         loop_auto_enabled: bool = False,
+        default_fade_seconds: float = 0.0,
     ) -> None:
         super().__init__(parent, title=title, style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._duration = max(0.0, duration_seconds)
@@ -72,6 +73,8 @@ class MixPointEditorDialog(wx.Dialog):
         self._current_replay_gain = initial_replay_gain
         self._on_replay_gain_update = on_replay_gain_update
         self._normalizing = False
+        self._default_fade_duration = max(0.0, default_fade_seconds)
+        self._segue_preview_timer: wx.CallLater | None = None
         self._loop_start = loop_start_seconds or 0.0
         self._loop_end = loop_end_seconds if loop_end_seconds is not None else max(self._loop_start + 0.1, 0.1)
         if self._loop_end <= self._loop_start:
@@ -117,6 +120,7 @@ class MixPointEditorDialog(wx.Dialog):
         self._on_mix_preview = on_mix_preview
         self._mix_preview_running = False
 
+        self._suppress_auto_preview = True
         self._build_layout()
         self._bind_events()
         self._install_shortcuts()
@@ -127,6 +131,7 @@ class MixPointEditorDialog(wx.Dialog):
             self._active_row_key = self._point_order[0]
         self.Bind(wx.EVT_CLOSE, self._handle_close)
         self.Bind(wx.EVT_CHAR_HOOK, self._handle_char_hook)
+        self._suppress_auto_preview = False
 
     # region layout helpers
 
@@ -492,6 +497,7 @@ class MixPointEditorDialog(wx.Dialog):
     # region preview helpers
 
     def _start_preview(self) -> None:
+        self._cancel_segue_preview_timer()
         loop_range = self._current_loop_range()
         start = loop_range[0] if loop_range else self._current_position()
         self._play_from(start, loop_range)
@@ -503,10 +509,12 @@ class MixPointEditorDialog(wx.Dialog):
             self._start_preview()
 
     def _start_preview_from(self, seconds: float) -> None:
+        self._cancel_segue_preview_timer()
         self._set_position(seconds, restart_preview=False)
         self._play_from(max(0.0, min(seconds, self._duration if self._duration > 0 else seconds)))
 
     def _play_from(self, seconds: float, loop_range: tuple[float, float] | None = None) -> None:
+        self._cancel_segue_preview_timer()
         self._mix_preview_running = False
         if self._on_preview(seconds, loop_range):
             self._preview_anchor_seconds = seconds
@@ -516,6 +524,7 @@ class MixPointEditorDialog(wx.Dialog):
             self._update_preview_buttons()
 
     def _stop_preview(self) -> None:
+        self._cancel_segue_preview_timer()
         self._mix_preview_running = False
         if not self._preview_active:
             self._on_stop_preview()
@@ -528,6 +537,48 @@ class MixPointEditorDialog(wx.Dialog):
     def _update_preview_buttons(self) -> None:
         self._play_button.Enable(not self._preview_active)
         self._stop_button.Enable(self._preview_active)
+
+    def _cancel_segue_preview_timer(self) -> None:
+        if self._segue_preview_timer is not None:
+            try:
+                self._segue_preview_timer.Stop()
+            except Exception:
+                pass
+            self._segue_preview_timer = None
+
+    def _schedule_segue_preview_stop(self, fade_duration: float) -> None:
+        self._cancel_segue_preview_timer()
+        if fade_duration <= 0.0:
+            return
+        delay_ms = max(1, int(fade_duration * 1000))
+        self._segue_preview_timer = wx.CallLater(delay_ms, self._on_segue_preview_expired)
+
+    def _on_segue_preview_expired(self) -> None:
+        self._segue_preview_timer = None
+        self._stop_preview()
+
+    def _preview_segue_window(self, *, force: bool = False) -> None:
+        if not force and self._suppress_auto_preview:
+            return
+        segue_row = self._rows.get("segue")
+        if not segue_row or not segue_row.checkbox.GetValue():
+            return
+        start = float(segue_row.spin.GetValue())
+        fade_row = self._rows.get("segue_fade")
+        fade_len = None
+        if fade_row and fade_row.checkbox.GetValue():
+            fade_len = max(0.0, float(fade_row.spin.GetValue()))
+        if fade_len is None or fade_len <= 0.0:
+            fade_len = self._default_fade_duration
+        max_window = self._max_allowed_overlap()
+        if max_window > 0.0:
+            fade_len = min(fade_len, max_window)
+        if fade_len <= 0.0:
+            return
+        self._stop_preview()
+        self._start_preview_from(start)
+        if self._preview_active:
+            self._schedule_segue_preview_stop(fade_len)
 
     # endregion
 
@@ -697,6 +748,10 @@ class MixPointEditorDialog(wx.Dialog):
         self._update_point_label(key)
         if key in {"loop_start", "loop_end"}:
             self._ensure_loop_consistency()
+        if key in {"segue", "segue_fade"}:
+            row = self._rows.get(key)
+            if row and row.checkbox.GetValue():
+                self._preview_segue_window()
 
     def _current_cue_value(self) -> float:
         cue_row = self._rows.get("cue")
@@ -805,6 +860,9 @@ class MixPointEditorDialog(wx.Dialog):
             return
         row = self._rows[key]
         if not row.checkbox.GetValue():
+            return
+        if key in {"segue", "segue_fade"}:
+            self._preview_segue_window(force=True)
             return
         value = float(row.spin.GetValue())
         start = value

@@ -1596,6 +1596,7 @@ class MainFrame(wx.Frame):
             loop_end_seconds=item.loop_end_seconds,
             loop_enabled=item.loop_enabled,
             loop_auto_enabled=item.loop_auto_enabled,
+            default_fade_seconds=self._fade_duration,
         )
 
         try:
