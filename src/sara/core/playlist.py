@@ -32,6 +32,7 @@ class PlaylistItem:
     replay_gain_db: Optional[float] = None
     cue_in_seconds: Optional[float] = None
     segue_seconds: Optional[float] = None
+    segue_fade_seconds: Optional[float] = None
     overlap_seconds: Optional[float] = None
     intro_seconds: Optional[float] = None
     outro_seconds: Optional[float] = None

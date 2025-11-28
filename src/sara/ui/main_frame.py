@@ -1580,6 +1580,7 @@ class MainFrame(wx.Frame):
             intro_seconds=item.intro_seconds,
             outro_seconds=item.outro_seconds,
             segue_seconds=item.segue_seconds,
+            segue_fade_seconds=item.segue_fade_seconds,
             overlap_seconds=item.overlap_seconds,
             on_preview=lambda position, loop_range=None: self._playback.start_preview(
                 item,
@@ -1610,6 +1611,7 @@ class MainFrame(wx.Frame):
             "intro": result.get("intro"),
             "outro": result.get("outro"),
             "segue": result.get("segue"),
+            "segue_fade": result.get("segue_fade"),
             "overlap": result.get("overlap"),
         }
 
@@ -1617,6 +1619,7 @@ class MainFrame(wx.Frame):
         item.intro_seconds = mix_values["intro"]
         item.outro_seconds = mix_values["outro"]
         item.segue_seconds = mix_values["segue"]
+        item.segue_fade_seconds = mix_values["segue_fade"]
         item.overlap_seconds = mix_values["overlap"]
 
         if not save_mix_metadata(
@@ -1625,6 +1628,7 @@ class MainFrame(wx.Frame):
             intro=item.intro_seconds,
             outro=item.outro_seconds,
             segue=item.segue_seconds,
+            segue_fade=item.segue_fade_seconds,
             overlap=item.overlap_seconds,
         ):
             self._announce_event("pfl", _("Failed to update mix metadata"))
@@ -1695,6 +1699,7 @@ class MainFrame(wx.Frame):
                     ("intro", "intro_seconds"),
                     ("outro", "outro_seconds"),
                     ("segue", "segue_seconds"),
+                    ("segue_fade", "segue_fade_seconds"),
                     ("overlap", "overlap_seconds"),
                 ):
                     new_val = mix_values.get(key)
@@ -2905,6 +2910,7 @@ class MainFrame(wx.Frame):
                     "replay_gain_db": item.replay_gain_db,
                     "cue_in": item.cue_in_seconds,
                     "segue": item.segue_seconds,
+                    "segue_fade": item.segue_fade_seconds,
                     "overlap": item.overlap_seconds,
                     "intro": item.intro_seconds,
                     "outro": item.outro_seconds,
@@ -2928,6 +2934,7 @@ class MainFrame(wx.Frame):
             replay_gain_db=data.get("replay_gain_db"),
             cue_in_seconds=data.get("cue_in"),
             segue_seconds=data.get("segue"),
+            segue_fade_seconds=data.get("segue_fade"),
             overlap_seconds=data.get("overlap"),
             intro_seconds=data.get("intro"),
             outro_seconds=data.get("outro"),
@@ -3024,6 +3031,7 @@ class MainFrame(wx.Frame):
             replay_gain_db=metadata.replay_gain_db,
             cue_in_seconds=metadata.cue_in_seconds,
             segue_seconds=metadata.segue_seconds,
+            segue_fade_seconds=metadata.segue_fade_seconds,
             overlap_seconds=metadata.overlap_seconds,
             intro_seconds=metadata.intro_seconds,
             outro_seconds=metadata.outro_seconds,
@@ -3726,11 +3734,16 @@ class MainFrame(wx.Frame):
         overlap_val = overrides.get("overlap")
         overlap_val = overlap_val if overlap_val is not None else item.overlap_seconds
         overlap_val = max(0.0, overlap_val) if overlap_val is not None else None
+        segue_fade_val = overrides.get("segue_fade")
+        segue_fade_val = segue_fade_val if segue_fade_val is not None else getattr(item, "segue_fade_seconds", None)
+        segue_fade_val = max(0.0, segue_fade_val) if segue_fade_val is not None else None
 
         mix_at = None
         fade_seconds = self._fade_duration
         if segue_val is not None:
             mix_at = base_cue + max(0.0, segue_val)
+            if segue_fade_val is not None:
+                fade_seconds = segue_fade_val
         elif overlap_val is not None:
             mix_at = base_cue + max(0.0, effective_duration - overlap_val)
             fade_seconds = overlap_val

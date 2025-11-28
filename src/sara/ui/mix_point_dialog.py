@@ -41,6 +41,7 @@ class MixPointEditorDialog(wx.Dialog):
         intro_seconds: float | None,
         outro_seconds: float | None,
         segue_seconds: float | None,
+        segue_fade_seconds: float | None,
         overlap_seconds: float | None,
         on_preview: Callable[[float, tuple[float, float] | None], bool],
         on_mix_preview: Callable[[Dict[str, Optional[float]]], bool] | None = None,
@@ -61,6 +62,7 @@ class MixPointEditorDialog(wx.Dialog):
             "intro": intro_seconds,
             "outro": outro_seconds,
             "segue": segue_seconds,
+            "segue_fade": segue_fade_seconds,
             "overlap": overlap_seconds,
         }
         self._on_preview = on_preview
@@ -207,6 +209,14 @@ class MixPointEditorDialog(wx.Dialog):
             value=segue_display,
             mode="relative",
             allow_assign=True,
+        )
+        self._create_point_row(
+            list_sizer,
+            key="segue_fade",
+            label=_("Segue fade duration"),
+            value=self._initial_values["segue_fade"],
+            mode="duration",
+            allow_assign=False,
         )
         self._create_point_row(
             list_sizer,
@@ -361,7 +371,7 @@ class MixPointEditorDialog(wx.Dialog):
             mode=mode,
             base_label=label,
         )
-        if key == "overlap":
+        if key in {"overlap", "segue_fade"}:
             spin.SetRange(0.0, max(self._duration or 0.0, 0.0))
         spin.Bind(wx.EVT_SPINCTRLDOUBLE, lambda _evt, row_key=key: self._handle_spin_edit(row_key))
         spin.Bind(wx.EVT_TEXT, lambda _evt, row_key=key: self._handle_spin_edit(row_key))
@@ -524,6 +534,8 @@ class MixPointEditorDialog(wx.Dialog):
     # region mix point helpers
 
     def _assign_from_current(self, key: str, position: float | None = None) -> None:
+        if key == "segue_fade":
+            return
         if position is None:
             position = self._current_position()
         row = self._rows[key]
@@ -560,7 +572,7 @@ class MixPointEditorDialog(wx.Dialog):
         # zatrzymaj ewentualny bieżący podgląd zanim wystartuje nowy
         self._stop_preview()
         active_key = self._ensure_active_row()
-        if active_key in {"segue", "overlap"} and self._on_mix_preview:
+        if active_key in {"segue", "overlap", "segue_fade"} and self._on_mix_preview:
             self._preview_active = False  # oznacz nowy start
             ok = self._on_mix_preview(self._collect_mix_values())
             self._mix_preview_running = bool(ok)
@@ -680,7 +692,7 @@ class MixPointEditorDialog(wx.Dialog):
         row.checkbox.SetLabel(self._format_point_label(row.base_label, value))
 
     def _handle_spin_edit(self, key: str) -> None:
-        if key in {"overlap", "segue", "cue"}:
+        if key in {"overlap", "segue", "cue", "segue_fade"}:
             self._clamp_overlap_spin()
         self._update_point_label(key)
         if key in {"loop_start", "loop_end"}:
@@ -708,15 +720,25 @@ class MixPointEditorDialog(wx.Dialog):
 
     def _clamp_overlap_spin(self) -> None:
         overlap_row = self._rows.get("overlap")
-        if not overlap_row:
+        fade_row = self._rows.get("segue_fade")
+        if overlap_row is None and fade_row is None:
             return
         max_overlap = self._max_allowed_overlap()
-        overlap_row.spin.SetRange(0.0, max_overlap if max_overlap > 0 else 0.0)
-        if overlap_row.checkbox.GetValue():
-            value = float(overlap_row.spin.GetValue())
-            if value > max_overlap:
-                overlap_row.spin.SetValue(max_overlap)
-                self._update_point_label("overlap")
+        upper = max_overlap if max_overlap > 0 else 0.0
+        if overlap_row:
+            overlap_row.spin.SetRange(0.0, upper)
+            if overlap_row.checkbox.GetValue():
+                value = float(overlap_row.spin.GetValue())
+                if value > max_overlap:
+                    overlap_row.spin.SetValue(max_overlap)
+                    self._update_point_label("overlap")
+        if fade_row:
+            fade_row.spin.SetRange(0.0, upper)
+            if fade_row.checkbox.GetValue():
+                value = float(fade_row.spin.GetValue())
+                if value > max_overlap:
+                    fade_row.spin.SetValue(max_overlap)
+                    self._update_point_label("segue_fade")
 
     def _toggle_point(self, key: str) -> None:
         row = self._rows[key]
@@ -918,7 +940,7 @@ class MixPointEditorDialog(wx.Dialog):
         results: Dict[str, Optional[float]] = {}
         final_cue = None
 
-        for key in ("cue", "intro", "outro", "segue", "overlap"):
+        for key in ("cue", "intro", "outro", "segue", "segue_fade", "overlap"):
             row = self._rows[key]
             if not row.checkbox.GetValue():
                 results[key] = None

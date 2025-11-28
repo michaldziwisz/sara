@@ -295,6 +295,26 @@ def test_resolve_mix_timing_matches_editor_markers():
     assert fade3 == 2.0
 
 
+def test_resolve_mix_timing_honours_segue_fade_override():
+    frame = MainFrame.__new__(MainFrame)
+    frame._fade_duration = 2.0
+    item = PlaylistItem(
+        id="i4",
+        path=Path("x"),
+        title="Fade override",
+        duration_seconds=12.0,
+        cue_in_seconds=1.0,
+        segue_seconds=4.0,
+        segue_fade_seconds=0.5,
+        overlap_seconds=None,
+    )
+    mix_at, fade, base_cue, effective = frame._resolve_mix_timing(item)
+    assert base_cue == 1.0
+    assert effective == 11.0
+    assert mix_at == pytest.approx(5.0, rel=1e-6)
+    assert fade == pytest.approx(0.5, rel=1e-6)
+
+
 def test_progress_based_mix_triggers_when_native_missing(tmp_path):
     frame = MainFrame.__new__(MainFrame)
     frame._fade_duration = 3.0

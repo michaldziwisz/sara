@@ -42,6 +42,7 @@ class AudioMetadata:
     replay_gain_db: Optional[float] = None
     cue_in_seconds: Optional[float] = None
     segue_seconds: Optional[float] = None
+    segue_fade_seconds: Optional[float] = None
     overlap_seconds: Optional[float] = None
     intro_seconds: Optional[float] = None
     outro_seconds: Optional[float] = None
@@ -59,6 +60,7 @@ CUE_IN_TAG = "SARA_CUE_IN"
 INTRO_TAG = "SARA_INTRO_END"
 OUTRO_TAG = "SARA_OUTRO_START"
 SEGUE_TAG = "SARA_SEGUE_START"
+SEGUE_FADE_TAG = "SARA_SEGUE_FADE_DURATION"
 OVERLAP_TAG = "SARA_OVERLAP_DURATION"
 REPLAYGAIN_TRACK_GAIN_TAG = "REPLAYGAIN_TRACK_GAIN"
 
@@ -253,9 +255,10 @@ def save_mix_metadata(
     intro: Optional[float],
     outro: Optional[float],
     segue: Optional[float],
+    segue_fade: Optional[float],
     overlap: Optional[float],
 ) -> bool:
-    """Persist cue/intro/outro/segue/overlap markers in APEv2 tags."""
+    """Persist cue/intro/outro/segue/segue_fade/overlap markers in APEv2 tags."""
 
     file_path = str(path)
     tags: APEv2 | None = None
@@ -275,6 +278,7 @@ def save_mix_metadata(
         INTRO_TAG,
         OUTRO_TAG,
         SEGUE_TAG,
+        SEGUE_FADE_TAG,
         OVERLAP_TAG,
     }
 
@@ -299,6 +303,7 @@ def save_mix_metadata(
         INTRO_TAG: intro,
         OUTRO_TAG: outro,
         SEGUE_TAG: segue,
+        SEGUE_FADE_TAG: segue_fade,
         OVERLAP_TAG: overlap,
     }
 
@@ -460,6 +465,7 @@ def extract_metadata(path: Path) -> AudioMetadata:
 
     cue = None
     segue = None
+    segue_fade = None
     overlap = None
     intro = None
     outro = None
@@ -495,6 +501,7 @@ def extract_metadata(path: Path) -> AudioMetadata:
                 ("cue", "cue"),
                 ("cue in", "cue"),
                 ("segue", "segue"),
+                ("segue fade", "segue_fade"),
                 ("overlap", "overlap"),
                 ("intro", "intro"),
                 ("outro", "outro"),
@@ -503,15 +510,17 @@ def extract_metadata(path: Path) -> AudioMetadata:
                 if tag:
                     value = _parse_numeric_tokens(tag.text)
                     if value is not None:
-                        if key.startswith("cue"):
+                        if target == "cue":
                             cue = value
-                        elif key == "segue":
+                        elif target == "segue":
                             segue = value
-                        elif key == "overlap":
+                        elif target == "segue_fade":
+                            segue_fade = value
+                        elif target == "overlap":
                             overlap = value
-                        elif key == "intro":
+                        elif target == "intro":
                             intro = value
-                        elif key == "outro":
+                        elif target == "outro":
                             outro = value
 
     def _read_sara_tag(tag: str) -> Optional[float]:
@@ -524,6 +533,8 @@ def extract_metadata(path: Path) -> AudioMetadata:
         cue = _read_sara_tag(CUE_IN_TAG)
     if segue is None:
         segue = _read_sara_tag(SEGUE_TAG)
+    if segue_fade is None:
+        segue_fade = _read_sara_tag(SEGUE_FADE_TAG)
     if overlap is None:
         overlap = _read_sara_tag(OVERLAP_TAG)
     if intro is None:
@@ -544,6 +555,13 @@ def extract_metadata(path: Path) -> AudioMetadata:
             if text:
                 segue = _parse_numeric_tokens([text])
                 if segue is not None:
+                    break
+    if segue_fade is None:
+        for candidate in ("SegueFade", "SegueFadeDuration"):
+            text = _scan_ape_value(path, candidate)
+            if text:
+                segue_fade = _parse_numeric_tokens([text])
+                if segue_fade is not None:
                     break
     if overlap is None:
         for candidate in ("CueOverlap", "Overlap"):
@@ -578,6 +596,7 @@ def extract_metadata(path: Path) -> AudioMetadata:
         replay_gain_db=replay_gain,
         cue_in_seconds=cue,
         segue_seconds=segue,
+        segue_fade_seconds=segue_fade,
         overlap_seconds=overlap,
         intro_seconds=intro,
         outro_seconds=outro,

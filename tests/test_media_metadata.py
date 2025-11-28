@@ -31,6 +31,7 @@ def test_save_and_extract_mix_metadata(tmp_path) -> None:
         intro=12.0,
         outro=85.5,
         segue=22.25,
+        segue_fade=0.5,
         overlap=3.5,
     )
 
@@ -39,6 +40,7 @@ def test_save_and_extract_mix_metadata(tmp_path) -> None:
     assert metadata.intro_seconds == 12.0
     assert metadata.outro_seconds == 85.5
     assert metadata.segue_seconds == 22.25
+    assert metadata.segue_fade_seconds == 0.5
     assert metadata.overlap_seconds == 3.5
 
 
@@ -51,6 +53,7 @@ def test_mix_metadata_removal(tmp_path) -> None:
         intro=5.0,
         outro=40.0,
         segue=15.0,
+        segue_fade=1.5,
         overlap=2.0,
     )
     assert save_mix_metadata(
@@ -59,6 +62,7 @@ def test_mix_metadata_removal(tmp_path) -> None:
         intro=None,
         outro=None,
         segue=None,
+        segue_fade=None,
         overlap=None,
     )
     metadata = extract_metadata(target)
@@ -66,6 +70,7 @@ def test_mix_metadata_removal(tmp_path) -> None:
     assert metadata.intro_seconds is None
     assert metadata.outro_seconds is None
     assert metadata.segue_seconds is None
+    assert metadata.segue_fade_seconds is None
     assert metadata.overlap_seconds is None
 
 
