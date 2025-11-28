@@ -699,6 +699,7 @@ class BassPlayer:
         self._monitor_thread: Optional[threading.Thread] = None
         self._monitor_stop = threading.Event()
         self._fade_thread: Optional[threading.Thread] = None
+        self._start_offset: float = 0.0
         # zachowujemy schowany timer z dawnych implementacji, żeby unikać attribute error
         self._loop_fake_timer = None
         self._last_loop_jump_ts: float = 0.0
@@ -737,8 +738,10 @@ class BassPlayer:
         path = Path(source_path)
         self._device_context = self._manager.acquire_device(self._device_index)
         self._stream = self._manager.stream_create_file(self._device_index, path, allow_loop=allow_loop)
+        self._start_offset = 0.0
         if start_seconds > 0:
             self._manager.channel_set_position(self._stream, start_seconds)
+            self._start_offset = float(start_seconds)
         self._apply_gain()
         self._manager.channel_play(self._stream, False)
         self._loop_active = bool(self._loop_start is not None and self._loop_end is not None)
@@ -791,6 +794,7 @@ class BassPlayer:
             self._asio_context = None
         self._current_item_id = None
         self._loop_active = False
+        self._start_offset = 0.0
         if self._monitor_thread and self._monitor_thread.is_alive() and not _from_fade:
             self._monitor_thread.join(timeout=0.5)
         self._monitor_thread = None
@@ -926,15 +930,19 @@ class BassPlayer:
         self._mix_callback = callback
         if not target_seconds or not self._stream:
             return
-        clamped_target = float(target_seconds)
+        original_target = float(target_seconds)
+        clamped_target = original_target
         try:
             length_seconds = self._manager.channel_get_length_seconds(self._stream)
         except Exception:
             length_seconds = 0.0
         if length_seconds > 0.0 and clamped_target > (length_seconds - 0.01):
             clamped_target = max(0.0, length_seconds - 0.01)
+        effective_target = clamped_target
+        if self._start_offset > 0.0:
+            effective_target = max(0.0, clamped_target - self._start_offset)
         try:
-            target_bytes = self._manager.seconds_to_bytes(self._stream, clamped_target)
+            target_bytes = self._manager.seconds_to_bytes(self._stream, effective_target)
         except Exception as exc:
             logger.debug("BASS mix trigger: failed to convert seconds to bytes: %s", exc)
             return
@@ -963,10 +971,12 @@ class BassPlayer:
                 self._stream, target_bytes, self._mix_sync_proc, is_bytes=True, mix_time=False
             )
             logger.debug(
-                "BASS mix trigger set stream=%s target=%.3f (requested=%.3f) callback=%s",
+                "BASS mix trigger set stream=%s target=%.3f effective=%.3f offset=%.3f (requested=%.3f) callback=%s",
                 self._stream,
                 clamped_target,
-                target_seconds,
+                effective_target,
+                self._start_offset,
+                original_target,
                 "set" if callback else "none",
             )
         except Exception as exc:
@@ -1130,8 +1140,10 @@ class BassAsioPlayer(BassPlayer):
             decode=True,
             set_device=self._decode_device_context is not None,
         )
+        self._start_offset = 0.0
         if start_seconds > 0:
             self._manager.channel_set_position(self._stream, start_seconds)
+            self._start_offset = float(start_seconds)
         self._apply_gain()
         self._loop_active = bool(self._loop_start is not None and self._loop_end is not None)
         self._last_loop_jump_ts = 0.0

@@ -559,6 +559,9 @@ msgstr "Błąd odtwarzania: %s"
 msgid "Loop playing"
 msgstr "Pętla gra"
 
+msgid "Break"
+msgstr "Break"
+
 #: src/sara/ui/main_frame.py:1303
 #, fuzzy, python-format
 msgid "Playlist %s is empty"

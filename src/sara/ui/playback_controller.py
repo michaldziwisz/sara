@@ -584,7 +584,9 @@ class PlaybackController:
                 item.id + ":preview",
                 str(item.path),
                 start_seconds=start,
-                allow_loop=True,
+                # Pozwól na zapętlenie tylko przy aktywnym loop_range – w pozostałych
+                # przypadkach podsłuch powinien naturalnie się zatrzymać.
+                allow_loop=bool(loop_range),
             )
             if loop_range:
                 player.set_loop(loop_range[0], loop_range[1])
@@ -644,6 +646,15 @@ class PlaybackController:
         except Exception as exc:  # pylint: disable=broad-except
             self._announce("pfl", _("Failed to prepare mix preview: %s") % exc)
             return False
+
+        try:
+            player_a.set_gain_db(current_item.replay_gain_db)
+        except Exception:  # pylint: disable=broad-except
+            pass
+        try:
+            player_b.set_gain_db(next_item.replay_gain_db)
+        except Exception:  # pylint: disable=broad-except
+            pass
 
         start_a = max(0.0, mix_at_seconds - pre_seconds)
         delay_b = max(0.0, mix_at_seconds - start_a)

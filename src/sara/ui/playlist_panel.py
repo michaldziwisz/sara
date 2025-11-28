@@ -148,6 +148,8 @@ class PlaylistPanel(wx.Panel):
             prefixes.append(_("[selected]"))
         if item.has_loop() and (item.loop_enabled or getattr(item, "loop_auto_enabled", False)):
             prefixes.append(_("Loop"))
+        if item.break_after:
+            prefixes.append(_("Break"))
 
         if prefixes:
             return " ".join(prefixes) + " " + title

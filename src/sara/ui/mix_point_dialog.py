@@ -695,11 +695,14 @@ class MixPointEditorDialog(wx.Dialog):
     def _current_segue_value(self) -> float:
         segue_row = self._rows.get("segue")
         if segue_row and segue_row.checkbox.GetValue():
-            return float(segue_row.spin.GetValue())
+            value = float(segue_row.spin.GetValue())
+            cue_row = self._rows.get("cue")
+            cue_base = cue_row.spin.GetValue() if cue_row and cue_row.checkbox.GetValue() else self._cue_base
+            return max(0.0, value - (cue_base or 0.0))
         return 0.0
 
     def _max_allowed_overlap(self) -> float:
-        cue_val = self._current_cue_value()
+        cue_val = max(0.0, self._current_cue_value() or 0.0)
         segue_val = self._current_segue_value()
         return max(0.0, (self._duration or 0.0) - cue_val - max(0.0, segue_val))
 
@@ -783,10 +786,7 @@ class MixPointEditorDialog(wx.Dialog):
             return
         value = float(row.spin.GetValue())
         start = value
-        if row.mode == "relative":
-            cue_base = self._rows["cue"].spin.GetValue() if self._rows["cue"].checkbox.GetValue() else self._cue_base
-            start = (cue_base or 0.0) + value
-        elif row.mode == "duration":
+        if row.mode == "duration":
             start = max(0.0, (self._duration or 0.0) - value)
         self._start_preview_from(start)
 
@@ -877,8 +877,8 @@ class MixPointEditorDialog(wx.Dialog):
             self._current_cursor_seconds = clamped
 
     def _nudge_position(self, delta: float, *, assign: bool = False) -> None:
+        was_previewing = self._preview_active or self._mix_preview_running
         if assign:
-            was_previewing = self._preview_active or self._mix_preview_running
             key = self._ensure_active_row()
             if not key:
                 self._stop_preview()
@@ -891,10 +891,7 @@ class MixPointEditorDialog(wx.Dialog):
                 row.checkbox.SetValue(True)
                 self._toggle_point(key)
             reference = row.spin.GetValue()
-            if row.mode == "relative":
-                cue_base = self._rows["cue"].spin.GetValue() if self._rows["cue"].checkbox.GetValue() else self._cue_base
-                reference = (cue_base or 0.0) + reference
-            elif row.mode == "duration":
+            if row.mode == "duration":
                 reference = max(0.0, (self._duration or 0.0) - reference)
             target = reference + delta
             # ruch punktu kończy bieżący podgląd
@@ -906,6 +903,8 @@ class MixPointEditorDialog(wx.Dialog):
             return
         self._stop_preview()
         self._set_position(self._current_position() + delta, restart_preview=False)
+        if was_previewing:
+            self._start_preview_from(self._current_cursor_seconds)
 
     def _initialise_slider_value(self, seconds: float) -> None:
         if self._duration <= 0:

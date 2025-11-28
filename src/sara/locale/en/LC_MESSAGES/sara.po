@@ -532,6 +532,9 @@ msgstr "Playback errors"
 msgid "Loop playing"
 msgstr "Loop playing"
 
+msgid "Break"
+msgstr "Break"
+
 #: src/sara/ui/main_frame.py:1303
 #, python-format
 msgid "Playlist %s is empty"
