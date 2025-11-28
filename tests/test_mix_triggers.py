@@ -717,6 +717,67 @@ def test_pfl_mix_preview_uses_mix_timing(tmp_path):
     assert abs(next_cue - 0.5) < 1e-6
 
 
+def test_pfl_mix_preview_uses_measured_effective_duration(tmp_path):
+    playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
+    track_a = PlaylistItem(
+        id="a",
+        path=tmp_path / "a.wav",
+        title="A",
+        duration_seconds=10.0,
+        cue_in_seconds=1.0,
+    )
+    track_b = PlaylistItem(
+        id="b",
+        path=tmp_path / "b.wav",
+        title="B",
+        duration_seconds=8.0,
+        cue_in_seconds=0.5,
+    )
+    playlist.add_items([track_a, track_b])
+
+    captured: dict[str, tuple] = {}
+
+    class _SpyPlayback:
+        def start_mix_preview(
+            self,
+            current_item,
+            next_item,
+            *,
+            mix_at_seconds,
+            pre_seconds,
+            fade_seconds,
+            current_effective_duration,
+            next_cue_override,
+        ):
+            captured["args"] = (
+                current_item,
+                next_item,
+                mix_at_seconds,
+                pre_seconds,
+                fade_seconds,
+                current_effective_duration,
+                next_cue_override,
+            )
+            return True
+
+    frame = MainFrame.__new__(MainFrame)
+    frame._playback = _SpyPlayback()
+    frame._settings = SimpleNamespace(get_pfl_device=lambda: "pfl-dev")
+    frame._fade_duration = 2.0
+    frame._mix_trigger_points = {}
+    frame._playlists = {"pl-1": SimpleNamespace(model=playlist)}
+    frame._announce_event = lambda *args, **kwargs: None
+    frame._index_of_item = lambda _pl, _id: 0
+    frame._measure_effective_duration = lambda _playlist, _item: 5.0  # override metadata (duration-cue = 9.0)
+
+    ok = frame._preview_mix_with_next(playlist, track_a, overrides=None)
+    assert ok is True
+    _cur, _nxt, mix_at, pre_secs, fade_secs, eff, _next_cue = captured["args"]
+    assert abs(mix_at - 4.0) < 1e-6  # cue 1.0 + (5.0 - fade 2.0)
+    assert abs(eff - 5.0) < 1e-6
+    assert abs(pre_secs - 4.0) < 1e-6
+
+
 def test_pfl_mix_preview_fails_without_device(tmp_path):
     playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
     track_a = PlaylistItem(

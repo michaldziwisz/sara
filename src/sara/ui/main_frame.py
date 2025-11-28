@@ -3748,6 +3748,45 @@ class MainFrame(wx.Frame):
             fade_seconds = min(fade_seconds, remaining_after_mix)
         return mix_at, fade_seconds, base_cue, effective_duration
 
+    def _measure_effective_duration(self, playlist: PlaylistModel, item: PlaylistItem) -> float | None:
+        contexts = getattr(self._playback, "contexts", None)
+        if isinstance(contexts, dict):
+            context = contexts.get((playlist.id, item.id))
+            if context:
+                getter = getattr(context.player, "get_length_seconds", None)
+                if getter:
+                    try:
+                        length_seconds = float(getter())
+                    except Exception:
+                        length_seconds = None
+                    else:
+                        if length_seconds and length_seconds > 0:
+                            cue = item.cue_in_seconds or 0.0
+                            return max(0.0, length_seconds - cue)
+        try:
+            from sara.audio.bass import BassManager  # type: ignore
+        except Exception:
+            return None
+        stream = 0
+        manager = None
+        try:
+            manager = BassManager.instance()
+            stream = manager.stream_create_file(0, item.path, decode=True, set_device=False)
+            length_seconds = manager.channel_get_length_seconds(stream)
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.debug("Failed to probe track length via BASS for %s: %s", item.path, exc)
+            return None
+        finally:
+            if stream and manager:
+                try:
+                    manager.stream_free(stream)
+                except Exception:
+                    pass
+        if not length_seconds or length_seconds <= 0:
+            return None
+        cue = item.cue_in_seconds or 0.0
+        return max(0.0, length_seconds - cue)
+
     def _compute_mix_trigger_seconds(self, item: PlaylistItem) -> float | None:
         """Calculate absolute time (seconds) to trigger automix/crossfade."""
         mix_at, _, _, _ = self._resolve_mix_timing(item)
@@ -3775,7 +3814,12 @@ class MainFrame(wx.Frame):
         next_item = playlist.items[next_idx]
 
         overrides = overrides or {}
-        mix_at, fade_seconds, base_cue, effective_duration = self._resolve_mix_timing(item, overrides)
+        effective_override = self._measure_effective_duration(playlist, item)
+        mix_at, fade_seconds, base_cue, effective_duration = self._resolve_mix_timing(
+            item,
+            overrides,
+            effective_duration_override=effective_override,
+        )
         pre_seconds = 4.0
 
         ok = self._playback.start_mix_preview(
