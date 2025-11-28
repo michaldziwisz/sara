@@ -657,7 +657,6 @@ class PlaybackController:
             pass
 
         start_a = max(0.0, mix_at_seconds - pre_seconds)
-        delay_b = max(0.0, mix_at_seconds - start_a)
         effective_duration = (
             max(0.0, current_effective_duration)
             if current_effective_duration is not None
@@ -666,6 +665,7 @@ class PlaybackController:
         remaining_current = max(0.0, effective_duration - mix_at_seconds)
         fade_len = min(max(0.0, fade_seconds), remaining_current) if remaining_current > 0 else 0.0
         next_start = next_cue_override if next_cue_override is not None else (next_item.cue_in_seconds or 0.0)
+        delay_b = max(0.0, mix_at_seconds - start_a)
 
         logger.debug(
             "PFL mix preview: current=%s next=%s mix_at=%.3f pre=%.3f fade=%.3f cue_next=%.3f",
@@ -684,9 +684,7 @@ class PlaybackController:
             delay_b = 0.0
             start_a = max(0.0, mix_at_seconds - pre_seconds)
 
-        def _start_b_and_fade() -> None:
-            if delay_b > 0:
-                stop_event.wait(timeout=delay_b)
+        def _fire_mix() -> None:
             if stop_event.is_set():
                 return
             try:
@@ -699,13 +697,33 @@ class PlaybackController:
                 except Exception:
                     pass
 
+        def _schedule_mix_trigger() -> None:
+            if delay_b <= 0:
+                _fire_mix()
+                return
+            apply_trigger = getattr(player_a, "_apply_mix_trigger", None)
+            if callable(apply_trigger):
+                try:
+                    apply_trigger(mix_at_seconds, _fire_mix)
+                    return
+                except Exception:  # pragma: no cover - defensywne
+                    logger.debug("PFL mix preview: failed to arm BASS trigger, falling back to timer", exc_info=True)
+
+            def _fallback_wait() -> None:
+                stop_event.wait(timeout=delay_b)
+                if stop_event.is_set():
+                    return
+                _fire_mix()
+
+            threading.Thread(target=_fallback_wait, daemon=True).start()
+
         try:
             player_a.play(current_item.id, str(current_item.path), start_seconds=start_a, allow_loop=False)
         except Exception as exc:  # pylint: disable=broad-except
             self._announce("pfl", _("Failed to start mix preview: %s") % exc)
             return False
 
-        threading.Thread(target=_start_b_and_fade, daemon=True).start()
+        _schedule_mix_trigger()
 
         # auto-stop po krótkim oknie odsłuchu (pre + fade + zapas)
         total_preview = pre_seconds + max(fade_len, 0.0) + 4.0

@@ -3771,7 +3771,8 @@ class MainFrame(wx.Frame):
         manager = None
         try:
             manager = BassManager.instance()
-            stream = manager.stream_create_file(0, item.path, decode=True, set_device=False)
+            manager.ensure_device(0)
+            stream = manager.stream_create_file(0, item.path, decode=True, set_device=True)
             length_seconds = manager.channel_get_length_seconds(stream)
         except Exception as exc:  # pylint: disable=broad-except
             logger.debug("Failed to probe track length via BASS for %s: %s", item.path, exc)
@@ -3814,12 +3815,19 @@ class MainFrame(wx.Frame):
         next_item = playlist.items[next_idx]
 
         overrides = overrides or {}
-        effective_override = self._measure_effective_duration(playlist, item)
-        mix_at, fade_seconds, base_cue, effective_duration = self._resolve_mix_timing(
-            item,
-            overrides,
-            effective_duration_override=effective_override,
-        )
+        plan = self._mix_plans.get((playlist.id, item.id))
+        if plan and not overrides and plan.mix_at is not None:
+            mix_at = plan.mix_at
+            fade_seconds = plan.fade_seconds
+            base_cue = plan.base_cue
+            effective_duration = plan.effective_duration
+        else:
+            effective_override = self._measure_effective_duration(playlist, item)
+            mix_at, fade_seconds, base_cue, effective_duration = self._resolve_mix_timing(
+                item,
+                overrides,
+                effective_duration_override=effective_override,
+            )
         pre_seconds = 4.0
 
         ok = self._playback.start_mix_preview(
