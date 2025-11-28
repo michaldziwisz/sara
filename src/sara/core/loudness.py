@@ -6,6 +6,7 @@ import logging
 import shutil
 import subprocess
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from enum import Enum
@@ -58,20 +59,11 @@ def analyze_loudness(path: Path, *, standard: LoudnessStandard) -> LoudnessMeasu
     if executable is None:
         raise FileNotFoundError("bs1770gain was not found on PATH or bundled resources")
 
-    cmd = [str(executable), "--xml"]
-    if standard is LoudnessStandard.ATSC:
-        cmd.append("--atsc")
-    else:
-        cmd.append("--ebu")
-    cmd.append(str(path))
-
-    logger.debug("Running bs1770gain: %s", cmd)
-    completed = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    completed = _run_bs1770gain(executable, path, standard)
+    if completed.returncode != 0:
+        fallback = _retry_with_temp_copy(executable, path, standard)
+        if fallback is not None:
+            completed = fallback
     if completed.returncode != 0:
         raise RuntimeError(completed.stderr.strip() or completed.stdout.strip() or "bs1770gain failed")
 
@@ -100,3 +92,39 @@ def _extract_xml(output: str, stderr: str | None = None) -> str:
         raise RuntimeError("bs1770gain output missing XML payload")
     end += len("</bs1770gain>")
     return candidate[:end]
+
+
+def _run_bs1770gain(executable: Path, target: Path, standard: LoudnessStandard) -> subprocess.CompletedProcess[str]:
+    cmd = [str(executable), "--xml"]
+    if standard is LoudnessStandard.ATSC:
+        cmd.append("--atsc")
+    else:
+        cmd.append("--ebu")
+    cmd.append(str(target))
+
+    logger.debug("Running bs1770gain: %s", cmd)
+    return subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def _retry_with_temp_copy(
+    executable: Path,
+    original_path: Path,
+    standard: LoudnessStandard,
+) -> subprocess.CompletedProcess[str] | None:
+    """Attempt bs1770gain again using an ASCII-only temporary copy."""
+
+    suffix = original_path.suffix or ""
+    try:
+        with tempfile.TemporaryDirectory(prefix="sara_bs1770gain_") as temp_dir:
+            safe_path = Path(temp_dir) / f"sara_loudness{suffix}"
+            shutil.copy2(original_path, safe_path)
+            logger.debug("Retrying bs1770gain using temporary copy %s", safe_path)
+            return _run_bs1770gain(executable, safe_path, standard)
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.debug("Failed to run bs1770gain via temporary copy: %s", exc)
+        return None
