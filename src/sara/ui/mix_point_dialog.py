@@ -560,7 +560,8 @@ class MixPointEditorDialog(wx.Dialog):
     def _preview_segue_window(self, *, force: bool = False) -> None:
         if not force and self._suppress_auto_preview:
             return
-        if not self._on_mix_preview:
+        mix_preview = self._on_mix_preview
+        if mix_preview is None:
             return
         segue_row = self._rows.get("segue")
         if not segue_row or not segue_row.checkbox.GetValue():
@@ -580,7 +581,7 @@ class MixPointEditorDialog(wx.Dialog):
         values["_preview_pre_seconds"] = 0.0
         self._stop_preview()
         self._preview_active = False
-        ok = self._on_mix_preview(values)
+        ok = mix_preview(values)
         self._mix_preview_running = bool(ok)
         if not ok:
             wx.Bell()
