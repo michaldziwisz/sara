@@ -3721,7 +3721,8 @@ class MainFrame(wx.Frame):
         effective_duration_override: float | None = None,
     ) -> tuple[float | None, float, float, float]:
         """Return (mix_at_seconds, fade_seconds, base_cue, effective_duration) using optional overrides."""
-        overrides = overrides or {}
+        overrides = dict(overrides or {})
+        preview_pre_seconds = overrides.pop("_preview_pre_seconds", None)
         base_cue = overrides.get("cue")
         base_cue = base_cue if base_cue is not None else (item.cue_in_seconds or 0.0)
         effective_duration = (
@@ -3843,7 +3844,7 @@ class MainFrame(wx.Frame):
                 overrides,
                 effective_duration_override=effective_override,
             )
-        pre_seconds = 4.0
+        pre_seconds = 4.0 if preview_pre_seconds is None else max(0.0, float(preview_pre_seconds))
 
         ok = self._playback.start_mix_preview(
             item,
