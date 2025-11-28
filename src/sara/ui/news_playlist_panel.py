@@ -255,9 +255,10 @@ class NewsPlaylistPanel(wx.Panel):
             return
 
         if event.ControlDown() and not event.AltDown() and keycode in (ord("V"), ord("v")):
-            self._edit_controller.paste_audio_from_clipboard()
-            event.StopPropagation()
-            return
+            if self._edit_controller.paste_audio_from_clipboard(silent_if_empty=True):
+                event.StopPropagation()
+                return
+            # allow default paste behaviour when clipboard has text only
 
         if not event.ControlDown() and not event.AltDown() and keycode == wx.WXK_SPACE:
             self._suppress_play_shortcut = True

@@ -33,13 +33,15 @@ class NewsEditController:
         self._start_preview = start_preview
         self._stop_preview = stop_preview
 
-    def paste_audio_from_clipboard(self) -> None:
+    def paste_audio_from_clipboard(self, *, silent_if_empty: bool = False) -> bool:
         audio_paths = [Path(path) for path in self._clipboard_reader()]
         valid = [str(path) for path in audio_paths if path.exists()]
         if not valid:
-            self._show_error(_("Clipboard does not contain audio files."))
-            return
+            if not silent_if_empty:
+                self._show_error(_("Clipboard does not contain audio files."))
+            return False
         self._insert_tokens(valid)
+        return True
 
     def preview_audio_at_caret(self) -> None:
         if not self._start_preview:
