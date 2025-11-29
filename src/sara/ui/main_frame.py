@@ -2787,9 +2787,9 @@ class MainFrame(wx.Frame):
         )
         if started and self._fade_duration > 0.0:
             fade_source = max(0.0, fade_seconds)
-            if fallback_guard_trigger and fade_source <= 0.0:
-                # fallback progresowy potrzebuje miękkiego wyciszenia nawet gdy plan zakładał brak fade'u
-                fade_source = self._fade_duration
+            if fallback_guard_trigger:
+                # fallback progresowy potrzebuje miękkiego wyciszenia z pełną długością fade'u
+                fade_source = max(fade_source, self._fade_duration)
             fade_duration = min(fade_source, remaining)
             logger.debug(
                 "UI: automix progress fade duration=%.3f planned=%.3f remaining=%.3f guard=%s current=%.3f",
