@@ -546,11 +546,11 @@ class MixPointEditorDialog(wx.Dialog):
                 pass
             self._segue_preview_timer = None
 
-    def _schedule_segue_preview_stop(self, fade_duration: float) -> None:
+    def _schedule_segue_preview_stop(self, preview_duration: float) -> None:
         self._cancel_segue_preview_timer()
-        if fade_duration <= 0.0:
+        if preview_duration <= 0.0:
             return
-        delay_ms = max(1, int(fade_duration * 1000))
+        delay_ms = max(1, int(preview_duration * 1000))
         self._segue_preview_timer = wx.CallLater(delay_ms, self._on_segue_preview_expired)
 
     def _on_segue_preview_expired(self) -> None:
@@ -577,8 +577,9 @@ class MixPointEditorDialog(wx.Dialog):
             fade_len = min(fade_len, max_window)
         if fade_len <= 0.0:
             return
+        pre_window = min(4.0, max(0.5, fade_len))
         values = self._collect_mix_values()
-        values["_preview_pre_seconds"] = 0.0
+        values["_preview_pre_seconds"] = pre_window
         self._stop_preview()
         self._preview_active = False
         ok = mix_preview(values)
@@ -586,7 +587,7 @@ class MixPointEditorDialog(wx.Dialog):
         if not ok:
             wx.Bell()
             return
-        self._schedule_segue_preview_stop(fade_len)
+        self._schedule_segue_preview_stop(pre_window + fade_len)
 
     # endregion
 
