@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Thread
@@ -9,6 +11,8 @@ from typing import Callable, Dict, Optional
 import time
 
 import wx
+
+logger = logging.getLogger(__name__)
 
 from sara.core.i18n import gettext as _
 from sara.core.loudness import LoudnessStandard, analyze_loudness, find_bs1770gain
@@ -562,6 +566,7 @@ class MixPointEditorDialog(wx.Dialog):
             return
         mix_preview = self._on_mix_preview
         if mix_preview is None:
+            logger.debug("Mix dialog: no mix preview callback available for segue preview")
             return
         segue_row = self._rows.get("segue")
         if not segue_row or not segue_row.checkbox.GetValue():
@@ -576,16 +581,24 @@ class MixPointEditorDialog(wx.Dialog):
         if max_window > 0.0:
             fade_len = min(fade_len, max_window)
         if fade_len <= 0.0:
+            logger.debug("Mix dialog: skipping segue preview (fade_len=%.3f)", fade_len)
             return
         pre_window = min(4.0, max(0.5, fade_len))
         values = self._collect_mix_values()
         values["_preview_pre_seconds"] = pre_window
         self._stop_preview()
         self._preview_active = False
+        logger.debug(
+            "Mix dialog: requesting segue mix preview pre=%.3f fade=%.3f values=%s",
+            pre_window,
+            fade_len,
+            {k: values[k] for k in ("segue", "segue_fade", "overlap") if k in values},
+        )
         ok = mix_preview(values)
         self._mix_preview_running = bool(ok)
         if not ok:
             wx.Bell()
+            logger.debug("Mix dialog: mix preview callback returned False")
             return
         self._schedule_segue_preview_stop(pre_window + fade_len)
 
@@ -634,6 +647,7 @@ class MixPointEditorDialog(wx.Dialog):
         active_key = self._ensure_active_row()
         if active_key in {"segue", "overlap", "segue_fade"} and self._on_mix_preview:
             self._preview_active = False  # oznacz nowy start
+            logger.debug("Mix dialog: Alt+V mix preview via key=%s", active_key)
             ok = self._on_mix_preview(self._collect_mix_values())
             self._mix_preview_running = bool(ok)
             if not ok:
@@ -871,6 +885,7 @@ class MixPointEditorDialog(wx.Dialog):
         if not row.checkbox.GetValue():
             return
         if key in {"segue", "segue_fade"}:
+            logger.debug("Mix dialog: preview_active_point key=%s", key)
             self._preview_segue_window(force=True)
             return
         value = float(row.spin.GetValue())
