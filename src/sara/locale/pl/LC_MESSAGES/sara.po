@@ -910,6 +910,11 @@ msgid ""
 "X = capture point, Z/C fine-tune active point, V = preview active point, "
 "Shift+V = preview loop end, Alt+V = preview loop."
 msgstr ""
+"Skróty: A/S/Z = krok wstecz (5 s/1 s/0,1 s), F/G/C = krok naprzód (1 s/5 s/"
+"0,1 s), D = odtwarzanie/pauza, Q = podsłuch od początku, W = podsłuch "
+"ostatnich 20 s, X = przechwycenie punktu, Z/C precyzuje aktywny punkt, V = "
+"podsłuch aktywnego punktu, Shift+V = podsłuch końca pętli, Alt+V = podsłuch "
+"pętli."
 
 #: src/sara/ui/mix_point_dialog.py:143
 #, fuzzy
@@ -953,6 +958,8 @@ msgid ""
 "When assigning overlap from the current position, the remaining tail "
 "duration (track end minus cursor) is used."
 msgstr ""
+"Przy ustawianiu nachodzenia z bieżącej pozycji używana jest pozostała "
+"długość ogona (koniec utworu minus kursor)."
 
 #: src/sara/ui/mix_point_dialog.py:243
 msgid "Preview loop (Alt+V)"
@@ -1347,6 +1354,89 @@ msgstr "Przywróć domyślny"
 #: src/sara/ui/shortcut_editor_dialog.py:106
 msgid "This shortcut is already assigned to another action."
 msgstr "Taki skrót jest już przypisany do innej akcji."
+
+#: src/sara/ui/new_playlist_dialog.py
+#: src/sara/ui/options_dialog.py
+msgid "Music folder playlist"
+msgstr "Playlista folderu muzycznego"
+
+#: src/sara/ui/new_playlist_dialog.py
+#: src/sara/ui/options_dialog.py
+msgid "Folder:"
+msgstr "Folder:"
+
+#: src/sara/ui/folder_playlist_panel.py src/sara/ui/new_playlist_dialog.py
+#: src/sara/ui/options_dialog.py
+msgid "Select folder…"
+msgstr "Wybierz folder…"
+
+#: src/sara/ui/new_playlist_dialog.py src/sara/ui/options_dialog.py
+msgid "Select folder"
+msgstr "Wybierz folder"
+
+#: src/sara/ui/new_playlist_dialog.py
+msgid "Selected path is not a folder."
+msgstr "Wybrana ścieżka nie jest folderem."
+
+#: src/sara/ui/options_dialog.py
+msgid "Selected folder is not available."
+msgstr "Wybrany folder jest niedostępny."
+
+#: src/sara/ui/new_playlist_dialog.py src/sara/ui/options_dialog.py
+msgid "Select a folder to populate this playlist."
+msgstr "Wybierz folder, z którego zostanie zapełniona ta playlista."
+
+#: src/sara/ui/main_frame.py
+msgid "Music folders use the configured PFL device"
+msgstr "Playlisty folderów korzystają z ustawionego urządzenia PFL"
+
+#: src/sara/ui/main_frame.py
+msgid "Music folder playlists do not support import"
+msgstr "Playlisty folderów nie obsługują importu"
+
+#: src/sara/ui/main_frame.py
+msgid "Music folder playlists do not support export"
+msgstr "Playlisty folderów nie obsługują eksportu"
+
+#: src/sara/ui/main_frame.py
+msgid "Add a music playlist first"
+msgstr "Najpierw dodaj playlistę muzyczną"
+
+#: src/sara/ui/main_frame.py
+msgid "Select a folder first"
+msgstr "Najpierw wybierz folder"
+
+#: src/sara/ui/main_frame.py
+msgid "Folder %s does not exist"
+msgstr "Folder %s nie istnieje"
+
+#: src/sara/ui/main_frame.py
+msgid "Loading folder %s…"
+msgstr "Wczytywanie folderu %s…"
+
+#: src/sara/ui/main_frame.py
+msgid "Loaded %d tracks from %s"
+msgstr "Wczytano %d utworów z %s"
+
+#: src/sara/ui/main_frame.py src/sara/ui/options_dialog.py
+msgid "Music folder"
+msgstr "Folder muzyczny"
+
+#: src/sara/ui/folder_playlist_panel.py
+msgid "No folder selected"
+msgstr "Nie wybrano folderu"
+
+#: src/sara/ui/folder_playlist_panel.py
+msgid "Reload"
+msgstr "Odśwież"
+
+#: src/sara/ui/options_dialog.py
+msgid "Players: uses PFL device"
+msgstr "Odtwarzacze: używa urządzenia PFL"
+
+#: src/sara/ui/options_dialog.py
+msgid "PFL"
+msgstr "PFL"
 
 #~ msgid " [marker]"
 #~ msgstr " [znacznik]"

@@ -59,6 +59,7 @@ UI/E2E on Windows (optional): `RUN_SARA_E2E=1 PYTHONPATH=src python -m pytest -m
 - Loop dialog with PFL preview and persistent loop metadata.
 - Sample-accurate intro looping on BASS-based players.
 - News playlists with Markdown editing, per-line read mode, and inline audio buttons.
+- Music folder playlists: assign a directory, preview on the PFL device with `Space`, and press `Enter` to send tracks to the active music playlist.
 - `.saranews` import/export plus a standalone News Editor (`sara-news-editor`) with persistent audio-device selection for preparing services outside the studio.
 - Options dialog for fade, PFL device, startup playlists, language, alternate play, auto-remove.
 - Screen-reader announcements (NVDA) and coverage in the test suite.
@@ -77,7 +78,7 @@ UI/E2E on Windows (optional): `RUN_SARA_E2E=1 PYTHONPATH=src python -m pytest -m
 - The workflow also copies the bs1770gain CLI (`src/sara/audio/vendor/windows/bs1770gain`) next to `SARA.exe`; do the same when preparing local PyInstaller builds so normalization keeps working.
 - Scripts `scripts/auto_download.sh` and `scripts/download_latest_artifact.sh` (install via `scripts/install_hooks.sh`) keep the latest Windows artifact under `artifacts/` after each successful build.
 - For frozen Windows builds, bundle NVDA controller DLLs and optional BASS binaries alongside the executable.
-- Release notes live in `docs/releases/` (see `docs/releases/0.0.12.md` for the latest changes).
+- Release notes live in `docs/releases/` (see `docs/releases/0.0.13.md` for the latest changes).
 
 ### Roadmap highlights
 - Enhanced accessibility messages.
@@ -145,6 +146,7 @@ Testy UI/E2E na Windows (opcjonalnie): `RUN_SARA_E2E=1 PYTHONPATH=src python -m 
 - Dialog pętli z odsłuchem PFL oraz zapisem w tagach.
 - Dokładne zapętlanie intra w odtwarzaczu BASS.
 - Playlisty newsowe z edycją Markdown, trybem tylko do odczytu i przyciskami audio.
+- Playlisty folderów muzycznych: wskaż katalog, odsłuchuj na PFL klawiszem `Spacja`, a `Enter` dodaje zaznaczone utwory do bieżącej playlisty muzycznej.
 - Import/eksport plików `.saranews` oraz niezależny News Editor (`sara-news-editor`) z zapamiętywaniem urządzenia audio do przygotowywania serwisów.
 - Opcje: fade, PFL, playlisty startowe, język interfejsu, tryb naprzemienny, auto-usuwanie.
 - Komunikaty dostępności (NVDA) i testy pokrywające kluczowe moduły.

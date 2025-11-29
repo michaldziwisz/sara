@@ -18,6 +18,7 @@ class PlaylistItemStatus(Enum):
 class PlaylistKind(Enum):
     MUSIC = "music"
     NEWS = "news"
+    FOLDER = "folder"
 
 
 @dataclass
@@ -98,6 +99,7 @@ class PlaylistModel:
     items: List[PlaylistItem] = field(default_factory=list)
     hotkeys: Dict[str, "HotkeyAction"] = field(default_factory=dict)
     break_resume_index: Optional[int] = None
+    folder_path: Optional[Path] = None
 
     # backward compatibility: single device
     output_device: Optional[str] = None

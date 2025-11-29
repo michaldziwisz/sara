@@ -47,6 +47,8 @@ class FileSelectionDialog(wx.Dialog):
         message: str | None = None,
         start_path: Path | None = None,
         file_browser: FileBrowser | None = None,
+        allow_directories: bool = False,
+        directories_only: bool = False,
     ) -> None:
         super().__init__(parent, title=title or _("Select files"), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
         self._style = style
@@ -55,6 +57,8 @@ class FileSelectionDialog(wx.Dialog):
         self._require_existing = bool(style & wx.FD_FILE_MUST_EXIST)
         self._prompt_overwrite = bool(style & wx.FD_OVERWRITE_PROMPT)
         self._filters = parse_file_wildcard(wildcard)
+        self._directories_only = bool(directories_only)
+        self._allow_directories = bool(allow_directories or directories_only)
         self._filter_choice: wx.Choice | None = None
         initial_path = start_path or FileSelectionDialog._last_path
         self._browser = file_browser or FileBrowser(initial_path)
@@ -131,6 +135,8 @@ class FileSelectionDialog(wx.Dialog):
     def _refresh_entries(self) -> None:
         patterns = self._active_patterns()
         entries = self._browser.list_entries(patterns)
+        if self._directories_only:
+            entries = [entry for entry in entries if entry.kind != "file"]
         self._entries = entries
         current_path = self._browser.current_path()
         path_text = str(current_path) if current_path else _("Computer")
@@ -200,7 +206,7 @@ class FileSelectionDialog(wx.Dialog):
             return
 
     def _confirm_selection(self) -> bool:
-        selected = self._gather_selected_files()
+        selected = self._gather_selected_paths()
         if self._save_mode:
             if not selected:
                 try:
@@ -222,7 +228,8 @@ class FileSelectionDialog(wx.Dialog):
                     return False
         else:
             if not selected:
-                wx.MessageBox(_("Select at least one file."), _("Warning"), parent=self)
+                message = _("Select at least one folder.") if self._directories_only else _("Select at least one file.")
+                wx.MessageBox(message, _("Warning"), parent=self)
                 return False
             if self._require_existing and not all(Path(path).exists() for path in selected):
                 wx.MessageBox(_("Some files do not exist."), _("Warning"), parent=self)
@@ -239,7 +246,7 @@ class FileSelectionDialog(wx.Dialog):
         self.EndModal(wx.ID_OK)
         return True
 
-    def _gather_selected_files(self) -> list[str]:
+    def _gather_selected_paths(self) -> list[str]:
         indices: list[int] = []
         index = self._list_ctrl.GetFirstSelected()
         while index != -1:
@@ -249,7 +256,9 @@ class FileSelectionDialog(wx.Dialog):
         for idx in indices:
             if 0 <= idx < len(self._entries):
                 entry = self._entries[idx]
-                if entry.kind == "file":
+                if entry.kind == "file" and not self._directories_only:
+                    files.append(str(entry.path))
+                elif entry.kind in {"dir", "drive"} and self._allow_directories:
                     files.append(str(entry.path))
         return files
 
@@ -257,7 +266,7 @@ class FileSelectionDialog(wx.Dialog):
     def get_paths(self) -> list[str]:
         if self._selected_paths:
             return list(self._selected_paths)
-        return self._gather_selected_files()
+        return self._gather_selected_paths()
 
     def get_path(self) -> str:
         paths = self.get_paths()

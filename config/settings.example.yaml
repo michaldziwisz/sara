@@ -8,6 +8,7 @@ shortcuts:
     pause: F2
     stop: F3
     fade: F4
+    mix_points: CTRL+P
 playback:
   fade_out_seconds: 1.5
 devices:

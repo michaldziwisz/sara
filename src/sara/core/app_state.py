@@ -39,9 +39,10 @@ class PlaylistFactory:
         *,
         kind: PlaylistKind = PlaylistKind.MUSIC,
         items: List[PlaylistItem] | None = None,
+        folder_path: Path | None = None,
     ) -> PlaylistModel:
         playlist_id = f"pl-{next(self._playlist_counter)}-{uuid.uuid4().hex[:6]}"
-        return PlaylistModel(id=playlist_id, name=name, items=items or [], kind=kind)
+        return PlaylistModel(id=playlist_id, name=name, items=items or [], kind=kind, folder_path=folder_path)
 
     @staticmethod
     def create_item(

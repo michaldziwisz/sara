@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event, Thread
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import wx
 
@@ -34,6 +34,7 @@ from sara.ui.undo import InsertOperation, MoveOperation, RemoveOperation, UndoAc
 from sara.ui.undo_manager import UndoManager
 from sara.ui.new_playlist_dialog import NewPlaylistDialog
 from sara.ui.playlist_panel import PlaylistPanel
+from sara.ui.folder_playlist_panel import FolderPlaylistPanel
 from sara.ui.news_playlist_panel import NewsPlaylistPanel
 from sara.ui.playlist_layout import PlaylistLayoutManager, PlaylistLayoutState
 from sara.ui.announcement_service import AnnouncementService
@@ -131,6 +132,8 @@ class MainFrame(wx.Frame):
         self._focus_lock: Dict[str, bool] = self._layout.state.focus_lock
         self._intro_alert_players: list[Tuple[Player, Path]] = []
         self._last_started_item_id: Dict[str, str | None] = {}
+        self._last_music_playlist_id: str | None = None
+        self._active_folder_preview: tuple[str, str] | None = None
         self._active_break_item: Dict[str, str] = {}  # playlist_id -> item_id z aktywnym breakiem
         self._mix_trigger_points: Dict[tuple[str, str], float] = {}  # (playlist_id, item_id) -> absolute mix_at seconds
         self._mix_plans: Dict[tuple[str, str], MixPlan] = {}
@@ -408,9 +411,12 @@ class MainFrame(wx.Frame):
                     kind = PlaylistKind(kind)
                 except Exception:
                     kind = PlaylistKind.MUSIC
-            model = self._playlist_factory.create_playlist(name, kind=kind)
+            folder_path = entry.get("folder_path")
+            if folder_path and not isinstance(folder_path, Path):
+                folder_path = Path(folder_path)
+            model = self._playlist_factory.create_playlist(name, kind=kind, folder_path=folder_path)
             slots = entry.get("slots", [])
-            if isinstance(slots, list):
+            if isinstance(slots, list) and kind is not PlaylistKind.FOLDER:
                 model.set_output_slots(slots)
             created.append(model)
         return created
@@ -539,7 +545,23 @@ class MainFrame(wx.Frame):
                 on_play_audio=lambda path, device: self._play_news_audio_clip(model, path, device),
                 on_device_change=lambda _model=model: self._persist_playlist_outputs(model),
                 on_preview_audio=self._preview_news_clip,
-                on_stop_preview_audio=lambda: self._playback.stop_preview(),
+                on_stop_preview_audio=self._stop_preview,
+            )
+        elif model.kind is PlaylistKind.FOLDER:
+            panel = FolderPlaylistPanel(
+                container,
+                model=model,
+                on_focus=self._on_playlist_focus,
+                on_selection_change=self._on_playlist_selection_change,
+                on_mix_configure=self._on_mix_points_configure,
+                on_preview_request=lambda playlist_id, item_id: self._handle_folder_preview(
+                    playlist_id, item_id
+                ),
+                on_send_to_music=lambda playlist_id, item_ids: self._send_folder_items_to_music(
+                    playlist_id, item_ids
+                ),
+                on_select_folder=lambda playlist_id: self._select_folder_for_playlist(playlist_id),
+                on_reload_folder=lambda playlist_id: self._reload_folder_playlist(playlist_id),
             )
         else:
             panel = PlaylistPanel(
@@ -572,6 +594,8 @@ class MainFrame(wx.Frame):
         self._playlist_headers[model.id] = header
         self._playlist_titles[model.id] = model.name
         self._last_started_item_id.setdefault(model.id, None)
+        if model.kind is PlaylistKind.FOLDER and model.folder_path:
+            self._load_folder_playlist(model, announce=False)
         self._layout.add_playlist(model.id)
         if model.id not in self._state.playlists:
             self._state.add_playlist(model)
@@ -620,6 +644,10 @@ class MainFrame(wx.Frame):
         self._playlist_container.FitInside()
         self._playback.clear_playlist_entries(playlist_id)
         self._last_started_item_id.pop(playlist_id, None)
+        if self._active_folder_preview and self._active_folder_preview[0] == playlist_id:
+            self._stop_preview()
+        if self._last_music_playlist_id == playlist_id:
+            self._last_music_playlist_id = None
         self._apply_playlist_order(self._layout.state.order)
         if announce:
             self._announce_event("playlist", _("Removed playlist %s") % title)
@@ -667,6 +695,162 @@ class MainFrame(wx.Frame):
     def _persist_playlist_outputs(self, model: PlaylistModel) -> None:
         self._settings.set_playlist_outputs(model.name, model.get_configured_slots())
         self._settings.save()
+
+    def _select_folder_for_playlist(self, playlist_id: str) -> None:
+        panel = self._playlists.get(playlist_id)
+        if not isinstance(panel, FolderPlaylistPanel):
+            return
+        dialog = FileSelectionDialog(
+            self,
+            title=_("Select folder"),
+            allow_directories=True,
+            directories_only=True,
+        )
+        try:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            paths = dialog.get_paths()
+        finally:
+            dialog.Destroy()
+        if not paths:
+            return
+        selected = Path(paths[0])
+        if not selected.exists() or not selected.is_dir():
+            self._announce_event("playlist", _("Folder %s does not exist") % selected)
+            return
+        panel.model.folder_path = selected
+        panel.set_folder_path(selected)
+        self._load_folder_playlist(panel.model)
+
+    def _reload_folder_playlist(self, playlist_id: str) -> None:
+        panel = self._playlists.get(playlist_id)
+        if not isinstance(panel, FolderPlaylistPanel):
+            return
+        folder_path = panel.model.folder_path
+        if not folder_path:
+            self._announce_event("playlist", _("Select a folder first"))
+            return
+        self._load_folder_playlist(panel.model)
+
+    def _load_folder_playlist(self, playlist: PlaylistModel, *, announce: bool = True) -> None:
+        folder_path = playlist.folder_path
+        if not folder_path:
+            self._announce_event("playlist", _("Select a folder first"))
+            return
+        if not folder_path.exists():
+            self._announce_event("playlist", _("Folder %s does not exist") % folder_path)
+            return
+        description = _("Loading folder %s…") % folder_path.name
+        self._run_item_loader(
+            description=description,
+            worker=lambda folder=folder_path: self._load_folder_items(folder),
+            on_complete=lambda result, playlist_id=playlist.id, folder=folder_path: self._finalize_folder_load(
+                playlist_id, folder, result, announce=announce
+            ),
+        )
+
+    def _load_folder_items(self, folder_path: Path) -> tuple[list[PlaylistItem], int]:
+        file_paths, skipped = self._collect_files_from_paths([folder_path])
+        items = self._create_items_from_paths(file_paths)
+        return items, skipped
+
+    def _finalize_folder_load(
+        self,
+        playlist_id: str,
+        folder_path: Path,
+        result: tuple[list[PlaylistItem], int] | list[PlaylistItem],
+        *,
+        announce: bool,
+    ) -> None:
+        panel = self._playlists.get(playlist_id)
+        if not isinstance(panel, FolderPlaylistPanel):
+            return
+        if playlist_id not in self._playlists or panel.model is None:
+            return
+        if isinstance(result, tuple):
+            items, skipped = result
+        else:
+            items, skipped = result, 0
+        panel.model.items = items
+        panel.model.folder_path = folder_path
+        panel.set_folder_path(folder_path)
+        panel.refresh(selected_indices=None, focus=False)
+        if announce:
+            self._announce_event(
+                "playlist",
+                _("Loaded %d tracks from %s") % (len(items), folder_path.name),
+            )
+        if skipped:
+            noun = _("file") if skipped == 1 else _("files")
+            self._announce_event("playlist", _("Skipped %d unsupported %s") % (skipped, noun))
+
+    def _handle_folder_preview(self, playlist_id: str, item_id: str) -> None:
+        panel = self._playlists.get(playlist_id)
+        if not isinstance(panel, FolderPlaylistPanel):
+            return
+        item = panel.model.get_item(item_id)
+        if not item:
+            return
+        if self._active_folder_preview == (playlist_id, item_id):
+            if self._playback.preview_context:
+                self._stop_preview()
+            else:
+                self._active_folder_preview = None
+            return
+        if self._playback.start_preview(item, 0.0):
+            self._active_folder_preview = (playlist_id, item_id)
+
+    def _stop_preview(self) -> None:
+        try:
+            self._playback.stop_preview()
+        finally:
+            self._active_folder_preview = None
+
+    def _send_folder_items_to_music(self, playlist_id: str, item_ids: Sequence[str]) -> None:
+        panel = self._playlists.get(playlist_id)
+        if not isinstance(panel, FolderPlaylistPanel):
+            return
+        target = self._target_music_playlist()
+        if not target:
+            self._announce_event("playlist", _("Add a music playlist first"))
+            return
+        target_panel, target_model = target
+        source_items = [
+            panel.model.get_item(item_id)
+            for item_id in item_ids
+        ]
+        source_items = [item for item in source_items if item]
+        if not source_items:
+            self._announce_event("playlist", _("No tracks selected"))
+            return
+        serialized = self._serialize_items(source_items)
+        new_items = [self._create_item_from_serialized(data) for data in serialized]
+        selected_indices = target_panel.get_selected_indices()
+        anchor = selected_indices[-1] if selected_indices else None
+        insert_at = anchor + 1 if anchor is not None else len(target_model.items)
+        target_model.items[insert_at:insert_at] = new_items
+        insert_indices = list(range(insert_at, insert_at + len(new_items)))
+        target_panel.refresh(insert_indices, focus=False)
+        self._announce_event(
+            "playlist",
+            _("Added %d tracks to playlist %s") % (len(new_items), target_model.name),
+        )
+        operation = InsertOperation(indices=list(insert_indices), items=list(new_items))
+        self._push_undo_action(target_model, operation)
+
+    def _target_music_playlist(self) -> tuple[PlaylistPanel, PlaylistModel] | None:
+        candidate_ids: list[str] = []
+        if self._last_music_playlist_id:
+            candidate_ids.append(self._last_music_playlist_id)
+        for playlist_id in self._layout.state.order:
+            if playlist_id not in candidate_ids:
+                candidate_ids.append(playlist_id)
+        for playlist_id in candidate_ids:
+            panel = self._playlists.get(playlist_id)
+            if isinstance(panel, PlaylistPanel) and panel.model.kind is PlaylistKind.MUSIC:
+                self._last_music_playlist_id = playlist_id
+                return panel, panel.model
+        return None
     def _refresh_news_panels(self) -> None:
         for panel in self._playlists.values():
             if isinstance(panel, NewsPlaylistPanel):
@@ -803,9 +987,11 @@ class MainFrame(wx.Frame):
             model = self._playlist_factory.create_playlist(
                 dialog.playlist_name,
                 kind=dialog.playlist_kind,
+                folder_path=dialog.folder_path if dialog.playlist_kind is PlaylistKind.FOLDER else None,
             )
             self.add_playlist(model)
-            self._configure_playlist_devices(model.id)
+            if dialog.playlist_kind is not PlaylistKind.FOLDER:
+                self._configure_playlist_devices(model.id)
             return model
         finally:
             dialog.Destroy()
@@ -915,6 +1101,9 @@ class MainFrame(wx.Frame):
         if panel is None:
             self._announce_event("playlist", _("Select a playlist first"))
             return
+        if isinstance(panel, PlaylistPanel) and panel.model.kind is PlaylistKind.FOLDER:
+            self._announce_event("playlist", _("Music folders use the configured PFL device"))
+            return
         self._configure_playlist_devices(panel.model.id)
 
     def _configure_playlist_devices(self, playlist_id: str) -> list[str | None] | None:
@@ -970,6 +1159,9 @@ class MainFrame(wx.Frame):
             return
         if not isinstance(panel, PlaylistPanel):
             self._announce_event("playlist", _("Active playlist does not support import"))
+            return
+        if panel.model.kind is PlaylistKind.FOLDER:
+            self._announce_event("playlist", _("Music folder playlists do not support import"))
             return
 
         dialog = FileSelectionDialog(
@@ -1059,6 +1251,9 @@ class MainFrame(wx.Frame):
             return
         if not isinstance(panel, PlaylistPanel):
             self._announce_event("playlist", _("Active playlist does not support export"))
+            return
+        if panel.model.kind is PlaylistKind.FOLDER:
+            self._announce_event("playlist", _("Music folder playlists do not support export"))
             return
 
         dialog = FileSelectionDialog(
@@ -1601,7 +1796,7 @@ class MainFrame(wx.Frame):
                 loop_range=loop_range,
             ),
             on_mix_preview=lambda values: self._preview_mix_with_next(panel.model, item, overrides=values),
-            on_stop_preview=self._playback.stop_preview,
+            on_stop_preview=self._stop_preview,
             track_path=item.path,
             initial_replay_gain=item.replay_gain_db,
             on_replay_gain_update=lambda gain, item=item: self._apply_replay_gain(item, gain),
@@ -1618,7 +1813,7 @@ class MainFrame(wx.Frame):
             result = dialog.get_result()
         finally:
             dialog.Destroy()
-            self._playback.stop_preview()
+            self._stop_preview()
 
         mix_values = {
             "cue_in": result.get("cue"),
@@ -1747,7 +1942,7 @@ class MainFrame(wx.Frame):
         playlist = panel.model
         key = (playlist.id, item.id)
         # stop any preview playback before starting actual playback
-        self._playback.stop_preview()
+        self._stop_preview()
 
         # w automixie blokuj ręczne starty spoza sekwencji; dopuszczaj restart tylko w automixowej ścieżce
         if (
@@ -2805,6 +3000,19 @@ class MainFrame(wx.Frame):
         if not action:
             return
 
+        if action == "mix_points":
+            context = self._get_selected_context(kinds=(PlaylistKind.MUSIC, PlaylistKind.FOLDER))
+            if context is None:
+                return
+            _panel, model, indices = context
+            index = indices[0]
+            if not (0 <= index < len(model.items)):
+                self._announce_event("playlist", _("No track selected"))
+                return
+            item = model.items[index]
+            self._on_mix_points_configure(model.id, item.id)
+            return
+
         panel = self._get_current_music_panel()
         if panel is None:
             self._announce_event("playlist", _("Select a playlist first"))
@@ -2931,11 +3139,14 @@ class MainFrame(wx.Frame):
                 return panel
         return None
 
-    def _get_current_music_panel(self) -> PlaylistPanel | None:
+    def _get_audio_panel(self, kinds: tuple[PlaylistKind, ...]) -> PlaylistPanel | None:
         panel = self._get_current_playlist_panel()
-        if isinstance(panel, PlaylistPanel):
+        if isinstance(panel, PlaylistPanel) and panel.model.kind in kinds:
             return panel
         return None
+
+    def _get_current_music_panel(self) -> PlaylistPanel | None:
+        return self._get_audio_panel((PlaylistKind.MUSIC,))
 
     def _handle_focus_click(self, event: wx.MouseEvent, playlist_id: str) -> None:
         self._focus_playlist_panel(playlist_id)
@@ -2953,9 +3164,15 @@ class MainFrame(wx.Frame):
         panel = self._playlists.get(playlist_id)
         if panel:
             self._announce_event("playlist", f"{ANNOUNCEMENT_PREFIX}{panel.model.name}")
+            if isinstance(panel, PlaylistPanel) and panel.model.kind is PlaylistKind.MUSIC:
+                self._last_music_playlist_id = playlist_id
 
-    def _get_selected_context(self) -> tuple[PlaylistPanel, PlaylistModel, list[int]] | None:
-        panel = self._get_current_music_panel()
+    def _get_selected_context(
+        self,
+        *,
+        kinds: tuple[PlaylistKind, ...] = (PlaylistKind.MUSIC,),
+    ) -> tuple[PlaylistPanel, PlaylistModel, list[int]] | None:
+        panel = self._get_audio_panel(kinds)
         if panel is None:
             self._announce_event("playlist", _("Select a playlist first"))
             return None
@@ -2969,8 +3186,12 @@ class MainFrame(wx.Frame):
                 return None
         return panel, panel.model, sorted(indices)
 
-    def _get_selected_items(self) -> tuple[PlaylistPanel, PlaylistModel, list[tuple[int, PlaylistItem]]] | None:
-        context = self._get_selected_context()
+    def _get_selected_items(
+        self,
+        *,
+        kinds: tuple[PlaylistKind, ...] = (PlaylistKind.MUSIC,),
+    ) -> tuple[PlaylistPanel, PlaylistModel, list[tuple[int, PlaylistItem]]] | None:
+        context = self._get_selected_context(kinds=kinds)
         if context is None:
             return None
         panel, model, indices = context
@@ -3485,7 +3706,7 @@ class MainFrame(wx.Frame):
         self._announce_event("undo_redo", message)
 
     def _on_copy_selection(self, _event: wx.CommandEvent) -> None:
-        context = self._get_selected_items()
+        context = self._get_selected_items(kinds=(PlaylistKind.MUSIC, PlaylistKind.FOLDER))
         if context is None:
             return
         panel, model, selected = context
@@ -3960,6 +4181,7 @@ class ManagePlaylistsDialog(wx.Dialog):
     KIND_LABELS = {
         PlaylistKind.MUSIC: _("Music"),
         PlaylistKind.NEWS: _("News"),
+        PlaylistKind.FOLDER: _("Music folder"),
     }
 
     def __init__(
@@ -4060,9 +4282,11 @@ class ManagePlaylistsDialog(wx.Dialog):
     def _update_button_states(self) -> None:
         selection = self._selected_index()
         can_modify = selection != wx.NOT_FOUND
+        entry = self._entries[selection] if can_modify else None
+        is_folder = bool(entry and entry.get("kind") == PlaylistKind.FOLDER)
         total = len(self._entries)
         self._remove_button.Enable(can_modify and total > 1)
-        self._configure_button.Enable(can_modify and self._configure_callback is not None)
+        self._configure_button.Enable(can_modify and self._configure_callback is not None and not is_folder)
         self._up_button.Enable(can_modify and selection > 0)
         self._down_button.Enable(can_modify and selection != wx.NOT_FOUND and selection < total - 1)
 

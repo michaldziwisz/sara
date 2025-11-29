@@ -1289,6 +1289,89 @@ msgstr "Restore default"
 msgid "This shortcut is already assigned to another action."
 msgstr "This shortcut is already assigned to another action."
 
+#: src/sara/ui/new_playlist_dialog.py
+#: src/sara/ui/options_dialog.py
+msgid "Music folder playlist"
+msgstr "Music folder playlist"
+
+#: src/sara/ui/new_playlist_dialog.py
+#: src/sara/ui/options_dialog.py
+msgid "Folder:"
+msgstr "Folder:"
+
+#: src/sara/ui/folder_playlist_panel.py src/sara/ui/new_playlist_dialog.py
+#: src/sara/ui/options_dialog.py
+msgid "Select folder…"
+msgstr "Select folder…"
+
+#: src/sara/ui/new_playlist_dialog.py src/sara/ui/options_dialog.py
+msgid "Select folder"
+msgstr "Select folder"
+
+#: src/sara/ui/new_playlist_dialog.py
+msgid "Selected path is not a folder."
+msgstr "Selected path is not a folder."
+
+#: src/sara/ui/options_dialog.py
+msgid "Selected folder is not available."
+msgstr "Selected folder is not available."
+
+#: src/sara/ui/new_playlist_dialog.py src/sara/ui/options_dialog.py
+msgid "Select a folder to populate this playlist."
+msgstr "Select a folder to populate this playlist."
+
+#: src/sara/ui/main_frame.py
+msgid "Music folders use the configured PFL device"
+msgstr "Music folders use the configured PFL device"
+
+#: src/sara/ui/main_frame.py
+msgid "Music folder playlists do not support import"
+msgstr "Music folder playlists do not support import"
+
+#: src/sara/ui/main_frame.py
+msgid "Music folder playlists do not support export"
+msgstr "Music folder playlists do not support export"
+
+#: src/sara/ui/main_frame.py
+msgid "Add a music playlist first"
+msgstr "Add a music playlist first"
+
+#: src/sara/ui/main_frame.py
+msgid "Select a folder first"
+msgstr "Select a folder first"
+
+#: src/sara/ui/main_frame.py
+msgid "Folder %s does not exist"
+msgstr "Folder %s does not exist"
+
+#: src/sara/ui/main_frame.py
+msgid "Loading folder %s…"
+msgstr "Loading folder %s…"
+
+#: src/sara/ui/main_frame.py
+msgid "Loaded %d tracks from %s"
+msgstr "Loaded %d tracks from %s"
+
+#: src/sara/ui/main_frame.py src/sara/ui/options_dialog.py
+msgid "Music folder"
+msgstr "Music folder"
+
+#: src/sara/ui/folder_playlist_panel.py
+msgid "No folder selected"
+msgstr "No folder selected"
+
+#: src/sara/ui/folder_playlist_panel.py
+msgid "Reload"
+msgstr "Reload"
+
+#: src/sara/ui/options_dialog.py
+msgid "Players: uses PFL device"
+msgstr "Players: uses PFL device"
+
+#: src/sara/ui/options_dialog.py
+msgid "PFL"
+msgstr "PFL"
+
 #~ msgid "General status messages"
 #~ msgstr "General status messages"
 

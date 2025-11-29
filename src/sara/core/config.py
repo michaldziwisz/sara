@@ -45,6 +45,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "stop": "F3",
             "fade": "F4",
             "break_toggle": "CTRL+B",
+            "mix_points": "CTRL+P",
         },
         "edit": {
             "undo": "CTRL+Z",
@@ -342,7 +343,9 @@ class SettingsManager:
                     kind = PlaylistKind(kind_value)
                 except Exception:
                     kind = PlaylistKind.MUSIC
-                result.append({"name": name, "slots": normalized_slots, "kind": kind})
+                folder_value = entry.get("folder_path") or entry.get("folder")
+                folder_path = Path(folder_value) if folder_value else None
+                result.append({"name": name, "slots": normalized_slots, "kind": kind, "folder_path": folder_path})
         return result
 
     def set_startup_playlists(self, playlists: list[dict[str, Any]]) -> None:
@@ -367,7 +370,11 @@ class SettingsManager:
                     kind_value = PlaylistKind(entry_kind).value
                 except Exception:
                     kind_value = PlaylistKind.MUSIC.value
-            normalized.append({"name": str(name), "slots": slots, "kind": kind_value})
+            normalized_entry: dict[str, Any] = {"name": str(name), "slots": slots, "kind": kind_value}
+            folder_path = entry.get("folder_path")
+            if folder_path and kind_value == PlaylistKind.FOLDER.value:
+                normalized_entry["folder_path"] = str(folder_path)
+            normalized.append(normalized_entry)
         self._data.setdefault("startup", {})["playlists"] = normalized
 
     def get_playlist_outputs(self, playlist_name: str) -> list[Optional[str]]:
