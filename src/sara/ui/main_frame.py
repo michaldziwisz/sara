@@ -3829,7 +3829,8 @@ class MainFrame(wx.Frame):
             return False
         next_item = playlist.items[next_idx]
 
-        overrides = overrides or {}
+        overrides = dict(overrides or {})
+        preview_pre_seconds = overrides.pop("_preview_pre_seconds", None)
         mix_plans = getattr(self, "_mix_plans", None)
         plan = mix_plans.get((playlist.id, item.id)) if mix_plans else None
         if plan and not overrides and plan.mix_at is not None:
