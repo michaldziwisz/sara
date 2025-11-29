@@ -489,7 +489,8 @@ class PlaybackController:
         return len(slots) <= 1
 
     def get_context(self, playlist_id: str) -> tuple[tuple[str, str], PlaybackContext] | None:
-        for key, context in self._playback_contexts.items():
+        # prefer the most recently started context for the playlist
+        for key, context in reversed(list(self._playback_contexts.items())):
             if key[0] == playlist_id:
                 return key, context
         return None

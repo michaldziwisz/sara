@@ -110,7 +110,7 @@ class AppModule(AppModule):
         self._announcement_timer = None
         self._announcement_attempts = 0
         self._playlist_switch_speech_until = 0.0
-        self._do_not_disturb = True
+        self._do_not_disturb = False
         inputCore.decide_handleRawKey.register(self._handle_raw_key)
         try:
             log.info("SARA sleep addon raw key handler registered")

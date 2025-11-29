@@ -1253,6 +1253,7 @@ def test_manual_fade_disables_auto_mix(tmp_path):
         title="Manual",
         duration_seconds=8.0,
     )
+    item.current_position = 1.0
     playlist.add_items([item])
     panel = SimpleNamespace(
         model=playlist,
@@ -1265,13 +1266,27 @@ def test_manual_fade_disables_auto_mix(tmp_path):
     ctx = SimpleNamespace(player=_DummyPlayer("dev-1"))
     frame._playlists = {playlist.id: panel}
     frame._get_current_music_panel = lambda: panel
+    frame._mix_plans = {
+        (playlist.id, item.id): MixPlan(
+            mix_at=6.0,
+            fade_seconds=4.0,
+            base_cue=0.0,
+            effective_duration=8.0,
+            native_trigger=False,
+        )
+    }
     frame._playback = SimpleNamespace(
         auto_mix_state={},
         contexts={context_key: ctx},
         clear_auto_mix=lambda: None,
     )
     frame._get_playback_context = lambda pl_id=None: (context_key, ctx) if pl_id == playlist.id else None
-    frame._stop_playlist_playback = lambda *_a, **_k: None
+    captured: dict[str, float] = {}
+
+    def _capture_stop(_pl_id, *, mark_played: bool, fade_duration: float):
+        captured["fade_duration"] = fade_duration
+
+    frame._stop_playlist_playback = _capture_stop
     frame._announce_event = lambda *_a, **_k: None
     frame._action_by_id = {1: "fade"}
 
@@ -1279,6 +1294,7 @@ def test_manual_fade_disables_auto_mix(tmp_path):
     frame._on_playlist_hotkey(event)
 
     assert frame._auto_mix_enabled is False
+    assert captured["fade_duration"] == pytest.approx(4.0)
 
 
 def _prepare_saramix_playlist(tmp_path: Path) -> tuple[PlaylistModel, dict[str, PlaylistItem]]:

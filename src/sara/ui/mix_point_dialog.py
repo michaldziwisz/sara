@@ -417,7 +417,17 @@ class MixPointEditorDialog(wx.Dialog):
 
         def bind(letter: str, handler: Callable[[], None], *, flags: int = wx.ACCEL_NORMAL) -> None:
             cmd_id = wx.NewIdRef()
-            entries.append((flags, ord(letter), int(cmd_id)))
+            keycodes: set[int] = set()
+            if len(letter) == 1:
+                upper = letter.upper()
+                lower = letter.lower()
+                keycodes.add(ord(upper))
+                if lower != upper:
+                    keycodes.add(ord(lower))
+            else:
+                keycodes.add(ord(letter))
+            for code in keycodes:
+                entries.append((flags, code, int(cmd_id)))
             self.Bind(wx.EVT_MENU, lambda _evt, fn=handler: fn(), id=int(cmd_id))
 
         def bind_with_shift(letter: str, handler: Callable[[], None]) -> None:
@@ -599,6 +609,10 @@ class MixPointEditorDialog(wx.Dialog):
         if not ok:
             wx.Bell()
             logger.debug("Mix dialog: mix preview callback returned False")
+            cue_val = self._current_cue_value()
+            segue_val = self._current_segue_value()
+            fallback_start = max(0.0, cue_val + segue_val - min(pre_window, fade_len))
+            self._start_preview_from(fallback_start)
             return
         self._schedule_segue_preview_stop(pre_window + fade_len)
 

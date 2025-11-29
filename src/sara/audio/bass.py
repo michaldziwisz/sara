@@ -990,12 +990,20 @@ class BassPlayer:
             return
 
         target_stream = self._stream
+        start_ts = time.perf_counter()
 
         def _runner(target: int) -> None:
             steps = max(4, int(duration / 0.05))
             interrupted = False
             try:
                 initial = self._gain_factor
+                logger.debug(
+                    "BASS fade start stream=%s duration=%.3f gain=%.3f steps=%d",
+                    target,
+                    duration,
+                    initial,
+                    steps,
+                )
                 for i in range(steps):
                     if self._stream != target:
                         interrupted = True
@@ -1009,6 +1017,15 @@ class BassPlayer:
                         break
                     time.sleep(duration / steps)
             finally:
+                elapsed = time.perf_counter() - start_ts
+                completed = not interrupted and self._stream == target
+                logger.debug(
+                    "BASS fade done stream=%s requested=%.3f elapsed=%.3f completed=%s",
+                    target,
+                    duration,
+                    elapsed,
+                    completed,
+                )
                 if interrupted or self._stream != target:
                     try:
                         self._manager.channel_set_volume(target, self._gain_factor)
@@ -1196,6 +1213,7 @@ class BassAsioPlayer(BassPlayer):
         target_stream = self._stream
         if self._fade_thread and self._fade_thread.is_alive():
             return
+        start_ts = time.perf_counter()
 
         def _runner():
             nonlocal target_stream
@@ -1203,8 +1221,13 @@ class BassAsioPlayer(BassPlayer):
             interrupted = False
             initial = self._gain_factor
             try:
-                if self._debug_loop:
-                    logger.debug("ASIO fade start duration=%.3f gain=%.3f", duration, initial)
+                logger.debug(
+                    "ASIO fade start stream=%s duration=%.3f gain=%.3f steps=%d",
+                    target_stream,
+                    duration,
+                    initial,
+                    steps,
+                )
                 for i in range(steps):
                     if self._stream != target_stream:
                         interrupted = True
@@ -1218,7 +1241,16 @@ class BassAsioPlayer(BassPlayer):
                         break
                     time.sleep(duration / steps)
             finally:
-                if not interrupted and self._stream == target_stream:
+                elapsed = time.perf_counter() - start_ts
+                completed = not interrupted and self._stream == target_stream
+                logger.debug(
+                    "ASIO fade done stream=%s requested=%.3f elapsed=%.3f completed=%s",
+                    target_stream,
+                    duration,
+                    elapsed,
+                    completed,
+                )
+                if completed:
                     self.stop(_from_fade=True)
 
         self._fade_thread = threading.Thread(target=_runner, daemon=True)

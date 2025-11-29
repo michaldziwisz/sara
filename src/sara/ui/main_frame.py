@@ -156,7 +156,14 @@ class MainFrame(wx.Frame):
         if not hasattr(self, "_on_new_playlist"):
             self._on_new_playlist = self._create_playlist_dialog  # type: ignore[attr-defined]
 
-    def _auto_mix_start_index(self, panel: PlaylistPanel, idx: int, restart_playing: bool = False) -> bool:
+    def _auto_mix_start_index(
+        self,
+        panel: PlaylistPanel,
+        idx: int,
+        *,
+        restart_playing: bool = False,
+        overlap_trigger: bool = False,
+    ) -> bool:
         """Sekwencyjny start utworu o podanym indeksie w automixie (bez patrzenia na fokus/selection)."""
         playlist = panel.model
         total = len(playlist.items)
@@ -164,9 +171,9 @@ class MainFrame(wx.Frame):
             return False
         idx = idx % total
 
-        # zatrzymaj bieżący odtwarzacz (jeśli jest) i oznacz PLAYED
+        # zatrzymaj bieżący odtwarzacz (jeśli jest) i oznacz PLAYED, chyba że overlap_trigger
         current_ctx = self._get_playback_context(playlist.id)
-        if current_ctx:
+        if current_ctx and not overlap_trigger:
             key, _ctx = current_ctx
             playing_item = playlist.get_item(key[1])
             if playing_item:
@@ -192,7 +199,13 @@ class MainFrame(wx.Frame):
         )
 
         # restart_playing=True pozwala ominąć blokadę „PLAYED” w automixie
-        started = self._start_playback(panel, next_item, restart_playing=True, auto_mix_sequence=True)
+        started = self._start_playback(
+            panel,
+            next_item,
+            restart_playing=True,
+            auto_mix_sequence=True,
+            prefer_overlap=overlap_trigger,
+        )
         if started:
             self._last_started_item_id[playlist.id] = next_item.id
             self._auto_mix_tracker.set_last_started(playlist.id, next_item.id)
@@ -1729,6 +1742,7 @@ class MainFrame(wx.Frame):
         *,
         restart_playing: bool = False,
         auto_mix_sequence: bool = False,
+        prefer_overlap: bool = False,
     ) -> bool:
         playlist = panel.model
         key = (playlist.id, item.id)
@@ -1790,7 +1804,7 @@ class MainFrame(wx.Frame):
             existing_context = self._get_playback_context(playlist.id)
             if existing_context:
                 existing_key, _existing = existing_context
-                crossfade_active = bool(self._playback.auto_mix_state.get(existing_key))
+                crossfade_active = prefer_overlap or bool(self._playback.auto_mix_state.get(existing_key))
                 logger.debug(
                     "UI: stopping existing context for playlist %s crossfade_active=%s",
                     playlist.id,
@@ -1836,7 +1850,12 @@ class MainFrame(wx.Frame):
                 self._auto_mix_tracker._last_item_id.get(playlist.id),
                 playlist.break_resume_index,
             )
-            return self._auto_mix_start_index(panel, next_idx, restart_playing=restart_playing)
+            return self._auto_mix_start_index(
+                panel,
+                next_idx,
+                restart_playing=restart_playing,
+                overlap_trigger=prefer_overlap,
+            )
 
         # auto-mix trigger: wyzwól na określonym czasie (segoue/outro/overlap)
         mix_trigger_seconds: float | None
@@ -2006,6 +2025,7 @@ class MainFrame(wx.Frame):
         advance_focus: bool = True,
         restart_playing: bool = False,
         force_automix_sequence: bool = False,
+        prefer_overlap: bool = False,
     ) -> bool:
         playlist = panel.model
         if not playlist.items:
@@ -2070,7 +2090,12 @@ class MainFrame(wx.Frame):
                     logger.debug("UI: automix sequence found no non-playing item to start; aborting mix")
                     return True
 
-            return self._auto_mix_start_index(panel, next_idx, restart_playing=restart_playing)
+            return self._auto_mix_start_index(
+                panel,
+                next_idx,
+                restart_playing=restart_playing,
+                overlap_trigger=prefer_overlap,
+            )
 
         # Jeśli automix jest aktywny, bieżący utwór ma break i nadal gra – przeskocz go natychmiast (czysta sekwencja).
         if self._auto_mix_enabled and playlist.kind is PlaylistKind.MUSIC:
@@ -2092,7 +2117,12 @@ class MainFrame(wx.Frame):
                         fade_duration=max(0.0, self._fade_duration),
                     )
                     self._auto_mix_tracker.set_last_started(playlist.id, playlist.items[next_idx].id)
-                    return self._auto_mix_start_index(panel, next_idx, restart_playing=False)
+            return self._auto_mix_start_index(
+                panel,
+                next_idx,
+                restart_playing=False,
+                overlap_trigger=prefer_overlap,
+            )
 
         consumed_model_selection = False
         preferred_item_id = playlist.next_selected_item_id()
@@ -2558,14 +2588,27 @@ class MainFrame(wx.Frame):
             advance_focus=True,
             restart_playing=False,
             force_automix_sequence=self._auto_mix_enabled,
+            prefer_overlap=True,
         )
         if started and self._fade_duration > 0.0:
-            fade_source = self._fade_duration if fallback_guard_trigger else fade_seconds
+            fade_source = max(0.0, fade_seconds)
+            if fallback_guard_trigger and fade_source <= 0.0:
+                # fallback progresowy potrzebuje miękkiego wyciszenia nawet gdy plan zakładał brak fade'u
+                fade_source = self._fade_duration
             fade_duration = min(fade_source, remaining)
-            try:
-                context_entry.player.fade_out(fade_duration)
-            except Exception:
-                pass
+            logger.debug(
+                "UI: automix progress fade duration=%.3f planned=%.3f remaining=%.3f guard=%s current=%.3f",
+                fade_duration,
+                fade_source,
+                remaining,
+                fallback_guard_trigger,
+                seconds,
+            )
+            if fade_duration > 0.0:
+                try:
+                    context_entry.player.fade_out(fade_duration)
+                except Exception:
+                    pass
         elif plan:
             plan.triggered = False
             self._playback.auto_mix_state.pop(key, None)
@@ -2706,12 +2749,20 @@ class MainFrame(wx.Frame):
             advance_focus=True,
             restart_playing=False,
             force_automix_sequence=self._auto_mix_enabled,
+            prefer_overlap=True,
         )
         if started and self._fade_duration > 0.0:
             fade_target = plan.fade_seconds if plan else self._fade_duration
             fade_duration = min(fade_target, remaining)
+            logger.debug(
+                "UI: auto_mix_now fade duration=%.3f planned=%.3f remaining=%.3f current=%.3f",
+                fade_duration,
+                fade_target,
+                remaining,
+                item.current_position,
+            )
             ctx = self._playback.contexts.get(key)
-            if ctx:
+            if ctx and fade_duration > 0.0:
                 try:
                     ctx.player.fade_out(fade_duration)
                 except Exception:
@@ -2722,6 +2773,32 @@ class MainFrame(wx.Frame):
             if plan_obj:
                 plan_obj.triggered = False
             self._playback.auto_mix_state.pop(key, None)
+
+    def _manual_fade_duration(self, playlist: PlaylistModel, item: PlaylistItem | None) -> float:
+        fade_seconds = max(0.0, self._fade_duration)
+        if item is None:
+            return fade_seconds
+        plans = getattr(self, "_mix_plans", {}) or {}
+        plan = plans.get((playlist.id, item.id))
+        effective_duration = None
+        if plan:
+            fade_seconds = max(0.0, plan.fade_seconds)
+            effective_duration = plan.effective_duration
+        else:
+            effective_override = self._measure_effective_duration(playlist, item)
+            _mix_at, resolved_fade, _base_cue, effective_duration = self._resolve_mix_timing(
+                item,
+                effective_duration_override=effective_override,
+            )
+            fade_seconds = max(0.0, resolved_fade)
+        if effective_duration is None:
+            effective_duration = item.effective_duration_seconds
+        if effective_duration is not None:
+            current_pos = getattr(item, "current_position", 0.0) or 0.0
+            current_pos = max(0.0, current_pos)
+            remaining = max(0.0, effective_duration - current_pos)
+            fade_seconds = min(fade_seconds, remaining)
+        return fade_seconds
 
     def _on_playlist_hotkey(self, event: wx.CommandEvent) -> None:
         action = self._action_by_id.get(event.GetId())
@@ -2823,7 +2900,14 @@ class MainFrame(wx.Frame):
             self._announce_event("playback_events", f"Playlista {playlist.name} zatrzymana")
             self._set_auto_mix_enabled(False, reason=_("Auto mix disabled (manual stop)"))
         elif action == "fade":
-            self._stop_playlist_playback(playlist.id, mark_played=True, fade_duration=self._fade_duration)
+            fade_seconds = self._manual_fade_duration(playlist, item)
+            logger.debug(
+                "UI: manual fade resolved duration=%.3f playlist=%s item=%s",
+                fade_seconds,
+                playlist.id,
+                getattr(item, "id", None),
+            )
+            self._stop_playlist_playback(playlist.id, mark_played=True, fade_duration=fade_seconds)
             if item:
                 panel.mark_item_status(item.id, item.status)
                 panel.refresh()
