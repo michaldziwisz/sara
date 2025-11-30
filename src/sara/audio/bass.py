@@ -15,7 +15,7 @@ from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 logger = logging.getLogger(__name__)
 _DEBUG_LOOP = bool(os.environ.get("SARA_DEBUG_LOOP"))
 _LOOP_GUARD_BASE_SLACK = 0.004
-_LOOP_GUARD_WARMUP_SLACK = 0.012
+_LOOP_GUARD_WARMUP_SLACK = 0.0
 
 if TYPE_CHECKING:  # pragma: no cover
     from sara.audio.engine import AudioDevice
@@ -847,10 +847,9 @@ class BassPlayer:
                                     self._last_loop_debug_log = now
                                 # strażnik awaryjny: pozwól syncowi zadziałać, a reaguj dopiero PO końcu
                                 if (now - self._last_loop_jump_ts) > 0.004:
-                                    guard_slack = (
-                                        _LOOP_GUARD_BASE_SLACK if self._loop_guard_armed else _LOOP_GUARD_WARMUP_SLACK
-                                    )
-                                    if pos > (self._loop_end + guard_slack):
+                                    if not self._loop_guard_armed:
+                                        continue
+                                    if pos > (self._loop_end + _LOOP_GUARD_BASE_SLACK):
                                         self._jump_to_loop_start("guard", pos)
                                         continue
                                     # twardy clamp tylko przy dużym odjechaniu
