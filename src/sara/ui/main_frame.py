@@ -1003,7 +1003,7 @@ class MainFrame(wx.Frame):
             return
 
         style = wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE
-        wildcard = _("Audio files (*.mp3;*.wav;*.flac;*.ogg)|*.mp3;*.wav;*.flac;*.ogg|All files|*.*")
+        wildcard = _("Audio files (*.mp3;*.mp2;*.wav;*.flac;*.ogg)|*.mp3;*.mp2;*.wav;*.flac;*.ogg|All files|*.*")
         dialog = FileSelectionDialog(
             self,
             title=_("Select audio files"),

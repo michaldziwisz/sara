@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_AUDIO_EXTENSIONS = {
     ".mp3",
+    ".mp2",
     ".wav",
     ".flac",
     ".ogg",
