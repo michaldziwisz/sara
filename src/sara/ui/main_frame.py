@@ -127,10 +127,12 @@ class MainFrame(wx.Frame):
         self._auto_remove_played: bool = self._settings.get_auto_remove_played()
         self._focus_playing_track: bool = self._settings.get_focus_playing_track()
         self._intro_alert_seconds: float = self._settings.get_intro_alert_seconds()
+        self._track_end_alert_seconds: float = self._settings.get_track_end_alert_seconds()
         self._clipboard = PlaylistClipboard()
         self._undo_manager = UndoManager(self._apply_undo_callback)
         self._focus_lock: Dict[str, bool] = self._layout.state.focus_lock
         self._intro_alert_players: list[Tuple[Player, Path]] = []
+        self._track_end_alert_players: list[Tuple[Player, Path]] = []
         self._last_started_item_id: Dict[str, str | None] = {}
         self._last_music_playlist_id: str | None = None
         self._active_folder_preview: tuple[str, str] | None = None
@@ -1302,6 +1304,7 @@ class MainFrame(wx.Frame):
             self._auto_remove_played = self._settings.get_auto_remove_played()
             self._focus_playing_track = self._settings.get_focus_playing_track()
             self._intro_alert_seconds = self._settings.get_intro_alert_seconds()
+            self._track_end_alert_seconds = self._settings.get_track_end_alert_seconds()
             self._refresh_news_panels()
             self._apply_swap_play_select_option()
             new_language = self._settings.get_language()
@@ -2665,6 +2668,7 @@ class MainFrame(wx.Frame):
         panel.update_progress(item_id)
         self._maybe_focus_playing_item(panel, item_id)
         self._consider_intro_alert(panel, item, context_entry, seconds)
+        self._consider_track_end_alert(panel, item, context_entry)
 
         queued_selection = self._playlist_has_selection(playlist_id)
         if self._auto_mix_enabled or queued_selection:
@@ -3534,6 +3538,11 @@ class MainFrame(wx.Frame):
             message = _("Intro remaining: {seconds:.0f} seconds").format(seconds=seconds)
         self._announce_event("intro_alert", message)
 
+    def _announce_track_end_remaining(self, remaining: float) -> None:
+        seconds = max(0.0, remaining)
+        message = _("Track ending in {seconds:.0f} seconds").format(seconds=seconds)
+        self._announce_event("track_end_alert", message)
+
     def _cleanup_intro_alert_player(self, player: Player) -> None:
         for idx, (stored_player, temp_path) in enumerate(list(self._intro_alert_players)):
             if stored_player is player:
@@ -3604,6 +3613,76 @@ class MainFrame(wx.Frame):
         self._intro_alert_players.append((player, tmp_path))
         return True
 
+    def _cleanup_track_end_alert_player(self, player: Player) -> None:
+        for idx, (stored_player, temp_path) in enumerate(list(self._track_end_alert_players)):
+            if stored_player is player:
+                try:
+                    stored_player.stop()
+                except Exception:  # pylint: disable=broad-except
+                    pass
+                try:
+                    temp_path.unlink(missing_ok=True)
+                except Exception:  # pylint: disable=broad-except
+                    pass
+                self._track_end_alert_players.pop(idx)
+                break
+
+    def _play_track_end_alert(self) -> bool:
+        if self._track_end_alert_seconds <= 0:
+            return False
+        if not self._settings.get_announcement_enabled("track_end_alert"):
+            return False
+        pfl_device_id = self._playback.pfl_device_id or self._settings.get_pfl_device()
+        if not pfl_device_id:
+            return False
+        if self._playback.preview_context:
+            return False
+        known_devices = {device.id for device in self._audio_engine.get_devices()}
+        if pfl_device_id not in known_devices:
+            self._audio_engine.refresh_devices()
+            known_devices = {device.id for device in self._audio_engine.get_devices()}
+        if pfl_device_id not in known_devices:
+            return False
+        try:
+            player = self._audio_engine.create_player(pfl_device_id)
+        except Exception:  # pylint: disable=broad-except
+            return False
+
+        try:
+            resource = files("sara.audio.media").joinpath("track_end_alert.wav")
+            with resource.open("rb") as source:
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+                tmp.write(source.read())
+                tmp_path = Path(tmp.name)
+        except Exception:  # pylint: disable=broad-except
+            try:
+                player.stop()
+            except Exception:  # pylint: disable=broad-except
+                pass
+            if 'tmp' in locals():
+                tmp.close()
+            return False
+        else:
+            tmp.close()
+
+        try:
+            player.set_finished_callback(lambda _item_id: wx.CallAfter(self._cleanup_track_end_alert_player, player))
+            player.set_progress_callback(None)
+            player.play("track-end-alert", str(tmp_path), allow_loop=False)
+        except Exception:  # pylint: disable=broad-except
+            try:
+                player.stop()
+            except Exception:  # pylint: disable=broad-except
+                pass
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:  # pylint: disable=broad-except
+                pass
+            return False
+
+        self._track_end_alert_players.append((player, tmp_path))
+        return True
+
     def _consider_intro_alert(
         self,
         panel: PlaylistPanel,
@@ -3631,6 +3710,36 @@ class MainFrame(wx.Frame):
             if not played:
                 self._announce_intro_remaining(remaining)
             context.intro_alert_triggered = True
+
+    def _consider_track_end_alert(
+        self,
+        _panel: PlaylistPanel,
+        item: PlaylistItem,
+        context: PlaybackContext,
+    ) -> None:
+        if context.track_end_alert_triggered:
+            return
+        if item.loop_enabled:
+            return
+        threshold = self._track_end_alert_seconds
+        if threshold <= 0:
+            return
+        duration = item.effective_duration_seconds
+        if duration <= 0:
+            context.track_end_alert_triggered = True
+            return
+        if duration < threshold:
+            context.track_end_alert_triggered = True
+            return
+        remaining = duration - item.current_position
+        if remaining <= 0:
+            context.track_end_alert_triggered = True
+            return
+        if remaining <= threshold:
+            played = self._play_track_end_alert()
+            if not played:
+                self._announce_track_end_remaining(remaining)
+            context.track_end_alert_triggered = True
 
     def _remove_item_from_playlist(
         self, panel: PlaylistPanel, model: PlaylistModel, index: int, *, refocus: bool = True

@@ -601,6 +601,11 @@ msgstr "Imported %d items from %s"
 msgid "Intro remaining: {seconds:.0f} seconds"
 msgstr "Intro remaining: {seconds:.0f} seconds"
 
+#: src/sara/ui/main_frame.py:3543
+#, python-brace-format
+msgid "Track ending in {seconds:.0f} seconds"
+msgstr "Track ending in {seconds:.0f} seconds"
+
 #: src/sara/ui/main_frame.py:2060
 msgid "Undo paste"
 msgstr "Undo paste"
@@ -1131,33 +1136,45 @@ msgstr "Alternate playlists with Space key"
 msgid "Automatically remove played tracks"
 msgstr "Automatically remove played tracks"
 
-#: src/sara/ui/options_dialog.py:134
+#: src/sara/ui/options_dialog.py:214
 msgid "Intro alert (s):"
 msgstr "Intro alert notifications"
 
-#: src/sara/ui/options_dialog.py:143
+#: src/sara/ui/options_dialog.py:225
+msgid "Track end alert (s):"
+msgstr "Track end alert (s):"
+
+#: src/sara/ui/options_dialog.py:235
 msgid "Interface language:"
 msgstr "Interface language:"
 
-#: src/sara/ui/options_dialog.py:145
+#: src/sara/ui/options_dialog.py:237
 msgid "English"
 msgstr "English"
 
-#: src/sara/ui/options_dialog.py:145
+#: src/sara/ui/options_dialog.py:237
 msgid "Polish"
 msgstr "Polish"
 
-#: src/sara/ui/options_dialog.py:158
+#: src/sara/ui/options_dialog.py:248
 msgid "Pre-fader listen (PFL)"
 msgstr "Pre-fader listen (PFL)"
 
-#: src/sara/ui/options_dialog.py:160
+#: src/sara/ui/options_dialog.py:250
 msgid "PFL device:"
 msgstr "PFL device:"
 
-#: src/sara/ui/options_dialog.py:167
+#: src/sara/ui/options_dialog.py:257
 msgid "Startup playlists"
 msgstr "Startup playlists"
+
+#: src/sara/core/announcement_registry.py:29
+msgid "Intro alert notifications"
+msgstr "Intro alert notifications"
+
+#: src/sara/core/announcement_registry.py:30
+msgid "Track end alert notifications"
+msgstr "Track end alert notifications"
 
 #: src/sara/ui/options_dialog.py:175
 msgid "Add…"

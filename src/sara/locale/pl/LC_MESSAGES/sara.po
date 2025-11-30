@@ -642,6 +642,11 @@ msgstr "Zaimportowano %d pozycji z %s"
 msgid "Intro remaining: {seconds:.0f} seconds"
 msgstr "Do końca intra: {seconds:.0f} sek."
 
+#: src/sara/ui/main_frame.py:3543
+#, python-brace-format
+msgid "Track ending in {seconds:.0f} seconds"
+msgstr "Do końca utworu: {seconds:.0f} sek."
+
 #: src/sara/ui/main_frame.py:2060
 msgid "Undo paste"
 msgstr "Cofnięto wklejenie"
@@ -1194,33 +1199,45 @@ msgstr "Naprzemiennie odtwarzaj playlisty klawiszem Spacja"
 msgid "Automatically remove played tracks"
 msgstr "Usuwaj automatycznie odegrane utwory"
 
-#: src/sara/ui/options_dialog.py:134
+#: src/sara/ui/options_dialog.py:214
 msgid "Intro alert (s):"
 msgstr "Alert intra (s):"
 
-#: src/sara/ui/options_dialog.py:143
+#: src/sara/ui/options_dialog.py:225
+msgid "Track end alert (s):"
+msgstr "Alert przed końcem (s):"
+
+#: src/sara/ui/options_dialog.py:235
 msgid "Interface language:"
 msgstr "Język interfejsu:"
 
-#: src/sara/ui/options_dialog.py:145
+#: src/sara/ui/options_dialog.py:237
 msgid "English"
 msgstr "Angielski"
 
-#: src/sara/ui/options_dialog.py:145
+#: src/sara/ui/options_dialog.py:237
 msgid "Polish"
 msgstr "Polski"
 
-#: src/sara/ui/options_dialog.py:158
+#: src/sara/ui/options_dialog.py:248
 msgid "Pre-fader listen (PFL)"
 msgstr "Podsłuch (PFL)"
 
-#: src/sara/ui/options_dialog.py:160
+#: src/sara/ui/options_dialog.py:250
 msgid "PFL device:"
 msgstr "Urządzenie PFL:"
 
-#: src/sara/ui/options_dialog.py:167
+#: src/sara/ui/options_dialog.py:257
 msgid "Startup playlists"
 msgstr "Playlisty startowe"
+
+#: src/sara/core/announcement_registry.py:29
+msgid "Intro alert notifications"
+msgstr "Powiadomienia alertu intra"
+
+#: src/sara/core/announcement_registry.py:30
+msgid "Track end alert notifications"
+msgstr "Powiadomienia alertu końcówki"
 
 #: src/sara/ui/options_dialog.py:175
 msgid "Add…"

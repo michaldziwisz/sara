@@ -63,6 +63,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "alternate_play_next": False,
         "auto_remove_played": False,
         "intro_alert_seconds": 5.0,
+        "track_end_alert_seconds": 10.0,
         "swap_play_select": False,
     },
     "startup": {
@@ -277,6 +278,18 @@ class SettingsManager:
     def set_intro_alert_seconds(self, seconds: float) -> None:
         playback = self._data.setdefault("playback", {})
         playback["intro_alert_seconds"] = max(0.0, float(seconds))
+
+    def get_track_end_alert_seconds(self) -> float:
+        playback = self._data.get("playback", {})
+        value = playback.get("track_end_alert_seconds", DEFAULT_CONFIG["playback"]["track_end_alert_seconds"])
+        try:
+            return max(0.0, float(value))
+        except (TypeError, ValueError):
+            return DEFAULT_CONFIG["playback"]["track_end_alert_seconds"]
+
+    def set_track_end_alert_seconds(self, seconds: float) -> None:
+        playback = self._data.setdefault("playback", {})
+        playback["track_end_alert_seconds"] = max(0.0, float(seconds))
 
     def get_news_line_length(self) -> int:
         news = self._data.get("news", {})

@@ -27,6 +27,7 @@ ANNOUNCEMENT_CATEGORIES: tuple[AnnouncementCategory, ...] = (
     AnnouncementCategory("pfl", "PFL and preview warnings"),
     AnnouncementCategory("device", "Device availability warnings"),
     AnnouncementCategory("intro_alert", "Intro alert notifications"),
+    AnnouncementCategory("track_end_alert", "Track end alert notifications"),
 )
 
 ANNOUNCEMENT_CATEGORY_MAP = {category.id: category for category in ANNOUNCEMENT_CATEGORIES}

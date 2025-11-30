@@ -30,6 +30,7 @@ class PlaybackContext:
     slot_index: int
     intro_seconds: float | None = None
     intro_alert_triggered: bool = False
+    track_end_alert_triggered: bool = False
 
 
 @dataclass

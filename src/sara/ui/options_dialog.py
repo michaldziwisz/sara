@@ -221,6 +221,16 @@ class OptionsDialog(wx.Dialog):
         intro_row.Add(self._intro_alert_ctrl, 0, wx.ALIGN_CENTER_VERTICAL)
         playback_box.Add(intro_row, 0, wx.ALL, 5)
 
+        end_row = wx.BoxSizer(wx.HORIZONTAL)
+        end_label = wx.StaticText(general_panel, label=_("Track end alert (s):"))
+        self._track_end_alert_ctrl = wx.SpinCtrlDouble(general_panel, min=0.0, max=120.0, inc=0.5)
+        self._track_end_alert_ctrl.SetDigits(1)
+        self._track_end_alert_ctrl.SetValue(self._settings.get_track_end_alert_seconds())
+        self._track_end_alert_ctrl.SetName("options_track_end_alert_seconds")
+        end_row.Add(end_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+        end_row.Add(self._track_end_alert_ctrl, 0, wx.ALIGN_CENTER_VERTICAL)
+        playback_box.Add(end_row, 0, wx.ALL, 5)
+
         language_row = wx.BoxSizer(wx.HORIZONTAL)
         language_label = wx.StaticText(general_panel, label=_("Interface language:"))
         self._language_codes = ["en", "pl"]
@@ -469,6 +479,7 @@ class OptionsDialog(wx.Dialog):
         self._settings.set_auto_remove_played(self._auto_remove_checkbox.GetValue())
         self._settings.set_focus_playing_track(self._focus_playing_checkbox.GetValue())
         self._settings.set_intro_alert_seconds(self._intro_alert_ctrl.GetValue())
+        self._settings.set_track_end_alert_seconds(self._track_end_alert_ctrl.GetValue())
         self._settings.set_news_line_length(self._news_line_ctrl.GetValue())
         self._settings.set_startup_playlists(self._playlists)
         self._settings.set_pfl_device(self._selected_pfl_device())
