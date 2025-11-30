@@ -15,7 +15,7 @@ from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 logger = logging.getLogger(__name__)
 _DEBUG_LOOP = bool(os.environ.get("SARA_DEBUG_LOOP"))
 _LOOP_GUARD_BASE_SLACK = 0.004
-_LOOP_GUARD_FALLBACK_SLACK = 0.015
+_LOOP_GUARD_FALLBACK_SLACK = 0.008
 
 if TYPE_CHECKING:  # pragma: no cover
     from sara.audio.engine import AudioDevice
