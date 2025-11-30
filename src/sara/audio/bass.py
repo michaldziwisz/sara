@@ -14,6 +14,8 @@ from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
 _DEBUG_LOOP = bool(os.environ.get("SARA_DEBUG_LOOP"))
+_LOOP_GUARD_BASE_SLACK = 0.004
+_LOOP_GUARD_WARMUP_SLACK = 0.012
 
 if TYPE_CHECKING:  # pragma: no cover
     from sara.audio.engine import AudioDevice
@@ -707,6 +709,7 @@ class BassPlayer:
         self._last_loop_debug_log: float = 0.0
         self._last_progress_ts: float = 0.0
         self._loop_iteration: int = 0
+        self._loop_guard_armed: bool = False
         # zapewnij kompatybilność, nawet jeśli stary obiekt był zcache'owany
         if not hasattr(self, "_apply_loop_settings"):
             self._apply_loop_settings = lambda: None  # type: ignore[attr-defined]
@@ -844,7 +847,10 @@ class BassPlayer:
                                     self._last_loop_debug_log = now
                                 # strażnik awaryjny: pozwól syncowi zadziałać, a reaguj dopiero PO końcu
                                 if (now - self._last_loop_jump_ts) > 0.004:
-                                    if pos > (self._loop_end + 0.004):
+                                    guard_slack = (
+                                        _LOOP_GUARD_BASE_SLACK if self._loop_guard_armed else _LOOP_GUARD_WARMUP_SLACK
+                                    )
+                                    if pos > (self._loop_end + guard_slack):
                                         self._jump_to_loop_start("guard", pos)
                                         continue
                                     # twardy clamp tylko przy dużym odjechaniu
@@ -922,6 +928,8 @@ class BassPlayer:
                 self._loop_end,
                 self._stream,
             )
+        if not self._loop_guard_armed:
+            self._loop_guard_armed = True
 
     def _apply_mix_trigger(self, target_seconds: Optional[float], callback: Optional[Callable[[], None]]) -> None:
         if callback is not None and not callable(callback):
@@ -1263,6 +1271,7 @@ class BassAsioPlayer(BassPlayer):
             self._loop_active = False
             self._last_loop_jump_ts = 0.0
             self._loop_iteration = 0
+            self._loop_guard_armed = False
             if self._loop_sync_handle and self._stream:
                 self._manager.channel_remove_sync(self._stream, self._loop_sync_handle)
             self._loop_sync_handle = 0
@@ -1273,6 +1282,7 @@ class BassAsioPlayer(BassPlayer):
         self._loop_active = True
         self._last_loop_jump_ts = 0.0
         self._loop_iteration = 0
+        self._loop_guard_armed = False
         self._apply_loop_settings()
 
     def _apply_loop_settings(self) -> None:
