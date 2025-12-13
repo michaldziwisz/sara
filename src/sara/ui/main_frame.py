@@ -1701,15 +1701,38 @@ class MainFrame(wx.Frame):
         if not playlist.items:
             return False
 
-        # jeśli aktywna jest pętla z loop_hold – zatrzymaj ją z fade i idź dalej
-        loop_hold_keys = [key for key, state in self._playback.auto_mix_state.items() if state == "loop_hold" and key[0] == playlist.id]
+        # jeśli aktywna jest pętla z loop_hold – zatrzymaj ją z fade i przesuń kursor,
+        # aby kolejny indeks wskazywał następny element zamiast restartować bed
+        loop_hold_keys = [
+            key
+            for key, state in self._playback.auto_mix_state.items()
+            if state == "loop_hold" and key[0] == playlist.id
+        ]
         if loop_hold_keys:
+            stopped = False
             try:
-                self._stop_playlist_playback(playlist.id, mark_played=True, fade_duration=max(0.0, self._fade_duration))
+                self._stop_playlist_playback(
+                    playlist.id,
+                    mark_played=True,
+                    fade_duration=max(0.0, self._fade_duration),
+                )
+                stopped = True
             except Exception:
                 logger.debug("UI: failed to stop loop_hold playback playlist=%s", playlist.id)
-            for key in loop_hold_keys:
-                self._playback.auto_mix_state.pop(key, None)
+            finally:
+                for key in loop_hold_keys:
+                    self._playback.auto_mix_state.pop(key, None)
+            if stopped:
+                last_loop_item_id = loop_hold_keys[-1][1]
+                self._last_started_item_id[playlist.id] = last_loop_item_id
+                try:
+                    self._auto_mix_tracker.set_last_started(playlist.id, last_loop_item_id)
+                except Exception:
+                    logger.debug(
+                        "UI: failed to update auto-mix tracker after loop_hold stop playlist=%s item=%s",
+                        playlist.id,
+                        last_loop_item_id,
+                    )
 
         if self._auto_mix_busy.get(playlist.id):
             logger.debug("UI: automix play_next ignored (busy) playlist=%s", playlist.id)

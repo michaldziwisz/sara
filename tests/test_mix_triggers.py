@@ -11,7 +11,7 @@ import pytest
 
 from sara.core.app_state import AppState
 from sara.core.config import SettingsManager
-from sara.core.playlist import PlaylistItem, PlaylistModel, PlaylistKind
+from sara.core.playlist import PlaylistItem, PlaylistModel, PlaylistKind, PlaylistItemStatus
 from sara.audio.engine import BackendType
 from sara.ui.main_frame import MainFrame, MIX_NATIVE_LATE_GUARD, MixPlan
 from sara.ui.auto_mix_tracker import AutoMixTracker
@@ -866,6 +866,69 @@ def test_loop_hold_blocks_auto_mix_play_next():
     assert result is True
     # stop_playlist mogło zostać wywołane wielokrotnie, ale co najmniej raz na daną playlistę
     assert stopped and stopped[0] == "pl-1"
+
+
+def test_loop_hold_play_next_advances_cursor(tmp_path):
+    playlist = PlaylistModel(id="pl-hold", name="Loop Hold", kind=PlaylistKind.MUSIC)
+    intro = PlaylistItem(id="intro", path=tmp_path / "intro.wav", title="Intro", duration_seconds=5.0)
+    intro.status = PlaylistItemStatus.PLAYED
+    bed = PlaylistItem(
+        id="bed",
+        path=tmp_path / "bed.wav",
+        title="Bed",
+        duration_seconds=30.0,
+        loop_enabled=True,
+        loop_start_seconds=5.0,
+        loop_end_seconds=20.0,
+    )
+    bed.status = PlaylistItemStatus.PLAYING
+    jingle = PlaylistItem(id="jingle", path=tmp_path / "jingle.wav", title="Jingle", duration_seconds=8.0)
+    playlist.add_items([intro, bed, jingle])
+    panel = SimpleNamespace(
+        model=playlist,
+        mark_item_status=lambda *_a, **_k: None,
+        update_progress=lambda *_a, **_k: None,
+        refresh=lambda *_a, **_k: None,
+    )
+
+    frame = MainFrame.__new__(MainFrame)
+    frame._fade_duration = 1.0
+    frame._auto_mix_enabled = True
+    frame._auto_mix_busy = {}
+    frame._last_started_item_id = {}
+    tracker = AutoMixTracker()
+    tracker.set_last_started(playlist.id, intro.id)
+    frame._auto_mix_tracker = tracker
+    frame._playlists = {playlist.id: panel}
+    frame._mix_plans = {}
+    frame._mix_trigger_points = {}
+
+    def _stop_playlist(pl_id, fade_duration=0.0):
+        assert pl_id == playlist.id
+        return [((pl_id, bed.id), None)]
+
+    frame._playback = SimpleNamespace(
+        auto_mix_state={(playlist.id, bed.id): "loop_hold"},
+        stop_playlist=_stop_playlist,
+        contexts={(playlist.id, bed.id): SimpleNamespace(player=None)},
+        get_context=lambda _pl_id: None,
+    )
+
+    started_indices: list[int] = []
+
+    def _auto_mix_start_index(panel_arg, idx, **kwargs):
+        assert panel_arg is panel
+        started_indices.append(idx)
+        return True
+
+    frame._auto_mix_start_index = _auto_mix_start_index
+
+    result = frame._auto_mix_play_next(panel)
+
+    assert result is True
+    assert started_indices == [2]  # po zatrzymaniu loop_hold kursor przesuwa się na kolejny element
+    assert frame._auto_mix_tracker._last_item_id[playlist.id] == bed.id
+    assert frame._last_started_item_id[playlist.id] == bed.id
 
 
 def test_stop_playlist_clears_mix_plan_and_state(tmp_path):
