@@ -182,6 +182,27 @@ class AppModule(AppModule):
         if nextHandler:
             nextHandler()
 
+    def event_caret(self, obj, nextHandler):
+        if _is_playlist_window(obj):
+            if not self._handle_playlist_event("caret", obj):
+                return
+        if nextHandler:
+            nextHandler()
+
+    def event_textChange(self, obj, nextHandler):
+        if _is_playlist_window(obj):
+            if not self._handle_playlist_event("textChange", obj):
+                return
+        if nextHandler:
+            nextHandler()
+
+    def event_textSelectionChanged(self, obj, nextHandler):
+        if _is_playlist_window(obj):
+            if not self._handle_playlist_event("textSelectionChanged", obj):
+                return
+        if nextHandler:
+            nextHandler()
+
     def terminate(self):
         timer = self._poll_timer
         if timer is not None:
@@ -405,10 +426,22 @@ class AppModule(AppModule):
             )
         except Exception:
             pass
-        if vkCode in (winUser.VK_UP, winUser.VK_DOWN):
+        # Manual reading gestures while DND is enabled.
+        # For NEWS text area (RICHEDIT50W) we rely on caret/text events rather than NVDA+Tab emulation.
+        if vkCode in (
+            winUser.VK_UP,
+            winUser.VK_DOWN,
+            winUser.VK_LEFT,
+            winUser.VK_RIGHT,
+            winUser.VK_HOME,
+            winUser.VK_END,
+        ):
             self._cancel_play_next_silence("arrow-override")
             self._allow_playlist_speech_window(obj, force=True)
-            self._schedule_playlist_announcement()
+            # RICHEDIT czyta zawartość przez eventy caret/text; dodatkowe emulowanie NVDA+Tab
+            # powoduje dublowanie lub wielokrotny odczyt tego samego fragmentu.
+            if getattr(obj, "windowClassName", None) != "RICHEDIT50W":
+                self._schedule_playlist_announcement()
         elif vkCode in (winUser.VK_SPACE, winUser.VK_F1):
             self._trigger_playback_silence("play-next", obj)
         elif vkCode == winUser.VK_F6:

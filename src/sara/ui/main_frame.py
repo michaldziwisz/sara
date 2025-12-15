@@ -2025,7 +2025,11 @@ class MainFrame(wx.Frame):
             existing_context = self._get_playback_context(playlist.id)
             if existing_context:
                 existing_key, _existing = existing_context
-                crossfade_active = prefer_overlap or bool(self._playback.auto_mix_state.get(existing_key))
+                # auto_mix_state trzyma również flagi sterujące (np. "loop_hold", "break_halt"),
+                # które nie oznaczają aktywnego crossfade; overlap zależy od prefer_overlap
+                # lub faktycznie rozpoczętego miksu (stan == True).
+                state = self._playback.auto_mix_state.get(existing_key)
+                crossfade_active = prefer_overlap or (state is True)
                 logger.debug(
                     "UI: stopping existing context for playlist %s crossfade_active=%s",
                     playlist.id,

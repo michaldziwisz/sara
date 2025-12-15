@@ -479,6 +479,86 @@ def test_auto_mix_state_process_skips_loop_hold(tmp_path):
     assert frame._playback.auto_mix_state[key] == "loop_hold"
 
 
+def test_manual_play_request_stops_loop_hold_without_automix(tmp_path):
+    frame = MainFrame.__new__(MainFrame)
+    frame._auto_mix_enabled = False
+    frame._fade_duration = 2.0
+    frame._mix_plans = {}
+    frame._mix_trigger_points = {}
+    frame._active_break_item = {}
+    frame._stop_preview = lambda: None
+    frame._supports_mix_trigger = lambda _p: False
+    frame._resolve_mix_timing = lambda itm, overrides=None, effective_duration_override=None: (
+        None,
+        frame._fade_duration,
+        itm.cue_in_seconds or 0.0,
+        itm.effective_duration_seconds,
+    )
+
+    playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
+    path_a = tmp_path / "a.wav"
+    path_b = tmp_path / "b.wav"
+    path_a.write_text("dummy")
+    path_b.write_text("dummy")
+    looping = PlaylistItem(
+        id="looping",
+        path=path_a,
+        title="Looping",
+        duration_seconds=10.0,
+        loop_start_seconds=1.0,
+        loop_end_seconds=3.0,
+        loop_enabled=True,
+        status=PlaylistItemStatus.PLAYING,
+    )
+    next_item = PlaylistItem(
+        id="next",
+        path=path_b,
+        title="Next",
+        duration_seconds=10.0,
+    )
+    playlist.add_items([looping, next_item])
+
+    class _Panel:
+        def __init__(self, model):
+            self.model = model
+
+        def mark_item_status(self, *_a, **_k):
+            return None
+
+        def refresh(self, *_a, **_k):
+            return None
+
+        def get_selected_indices(self):
+            return []
+
+        def get_focused_index(self):
+            return -1
+
+        def select_index(self, *_a, **_k):
+            return None
+
+    panel = _Panel(playlist)
+
+    existing_key = (playlist.id, looping.id)
+    stop_calls: list[tuple] = []
+    frame._stop_playlist_playback = lambda pid, *, mark_played, fade_duration=0.0: stop_calls.append(
+        (pid, mark_played, fade_duration)
+    )
+
+    def _start_item(*_a, **_k):
+        raise RuntimeError("abort after stop check")
+
+    frame._playback = SimpleNamespace(
+        contexts={existing_key: SimpleNamespace(player=_DummyPlayer("dev-1"), device_id="dev-1", slot_index=0)},
+        auto_mix_state={existing_key: "loop_hold"},
+        get_context=lambda _pid: (existing_key, frame._playback.contexts[existing_key]),
+        start_item=_start_item,
+    )
+
+    assert frame._start_playback(panel, next_item, restart_playing=True) is False
+    assert stop_calls == [(playlist.id, True, frame._fade_duration)]
+
+
 def test_early_native_trigger_reschedules_mix_point(tmp_path):
     frame = MainFrame.__new__(MainFrame)
     frame._fade_duration = 2.0
