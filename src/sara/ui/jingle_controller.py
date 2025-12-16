@@ -11,6 +11,7 @@ from typing import Callable
 from sara.audio.engine import AudioEngine, Player
 from sara.core.config import SettingsManager
 from sara.core.i18n import gettext as _
+from sara.core.media_metadata import extract_metadata
 from sara.jingles import JingleSet, load_jingle_set, save_jingle_set, ensure_page_count
 
 
@@ -146,6 +147,12 @@ class JingleController:
             self._announce("jingles", _("Missing file: %s") % path.name)
             return False
 
+        replay_gain_db: float | None = None
+        try:
+            replay_gain_db = extract_metadata(path).replay_gain_db
+        except Exception:
+            replay_gain_db = None
+
         fade_seconds = max(0.0, float(self._settings.get_playback_fade_seconds()))
         player_info = self._ensure_main_player()
         if not player_info:
@@ -168,6 +175,8 @@ class JingleController:
 
         item_id = f"jingle-{uuid.uuid4().hex}-{int(time.time() * 1000)}"
         try:
+            # Ustaw ReplayGain przed startem, żeby uniknąć „głośnego pierwszego uderzenia”.
+            player.set_gain_db(replay_gain_db)
             player.play(item_id, str(path), start_seconds=0.0, allow_loop=False)
         except Exception as exc:  # pylint: disable=broad-except
             self._announce("jingles", _("Failed to play jingle: %s") % exc)
