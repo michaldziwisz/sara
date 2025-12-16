@@ -559,6 +559,98 @@ def test_manual_play_request_stops_loop_hold_without_automix(tmp_path):
     assert stop_calls == [(playlist.id, True, frame._fade_duration)]
 
 
+def test_start_next_clears_queued_selection_even_when_follow_disabled(tmp_path):
+    frame = MainFrame.__new__(MainFrame)
+    frame._auto_mix_enabled = False
+    frame._focus_playing_track = False
+    frame._fade_duration = 0.0
+    frame._last_started_item_id = {}
+    frame._auto_mix_tracker = SimpleNamespace(set_last_started=lambda *_a, **_k: None)
+    frame._format_track_name = lambda item: item.title
+    frame._announce_event = lambda *_a, **_k: None
+    frame._start_playback = lambda *_a, **_k: True
+    frame._playback = SimpleNamespace(get_context=lambda *_a, **_k: None)
+
+    refreshed: list[str] = []
+    frame._refresh_selection_display = lambda playlist_id: refreshed.append(playlist_id)
+
+    path_a = tmp_path / "a.wav"
+    path_a.write_text("dummy")
+    item = PlaylistItem(id="a", path=path_a, title="A", duration_seconds=1.0)
+    item.is_selected = True
+    playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
+    playlist.add_items([item])
+
+    panel = SimpleNamespace(model=playlist, get_selected_indices=lambda: [], get_focused_index=lambda: -1)
+
+    assert frame._start_next_from_playlist(panel, ignore_ui_selection=False, advance_focus=False) is True
+    assert playlist.items[0].is_selected is False
+    assert refreshed == ["pl-1"]
+
+
+def test_manual_finish_starts_next_when_queue_remains(tmp_path):
+    frame = MainFrame.__new__(MainFrame)
+    frame._auto_mix_enabled = False
+    frame._auto_remove_played = False
+    frame._focus_playing_track = False
+    frame._active_break_item = {}
+    frame._auto_mix_tracker = SimpleNamespace(set_last_started=lambda *_a, **_k: None)
+    frame._announce_event = lambda *_a, **_k: None
+    frame._clear_mix_plan = lambda *_a, **_k: None
+
+    started: list[dict] = []
+    frame._start_next_from_playlist = lambda *_a, **kwargs: started.append(kwargs) or True
+
+    path_a = tmp_path / "a.wav"
+    path_b = tmp_path / "b.wav"
+    path_a.write_text("dummy")
+    path_b.write_text("dummy")
+    playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
+    finished = PlaylistItem(id="a", path=path_a, title="A", duration_seconds=1.0, status=PlaylistItemStatus.PLAYING)
+    queued = PlaylistItem(id="b", path=path_b, title="B", duration_seconds=1.0)
+    queued.is_selected = True
+    playlist.add_items([finished, queued])
+
+    class _Panel:
+        def __init__(self, model):
+            self.model = model
+
+        def mark_item_status(self, *_a, **_k):
+            return None
+
+        def refresh(self, *_a, **_k):
+            return None
+
+        def get_selected_indices(self):
+            return []
+
+        def get_focused_index(self):
+            return -1
+
+        def select_index(self, *_a, **_k):
+            return None
+
+    panel = _Panel(playlist)
+    _register_playlist(frame, playlist, panel)
+
+    player = SimpleNamespace(
+        set_finished_callback=lambda *_a, **_k: None,
+        set_progress_callback=lambda *_a, **_k: None,
+        stop=lambda *_a, **_k: None,
+    )
+    key = (playlist.id, finished.id)
+    frame._playback = SimpleNamespace(
+        auto_mix_state={},
+        contexts={key: SimpleNamespace(player=player)},
+        get_context=lambda _pid: None,
+    )
+
+    frame._handle_playback_finished(playlist.id, finished.id)
+
+    assert started
+    assert started[-1].get("ignore_ui_selection") is True
+
+
 def test_early_native_trigger_reschedules_mix_point(tmp_path):
     frame = MainFrame.__new__(MainFrame)
     frame._fade_duration = 2.0

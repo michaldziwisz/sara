@@ -59,3 +59,43 @@ def test_extract_xml_sanitizes_ampersand_and_controls() -> None:
     track = root.find("./track")
     assert track is not None
     assert track.attrib["path"].endswith("Yugopolis & Maciej Malenczuk - Ostatnia Nocka")
+
+
+def test_analyze_loudness_handles_missing_process_output(monkeypatch, tmp_path) -> None:
+    """Regression: some subprocess wrappers may return stdout/stderr as None."""
+
+    track_path = tmp_path / "broken.mp3"
+    track_path.write_bytes(b"not-audio")
+
+    def fake_run(_executable: Path, _target: Path, _standard: LoudnessStandard):
+        return SimpleNamespace(returncode=1, stdout=None, stderr=None)
+
+    monkeypatch.setattr(loudness_module, "find_bs1770gain", lambda: Path("dummy-bs.exe"))
+    monkeypatch.setattr(loudness_module, "_run_bs1770gain", fake_run)
+    monkeypatch.setattr(loudness_module, "_retry_with_temp_copy", lambda *_args, **_kwargs: None)
+
+    with pytest.raises(RuntimeError, match="bs1770gain failed"):
+        analyze_loudness(track_path, standard=LoudnessStandard.EBU)
+
+
+def test_analyze_loudness_retries_when_xml_missing(monkeypatch, tmp_path) -> None:
+    track_path = tmp_path / "unicodę.mp3"
+    track_path.write_bytes(b"not-audio")
+
+    outputs = [
+        SimpleNamespace(returncode=0, stdout="Can't open file", stderr=""),
+        SimpleNamespace(
+            returncode=0,
+            stdout='<bs1770gain><track><integrated lufs="-20.00"/></track></bs1770gain>',
+            stderr="",
+        ),
+    ]
+
+    def fake_run(_executable: Path, _target: Path, _standard: LoudnessStandard):
+        return outputs.pop(0)
+
+    monkeypatch.setattr(loudness_module, "find_bs1770gain", lambda: Path("dummy-bs.exe"))
+    monkeypatch.setattr(loudness_module, "_run_bs1770gain", fake_run)
+
+    measurement = analyze_loudness(track_path, standard=LoudnessStandard.EBU)
+    assert measurement.integrated_lufs == pytest.approx(-20.0)

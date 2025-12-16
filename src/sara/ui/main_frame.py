@@ -2483,17 +2483,10 @@ class MainFrame(wx.Frame):
             if playlist.kind is PlaylistKind.MUSIC and self._auto_mix_enabled:
                 self._auto_mix_tracker.set_last_started(playlist.id, item.id)
             track_name = self._format_track_name(item)
-            if used_ui_selection or consumed_model_selection or item.id == preferred_item_id:
-                if self._focus_playing_track:
-                    logger.debug(
-                        "UI: clearing selection for started item=%s playlist=%s (used_ui=%s consumed_model=%s)",
-                        item.id,
-                        playlist.id,
-                        used_ui_selection,
-                        consumed_model_selection,
-                    )
-                    playlist.clear_selection(item.id)
-                    self._refresh_selection_display(playlist.id)
+            if item.is_selected:
+                logger.debug("UI: clearing queued selection for started item=%s playlist=%s", item.id, playlist.id)
+                playlist.clear_selection(item.id)
+                self._refresh_selection_display(playlist.id)
             if advance_focus and not consumed_model_selection and not used_ui_selection:
                 # jeśli follow_playing_track jest wyłączone, nie zmieniaj selekcji; inaczej ustaw ją na kolejny utwór
                 if self._focus_playing_track:
@@ -2677,6 +2670,18 @@ class MainFrame(wx.Frame):
                     self._auto_mix_play_next(panel)
                 except Exception:
                     logger.exception("UI: auto fallback after finish failed playlist=%s", playlist_id)
+        # tryb ręczny: jeśli była ustawiona kolejka (zaznaczenia) i miks nie zdążył odpalić następnego,
+        # rusz kolejny utwór po naturalnym zakończeniu bieżącego.
+        if (
+            not self._auto_mix_enabled
+            and model.kind is PlaylistKind.MUSIC
+            and self._get_playback_context(playlist_id) is None
+            and self._playlist_has_selection(playlist_id)
+        ):
+            try:
+                self._start_next_from_playlist(panel, ignore_ui_selection=True, advance_focus=False)
+            except Exception:
+                logger.exception("UI: manual queued fallback after finish failed playlist=%s", playlist_id)
 
     def _handle_playback_progress(self, playlist_id: str, item_id: str, seconds: float) -> None:
         context_entry = self._playback.contexts.get((playlist_id, item_id))

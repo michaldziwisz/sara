@@ -61,16 +61,31 @@ def analyze_loudness(path: Path, *, standard: LoudnessStandard) -> LoudnessMeasu
         raise FileNotFoundError("bs1770gain was not found on PATH or bundled resources")
 
     completed = _run_bs1770gain(executable, path, standard)
+    used_temp_copy = False
     if completed.returncode != 0:
         fallback = _retry_with_temp_copy(executable, path, standard)
         if fallback is not None:
             completed = fallback
+            used_temp_copy = True
     if completed.returncode != 0:
-        raise RuntimeError(completed.stderr.strip() or completed.stdout.strip() or "bs1770gain failed")
+        stderr_text = (getattr(completed, "stderr", None) or "").strip()
+        stdout_text = (getattr(completed, "stdout", None) or "").strip()
+        raise RuntimeError(stderr_text or stdout_text or "bs1770gain failed")
 
-    xml_text = _extract_xml(completed.stdout, completed.stderr)
     try:
+        xml_text = _extract_xml(getattr(completed, "stdout", None), getattr(completed, "stderr", None))
         root = ET.fromstring(xml_text)
+    except RuntimeError as exc:
+        if "missing XML payload" in str(exc) and not used_temp_copy:
+            fallback = _retry_with_temp_copy(executable, path, standard)
+            if fallback is not None:
+                completed = fallback
+                xml_text = _extract_xml(getattr(completed, "stdout", None), getattr(completed, "stderr", None))
+                root = ET.fromstring(xml_text)
+            else:
+                raise
+        else:
+            raise
     except ET.ParseError as exc:  # pragma: no cover - depends on CLI output
         raise RuntimeError(f"Unable to parse bs1770gain output: {exc}") from exc
 
@@ -81,20 +96,38 @@ def analyze_loudness(path: Path, *, standard: LoudnessStandard) -> LoudnessMeasu
     return LoudnessMeasurement(integrated_lufs=integrated)
 
 
-def _extract_xml(output: str, stderr: str | None = None) -> str:
-    candidate = output if output.strip() else (stderr or "")
+def _extract_xml(output: str | None, stderr: str | None = None) -> str:
+    output_text = output or ""
+    stderr_text = stderr or ""
+    candidate = output_text if output_text.strip() else stderr_text
     candidate = candidate.replace("\b", "")
     candidate = "".join(ch for ch in candidate if ch.isprintable() or ch in "\n\r\t<>/\"'=.-: ")
     candidate = re.sub(r"&(?!#?\w+;)", "&amp;", candidate)
     start = candidate.find("<bs1770gain")
     if start == -1:
-        raise RuntimeError("bs1770gain output missing XML payload")
+        raise RuntimeError(
+            "bs1770gain output missing XML payload. "
+            f"stdout={_summarize_output(output_text)} stderr={_summarize_output(stderr_text)}"
+        )
     candidate = candidate[start:]
     end = candidate.find("</bs1770gain>")
     if end == -1:
-        raise RuntimeError("bs1770gain output missing XML payload")
+        raise RuntimeError(
+            "bs1770gain output missing XML payload. "
+            f"stdout={_summarize_output(output_text)} stderr={_summarize_output(stderr_text)}"
+        )
     end += len("</bs1770gain>")
     return candidate[:end]
+
+
+def _summarize_output(text: str, *, limit: int = 240) -> str:
+    cleaned = text.replace("\r", "\\r").replace("\n", "\\n")
+    cleaned = cleaned.strip()
+    if not cleaned:
+        return "<empty>"
+    if len(cleaned) <= limit:
+        return repr(cleaned)
+    return repr(cleaned[:limit] + "…")
 
 
 def _run_bs1770gain(executable: Path, target: Path, standard: LoudnessStandard) -> subprocess.CompletedProcess[str]:
