@@ -962,6 +962,9 @@ class MainFrame(wx.Frame):
             return False
         if self._auto_mix_enabled and playlist.kind is PlaylistKind.MUSIC:
             return self._auto_mix_play_next(panel)
+        # Tryb ręczny: jeśli jest ustawiona kolejka (zaznaczenia), ma ona zawsze priorytet nad wskazanym/podświetlonym.
+        if not self._auto_mix_enabled and playlist.kind is PlaylistKind.MUSIC and self._playlist_has_selection(playlist_id):
+            return self._start_next_from_playlist(panel, ignore_ui_selection=True, advance_focus=False)
         item = playlist.get_item(item_id)
         if item is None:
             return False

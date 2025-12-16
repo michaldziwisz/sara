@@ -651,6 +651,44 @@ def test_manual_finish_starts_next_when_queue_remains(tmp_path):
     assert started[-1].get("ignore_ui_selection") is True
 
 
+def test_play_item_direct_prefers_queued_selection_over_requested_item(tmp_path, monkeypatch):
+    frame = MainFrame.__new__(MainFrame)
+    frame._auto_mix_enabled = False
+    frame._announce_event = lambda *_a, **_k: None
+    frame._auto_mix_play_next = lambda *_a, **_k: False
+
+    started: list[dict] = []
+    frame._start_next_from_playlist = lambda *_a, **kwargs: started.append(kwargs) or True
+
+    path_a = tmp_path / "a.wav"
+    path_b = tmp_path / "b.wav"
+    path_a.write_text("dummy")
+    path_b.write_text("dummy")
+    playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
+    queued = PlaylistItem(id="a", path=path_a, title="A", duration_seconds=1.0)
+    queued.is_selected = True
+    other = PlaylistItem(id="b", path=path_b, title="B", duration_seconds=1.0)
+    playlist.add_items([queued, other])
+
+    from sara.ui import main_frame as main_frame_module
+
+    class _FakePlaylistPanel:
+        def __init__(self, model):
+            self.model = model
+
+    monkeypatch.setattr(main_frame_module, "PlaylistPanel", _FakePlaylistPanel)
+
+    panel = _FakePlaylistPanel(playlist)
+    _register_playlist(frame, playlist, panel)
+    if not hasattr(frame, "_playlists"):
+        frame._playlists = {}
+    frame._playlists[playlist.id] = panel
+
+    assert frame._play_item_direct(playlist.id, other.id) is True
+    assert started
+    assert started[-1].get("ignore_ui_selection") is True
+
+
 def test_early_native_trigger_reschedules_mix_point(tmp_path):
     frame = MainFrame.__new__(MainFrame)
     frame._fade_duration = 2.0
