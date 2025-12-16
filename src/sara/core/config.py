@@ -72,6 +72,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "devices": {
         "playlists": {},
         "pfl": None,
+        "jingles": None,
     },
     "accessibility": {
         "announcements": {},
@@ -416,6 +417,20 @@ class SettingsManager:
             playlists[playlist_name] = cleaned
         else:
             playlists.pop(playlist_name, None)
+
+    def get_jingles_device(self) -> str | None:
+        devices = self._data.get("devices", {})
+        value = None
+        if isinstance(devices, dict):
+            value = devices.get("jingles")
+        if value is None:
+            return None
+        raw = str(value).strip()
+        return raw or None
+
+    def set_jingles_device(self, device_id: str | None) -> None:
+        devices = self._data.setdefault("devices", {})
+        devices["jingles"] = str(device_id).strip() if device_id else None
 
     # Backward compatibility
     def get_playlist_devices(self, playlist_name: str) -> list[Optional[str]]:  # pragma: no cover - alias

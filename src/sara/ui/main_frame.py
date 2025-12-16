@@ -48,6 +48,8 @@ from sara.ui.file_selection_dialog import FileSelectionDialog
 from sara.ui.playback_controller import PlaybackContext, PlaybackController
 from sara.ui.auto_mix_tracker import AutoMixTracker
 from sara.ui.clipboard_service import PlaylistClipboard
+from sara.ui.jingle_controller import JingleController
+from sara.ui.jingles_dialog import JinglesDialog
 
 
 logger = logging.getLogger(__name__)
@@ -99,6 +101,13 @@ class MainFrame(wx.Frame):
         self._playlist_factory = PlaylistFactory()
         self._audio_engine = AudioEngine()
         self._playback = PlaybackController(self._audio_engine, self._settings, self._announce_event)
+        self._jingles_path = self._settings.config_path.parent / "jingles.sarajingles"
+        self._jingles = JingleController(
+            self._audio_engine,
+            self._settings,
+            self._announce_event,
+            set_path=self._jingles_path,
+        )
         self._play_next_id = wx.NewIdRef()
         self._add_tracks_id = wx.NewIdRef()
         self._assign_device_id = wx.NewIdRef()
@@ -117,6 +126,7 @@ class MainFrame(wx.Frame):
         self._undo_id = wx.NewIdRef()
         self._redo_id = wx.NewIdRef()
         self._shortcut_editor_id = wx.NewIdRef()
+        self._jingles_manage_id = wx.NewIdRef()
         self._playlist_hotkey_defaults = self._settings.get_playlist_shortcuts()
         self._playlist_action_ids: Dict[str, int] = {}
         self._action_by_id: Dict[int, str] = {}
@@ -156,6 +166,7 @@ class MainFrame(wx.Frame):
         self._register_accessibility()
         self._configure_accelerators()
         self._global_shortcut_blocked = False
+        self.Bind(wx.EVT_CLOSE, self._on_close)
 
     def _ensure_legacy_hooks(self) -> None:
         if not hasattr(self, "_on_new_playlist"):
@@ -282,6 +293,7 @@ class MainFrame(wx.Frame):
         )
 
         tools_menu.Append(int(self._shortcut_editor_id), _("Edit &shortcuts…"))
+        tools_menu.Append(int(self._jingles_manage_id), _("&Jingles…"))
         tools_menu.Append(int(options_id), _("&Options…"))
         menu_bar.Append(tools_menu, _("&Tools"))
 
@@ -300,6 +312,7 @@ class MainFrame(wx.Frame):
         self.Bind(wx.EVT_MENU, self._on_loop_info, id=int(self._loop_info_id))
         self.Bind(wx.EVT_MENU, self._on_track_remaining, id=int(self._track_remaining_id))
         self.Bind(wx.EVT_MENU, self._on_edit_shortcuts, id=int(self._shortcut_editor_id))
+        self.Bind(wx.EVT_MENU, self._on_jingles, id=int(self._jingles_manage_id))
         self.Bind(wx.EVT_MENU, self._on_undo, id=int(self._undo_id))
         self.Bind(wx.EVT_MENU, self._on_redo, id=int(self._redo_id))
         self.Bind(wx.EVT_MENU, self._on_cut_selection, id=int(self._cut_id))
@@ -501,12 +514,69 @@ class MainFrame(wx.Frame):
         if keycode == wx.WXK_F6:
             if self._cycle_playlist_focus(backwards=event.ShiftDown()):
                 return
+        if self._handle_jingles_key(event):
+            return
         panel, focus = self._active_news_panel()
         if keycode == wx.WXK_SPACE and panel and panel.is_edit_control(focus):
             event.Skip()
             event.StopPropagation()
             return
         event.Skip()
+
+    def _handle_jingles_key(self, event: wx.KeyEvent) -> bool:
+        panel = self._get_current_music_panel()
+        if panel is None:
+            return False
+        focus = wx.Window.FindFocus()
+        if not panel.is_list_control(focus):
+            return False
+        if event.ControlDown() or event.AltDown() or event.MetaDown():
+            return False
+
+        keycode = event.GetKeyCode()
+
+        slot_index: int | None = None
+        if ord("0") <= keycode <= ord("9"):
+            digit = chr(keycode)
+            slot_index = 9 if digit == "0" else int(digit) - 1
+        else:
+            numpad_map = {
+                wx.WXK_NUMPAD1: 0,
+                wx.WXK_NUMPAD2: 1,
+                wx.WXK_NUMPAD3: 2,
+                wx.WXK_NUMPAD4: 3,
+                wx.WXK_NUMPAD5: 4,
+                wx.WXK_NUMPAD6: 5,
+                wx.WXK_NUMPAD7: 6,
+                wx.WXK_NUMPAD8: 7,
+                wx.WXK_NUMPAD9: 8,
+                wx.WXK_NUMPAD0: 9,
+            }
+            slot_index = numpad_map.get(keycode)
+
+        if slot_index is not None:
+            overlay = bool(event.ShiftDown())
+            if not self._jingles.play_slot(slot_index, overlay=overlay):
+                number_label = "0" if slot_index == 9 else str(slot_index + 1)
+                self._announce_event("jingles", _("Empty jingle slot %s") % number_label)
+            event.StopPropagation()
+            event.Skip(False)
+            return True
+
+        prev_keys = {ord("-"), ord("_"), getattr(wx, "WXK_SUBTRACT", -1)}
+        next_keys = {ord("="), ord("+"), getattr(wx, "WXK_ADD", -1)}
+        if keycode in prev_keys:
+            self._jingles.prev_page()
+            event.StopPropagation()
+            event.Skip(False)
+            return True
+        if keycode in next_keys:
+            self._jingles.next_page()
+            event.StopPropagation()
+            event.Skip(False)
+            return True
+
+        return False
 
     def _should_handle_altgr_track_remaining(self, event: wx.KeyEvent, keycode: int) -> bool:
         if keycode not in (ord("T"), ord("t")):
@@ -1295,6 +1365,13 @@ class MainFrame(wx.Frame):
         finally:
             self.Close()
 
+    def _on_close(self, event: wx.CloseEvent) -> None:
+        try:
+            self._jingles.stop_all()
+        except Exception:
+            pass
+        event.Skip()
+
     def _on_options(self, event: wx.CommandEvent) -> None:
         current_language = self._settings.get_language()
         dialog = OptionsDialog(self, settings=self._settings, audio_engine=self._audio_engine)
@@ -1335,6 +1412,29 @@ class MainFrame(wx.Frame):
             self._configure_accelerators()
             self._announce_event("hotkeys", _("Keyboard shortcuts saved"))
         dialog.Destroy()
+
+    def _on_jingles(self, _event: wx.CommandEvent) -> None:
+        dialog = JinglesDialog(
+            self,
+            audio_engine=self._audio_engine,
+            jingle_set=self._jingles.jingle_set,
+            set_path=self._jingles_path,
+            active_page_index=self._jingles.active_page_index,
+            device_id=self._settings.get_jingles_device(),
+        )
+        try:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            result = dialog.get_result()
+        finally:
+            dialog.Destroy()
+
+        self._settings.set_jingles_device(result.device_id)
+        self._settings.save()
+        self._jingles.reload_set()
+        self._jingles.set_active_page_index(result.active_page_index)
+        self._jingles.set_device_id(result.device_id)
+        self._announce_event("jingles", self._jingles.page_label())
 
     def _on_toggle_auto_mix(self, event: wx.CommandEvent) -> None:
         self._set_auto_mix_enabled(not self._auto_mix_enabled)

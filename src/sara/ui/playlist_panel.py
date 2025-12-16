@@ -178,6 +178,9 @@ class PlaylistPanel(wx.Panel):
         if self._list_ctrl.GetItemCount() > 0 and self._list_ctrl.GetFirstSelected() == -1:
             self._list_ctrl.Focus(0)
 
+    def is_list_control(self, window: wx.Window | None) -> bool:
+        return bool(window) and window is self._list_ctrl
+
     def get_selected_indices(self) -> list[int]:
         indices: list[int] = []
         index = self._list_ctrl.GetFirstSelected()

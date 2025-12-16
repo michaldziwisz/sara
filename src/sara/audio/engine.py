@@ -1052,6 +1052,21 @@ class AudioEngine:
         self._players[device_id] = player
         return player
 
+    def create_player_instance(self, device_id: str) -> Player:
+        """Create a new player instance without overwriting the per-device cache.
+
+        This is useful when multiple concurrent players are needed on the same device
+        (e.g. overlays), while keeping the legacy create_player() caching behavior.
+        """
+
+        if not self._devices:
+            self.refresh_devices()
+        device = self._devices.get(device_id)
+        if device is None:
+            raise ValueError(f"Nieznane urządzenie: {device_id}")
+        provider = self._get_provider(device.backend)
+        return provider.create_player(device)
+
     def _get_provider(self, backend: BackendType) -> BackendProvider:
         for provider in self._providers:
             if provider.backend is backend:
