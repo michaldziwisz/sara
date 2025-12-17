@@ -70,42 +70,36 @@ def test_jingle_play_sets_replaygain(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     audio_path = tmp_path / "jingle.wav"
     audio_path.write_bytes(b"a")
     set_path = tmp_path / "jingles.sarajingles"
-    _write_jingle_set(set_path, audio_path)
+    save_jingle_set(
+        set_path,
+        JingleSet(pages=[JinglePage(slots=[JingleSlot(path=audio_path, replay_gain_db=-6.5)])]),
+    )
 
     engine = DummyAudioEngine()
     settings = DummySettings()
-
-    monkeypatch.setattr(
-        "sara.ui.jingle_controller.extract_metadata",
-        lambda _path: SimpleNamespace(replay_gain_db=-6.5),
-    )
 
     controller = JingleController(engine, settings, lambda *_args: None, set_path=set_path)
     assert controller.play_slot(0) is True
     assert engine.main_player.gain_db == -6.5
 
 
-def test_jingle_play_resets_gain_when_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_jingle_play_resets_gain_when_missing(tmp_path: Path) -> None:
     audio_path = tmp_path / "jingle.wav"
     audio_path.write_bytes(b"a")
     set_path = tmp_path / "jingles.sarajingles"
-    _write_jingle_set(set_path, audio_path)
+    save_jingle_set(
+        set_path,
+        JingleSet(pages=[JinglePage(slots=[JingleSlot(path=audio_path, replay_gain_db=-3.0)])]),
+    )
 
     engine = DummyAudioEngine()
     settings = DummySettings()
     controller = JingleController(engine, settings, lambda *_args: None, set_path=set_path)
 
-    monkeypatch.setattr(
-        "sara.ui.jingle_controller.extract_metadata",
-        lambda _path: SimpleNamespace(replay_gain_db=-3.0),
-    )
     assert controller.play_slot(0) is True
     assert engine.main_player.gain_db == -3.0
 
-    monkeypatch.setattr(
-        "sara.ui.jingle_controller.extract_metadata",
-        lambda _path: SimpleNamespace(replay_gain_db=None),
-    )
+    controller.jingle_set.pages[0].slots[0].replay_gain_db = None  # type: ignore[union-attr]
     assert controller.play_slot(0) is True
     assert engine.main_player.gain_db is None
 
@@ -114,15 +108,13 @@ def test_jingle_overlay_applies_replaygain(monkeypatch: pytest.MonkeyPatch, tmp_
     audio_path = tmp_path / "jingle.wav"
     audio_path.write_bytes(b"a")
     set_path = tmp_path / "jingles.sarajingles"
-    _write_jingle_set(set_path, audio_path)
+    save_jingle_set(
+        set_path,
+        JingleSet(pages=[JinglePage(slots=[JingleSlot(path=audio_path, replay_gain_db=-9.0)])]),
+    )
 
     engine = DummyAudioEngine()
     settings = DummySettings()
-
-    monkeypatch.setattr(
-        "sara.ui.jingle_controller.extract_metadata",
-        lambda _path: SimpleNamespace(replay_gain_db=-9.0),
-    )
 
     controller = JingleController(engine, settings, lambda *_args: None, set_path=set_path)
     assert controller.play_slot(0, overlay=True) is True

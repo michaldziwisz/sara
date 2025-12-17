@@ -175,9 +175,8 @@ class JingleController:
 
         item_id = f"jingle-{uuid.uuid4().hex}-{int(time.time() * 1000)}"
         try:
-            # Ustaw ReplayGain przed startem, jeśli mamy wartość (bez I/O na ścieżce krytycznej).
-            if replay_gain_db is not None:
-                player.set_gain_db(replay_gain_db)
+            # Ustaw ReplayGain przed startem (None resetuje gain), bez I/O na ścieżce krytycznej.
+            player.set_gain_db(replay_gain_db)
             player.play(item_id, str(path), start_seconds=0.0, allow_loop=False)
         except Exception as exc:  # pylint: disable=broad-except
             self._announce("jingles", _("Failed to play jingle: %s") % exc)
