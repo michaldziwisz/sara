@@ -27,6 +27,7 @@ from sara.core.media_metadata import (
     save_mix_metadata,
     save_replay_gain_metadata,
 )
+from sara.core.m3u import parse_m3u_lines, serialize_m3u
 from sara.core.mix_planner import (
     MIX_EXPLICIT_PROGRESS_GUARD,
     MIX_NATIVE_EARLY_GUARD,
@@ -1266,44 +1267,11 @@ class MainFrame(wx.Frame):
         )
 
     def _parse_m3u(self, path: Path) -> list[dict[str, Any]]:
-        entries: list[dict[str, Any]] = []
-        current_title: str | None = None
-        current_duration: float | None = None
-
         try:
             lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
         except Exception as exc:  # pylint: disable=broad-except
             raise RuntimeError(_("Failed to read playlist file: %s") % exc) from exc
-
-        for line in lines:
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#EXTM3U"):
-                continue
-            if stripped.startswith("#EXTINF:"):
-                try:
-                    header, title = stripped.split(",", 1)
-                except ValueError:
-                    header, title = stripped, ""
-                try:
-                    duration = float(header[8:])
-                except ValueError:
-                    duration = None
-                current_duration = duration if duration and duration >= 0 else None
-                current_title = title.strip() if title.strip() else None
-                continue
-
-            entry_path = stripped
-            entries.append(
-                {
-                    "path": entry_path,
-                    "title": current_title,
-                    "duration": current_duration,
-                }
-            )
-            current_title = None
-            current_duration = None
-
-        return entries
+        return parse_m3u_lines(lines)
 
     def _on_export_playlist(self, _event: wx.CommandEvent) -> None:
         panel = self._get_current_playlist_panel()
@@ -1341,12 +1309,7 @@ class MainFrame(wx.Frame):
         path = Path(selected_paths[0])
 
         try:
-            lines = ["#EXTM3U"]
-            for item in panel.model.items:
-                duration = int(item.duration_seconds) if item.duration_seconds else -1
-                lines.append(f"#EXTINF:{duration},{item.title}")
-                lines.append(str(item.path.resolve()))
-            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            path.write_text(serialize_m3u(panel.model.items), encoding="utf-8")
         except Exception as exc:  # pylint: disable=broad-except
             self._announce_event("import_export", _("Failed to save playlist: %s") % exc)
             return
@@ -4398,4 +4361,3 @@ class MainFrame(wx.Frame):
         if not ok:
             self._announce_event("pfl", _("No next track to mix"))
         return ok
-
