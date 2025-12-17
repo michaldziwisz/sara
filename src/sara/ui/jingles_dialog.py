@@ -9,6 +9,7 @@ import wx
 
 from sara.audio.engine import AudioEngine
 from sara.core.i18n import gettext as _
+from sara.core.media_metadata import extract_metadata
 from sara.jingles import JingleSet, JinglePage, JingleSlot, ensure_page_count, save_jingle_set
 from sara.ui.file_selection_dialog import FileSelectionDialog
 
@@ -234,6 +235,10 @@ class JinglesDialog(wx.Dialog):
         page = self._page()
         slots = page.normalized_slots()
         slots[idx].path = selected
+        try:
+            slots[idx].replay_gain_db = extract_metadata(selected).replay_gain_db
+        except Exception:
+            slots[idx].replay_gain_db = None
         if not (self._slot_label_ctrls[idx].GetValue() or "").strip():
             slots[idx].label = selected.stem
             self._slot_label_ctrls[idx].ChangeValue(selected.stem)

@@ -15,6 +15,7 @@ SARA_JINGLES_EXTENSION = ".sarajingles"
 class JingleSlot:
     path: Path | None = None
     label: str | None = None
+    replay_gain_db: float | None = None
 
 
 @dataclass
@@ -90,7 +91,14 @@ def load_jingle_set(path: Path) -> JingleSet:
                     slot_path = _coerce_path(slot_entry.get("path"), base_dir=base_dir)
                     slot_label = slot_entry.get("label")
                     slot_label = str(slot_label) if isinstance(slot_label, (str, int)) else None
-                    slots.append(JingleSlot(path=slot_path, label=slot_label))
+                    gain_raw = slot_entry.get("replay_gain_db")
+                    replay_gain_db = None
+                    if gain_raw is not None:
+                        try:
+                            replay_gain_db = float(gain_raw)
+                        except (TypeError, ValueError):
+                            replay_gain_db = None
+                    slots.append(JingleSlot(path=slot_path, label=slot_label, replay_gain_db=replay_gain_db))
             pages.append(JinglePage(name=page_name, slots=slots))
 
     return JingleSet(name=name, pages=pages)
@@ -122,6 +130,7 @@ def save_jingle_set(path: Path, jingle_set: JingleSet) -> None:
                 {
                     "path": _path_for_save(slot.path, base_dir=base_dir),
                     "label": slot.label,
+                    "replay_gain_db": slot.replay_gain_db,
                 }
             )
         pages_payload.append({"name": page.name, "slots": slots_payload})
@@ -153,4 +162,3 @@ def iter_page_labels(jingle_set: JingleSet) -> Iterable[str]:
             yield str(page.name)
         else:
             yield f"Page {idx}"
-

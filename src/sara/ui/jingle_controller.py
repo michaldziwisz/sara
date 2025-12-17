@@ -43,6 +43,8 @@ class JingleController:
         self._main_player: Player | None = None
         self._overlay_players: list[Player] = []
         self._max_overlay_players = max(1, int(max_overlay_players))
+        self._replay_gain_cache: dict[Path, float | None] = {}
+        self._player_tokens: dict[int, str] = {}
 
     @property
     def jingle_set(self) -> JingleSet:
@@ -147,11 +149,9 @@ class JingleController:
             self._announce("jingles", _("Missing file: %s") % path.name)
             return False
 
-        replay_gain_db: float | None = None
-        try:
-            replay_gain_db = extract_metadata(path).replay_gain_db
-        except Exception:
-            replay_gain_db = None
+        replay_gain_db: float | None = slot.replay_gain_db
+        if replay_gain_db is None:
+            replay_gain_db = self._replay_gain_cache.get(path.resolve())
 
         fade_seconds = max(0.0, float(self._settings.get_playback_fade_seconds()))
         player_info = self._ensure_main_player()
@@ -175,13 +175,40 @@ class JingleController:
 
         item_id = f"jingle-{uuid.uuid4().hex}-{int(time.time() * 1000)}"
         try:
-            # Ustaw ReplayGain przed startem, żeby uniknąć „głośnego pierwszego uderzenia”.
-            player.set_gain_db(replay_gain_db)
+            # Ustaw ReplayGain przed startem, jeśli mamy wartość (bez I/O na ścieżce krytycznej).
+            if replay_gain_db is not None:
+                player.set_gain_db(replay_gain_db)
             player.play(item_id, str(path), start_seconds=0.0, allow_loop=False)
         except Exception as exc:  # pylint: disable=broad-except
             self._announce("jingles", _("Failed to play jingle: %s") % exc)
             return False
+
+        if replay_gain_db is None:
+            self._schedule_replay_gain(player, item_id=item_id, path=path)
         return True
+
+    def _schedule_replay_gain(self, player: Player, *, item_id: str, path: Path) -> None:
+        key = id(player)
+        self._player_tokens[key] = item_id
+        resolved = path.resolve()
+
+        def _worker() -> None:
+            gain = None
+            try:
+                gain = extract_metadata(resolved).replay_gain_db
+            except Exception:
+                gain = None
+            self._replay_gain_cache[resolved] = gain
+            if self._player_tokens.get(key) != item_id:
+                return
+            try:
+                player.set_gain_db(gain)
+            except Exception:
+                return
+
+        import threading
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def stop_all(self) -> None:
         players: list[Player] = []
