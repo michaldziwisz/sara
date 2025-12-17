@@ -204,6 +204,12 @@ class PlaylistModel:
                 return item
         return None
 
+    def index_of(self, item_id: str) -> int:
+        for index, item in enumerate(self.items):
+            if item.id == item_id:
+                return index
+        return -1
+
     def toggle_selection(self, item_id: str) -> bool:
         for item in self.items:
             if item.id == item_id:

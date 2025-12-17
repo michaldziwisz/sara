@@ -69,3 +69,13 @@ def test_begin_next_item_replays_played_preferred_track() -> None:
     assert result is played
     assert played.status is PlaylistItemStatus.PLAYING
     assert played.current_position == 0.0
+
+
+def test_index_of_returns_index_or_minus_one() -> None:
+    a = _make_item("a")
+    b = _make_item("b")
+    playlist = PlaylistModel(id="pl", name="Test", items=[a, b])
+
+    assert playlist.index_of("a") == 0
+    assert playlist.index_of("b") == 1
+    assert playlist.index_of("missing") == -1

@@ -1706,7 +1706,9 @@ class MainFrame(wx.Frame):
                 playlist.id,
                 item.id,
                 mix_trigger_seconds=mix_at,
-                on_mix_trigger=(lambda: self._auto_mix_now(playlist, item, panel)) if panel else None,
+                on_mix_trigger=lambda pl_id=playlist.id, it_id=item.id: wx.CallAfter(
+                    self._auto_mix_now_from_callback, pl_id, it_id
+                ),
             )
         logger.debug(
             "UI: loop disabled -> rescheduled mix trigger playlist=%s item=%s mix_at=%.3f fade=%.3f current=%.3f native=%s",
@@ -1762,7 +1764,9 @@ class MainFrame(wx.Frame):
                 playlist_id,
                 item.id,
                 mix_trigger_seconds=mix_trigger_seconds,
-                on_mix_trigger=lambda: self._auto_mix_now(panel.model, item, panel),
+                on_mix_trigger=lambda pl_id=playlist_id, it_id=item.id: wx.CallAfter(
+                    self._auto_mix_now_from_callback, pl_id, it_id
+                ),
             )
         logger.debug(
             "UI: rescheduled mix trigger playlist=%s item=%s mix_at=%s fade=%.3f native=%s applied=%s",
@@ -2218,7 +2222,9 @@ class MainFrame(wx.Frame):
                 item,
                 effective_duration_override=effective_override,
             )
-            on_mix_trigger = lambda: self._auto_mix_now(playlist, item, panel)
+            on_mix_trigger = lambda pl_id=playlist.id, it_id=item.id: wx.CallAfter(
+                self._auto_mix_now_from_callback, pl_id, it_id
+            )
 
         try:
             result = self._playback.start_item(
@@ -2946,6 +2952,21 @@ class MainFrame(wx.Frame):
         elif plan:
             plan.triggered = False
             self._playback.auto_mix_state.pop(key, None)
+
+    def _auto_mix_now_from_callback(self, playlist_id: str, item_id: str) -> None:
+        playlist = self._get_playlist_model(playlist_id)
+        if not playlist:
+            return
+        panel = self._playlists.get(playlist_id)
+        if not panel:
+            return
+        item = playlist.get_item(item_id)
+        if not item:
+            return
+        try:
+            self._auto_mix_now(playlist, item, panel)
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.exception("UI: auto_mix_now callback failed playlist=%s item=%s err=%s", playlist_id, item_id, exc)
 
     def _auto_mix_now(self, playlist: PlaylistModel, item: PlaylistItem, panel: PlaylistPanel) -> None:
         """Wyzwól miks natychmiast z precyzyjnego punktu (segue/overlap/fade sync z BASS)."""
