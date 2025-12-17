@@ -58,7 +58,7 @@ from sara.ui.auto_mix_tracker import AutoMixTracker
 from sara.ui.clipboard_service import PlaylistClipboard
 from sara.ui.jingle_controller import JingleController
 from sara.ui.jingles_dialog import JinglesDialog
-from sara.ui.manage_playlists_dialog import ManagePlaylistsDialog
+from sara.ui.dialogs.manage_playlists_dialog import ManagePlaylistsDialog
 
 
 logger = logging.getLogger(__name__)
