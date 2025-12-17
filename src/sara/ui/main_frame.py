@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from importlib.resources import as_file, files
-from dataclasses import dataclass
 import logging
 import os
 import tempfile
@@ -27,6 +26,14 @@ from sara.core.media_metadata import (
     save_loop_metadata,
     save_mix_metadata,
     save_replay_gain_metadata,
+)
+from sara.core.mix_planner import (
+    MIX_EXPLICIT_PROGRESS_GUARD,
+    MIX_NATIVE_EARLY_GUARD,
+    MIX_NATIVE_LATE_GUARD,
+    MixPlan,
+    compute_mix_trigger_seconds as _compute_mix_trigger_seconds_impl,
+    resolve_mix_timing as _resolve_mix_timing_impl,
 )
 from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistKind, PlaylistModel
 from sara.core.shortcuts import get_shortcut
@@ -55,21 +62,7 @@ from sara.ui.jingles_dialog import JinglesDialog
 logger = logging.getLogger(__name__)
 
 
-FADE_DURATION_SECONDS = 2.0
-MIX_NATIVE_EARLY_GUARD = 0.25
-MIX_NATIVE_LATE_GUARD = 0.35
-MIX_EXPLICIT_PROGRESS_GUARD = 0.05
 ANNOUNCEMENT_PREFIX = "\uf8ff"
-
-
-@dataclass
-class MixPlan:
-    mix_at: float | None
-    fade_seconds: float
-    base_cue: float
-    effective_duration: float
-    native_trigger: bool
-    triggered: bool = False
 
 
 class MainFrame(wx.Frame):
@@ -4292,46 +4285,13 @@ class MainFrame(wx.Frame):
     ) -> tuple[float | None, float, float, float]:
         """Return (mix_at_seconds, fade_seconds, base_cue, effective_duration) using optional overrides."""
         overrides = dict(overrides or {})
-        preview_pre_seconds = overrides.pop("_preview_pre_seconds", None)
-        base_cue = overrides.get("cue")
-        base_cue = base_cue if base_cue is not None else (item.cue_in_seconds or 0.0)
-        effective_duration = (
-            max(0.0, effective_duration_override)
-            if effective_duration_override is not None
-            else max(0.0, (item.duration_seconds or 0.0) - base_cue)
+        overrides.pop("_preview_pre_seconds", None)
+        return _resolve_mix_timing_impl(
+            item,
+            self._fade_duration,
+            overrides,
+            effective_duration_override=effective_duration_override,
         )
-
-        segue_val = overrides.get("segue")
-        segue_val = segue_val if segue_val is not None else item.segue_seconds
-        overlap_val = overrides.get("overlap")
-        overlap_val = overlap_val if overlap_val is not None else item.overlap_seconds
-        overlap_val = max(0.0, overlap_val) if overlap_val is not None else None
-        segue_fade_val = overrides.get("segue_fade")
-        segue_fade_val = segue_fade_val if segue_fade_val is not None else getattr(item, "segue_fade_seconds", None)
-        segue_fade_val = max(0.0, segue_fade_val) if segue_fade_val is not None else None
-
-        mix_at = None
-        fade_seconds = self._fade_duration
-        if segue_val is not None:
-            mix_at = base_cue + max(0.0, segue_val)
-            if segue_fade_val is not None:
-                fade_seconds = segue_fade_val
-        elif overlap_val is not None:
-            mix_at = base_cue + max(0.0, effective_duration - overlap_val)
-            fade_seconds = overlap_val
-        elif self._fade_duration > 0.0:
-            mix_at = base_cue + max(0.0, effective_duration - self._fade_duration)
-            fade_seconds = self._fade_duration
-
-        if mix_at is not None:
-            # nigdy nie przekraczaj realnej długości ścieżki – klamruj z lekkim marginesem
-            cap_target = base_cue + max(0.0, effective_duration - 0.01)
-            if mix_at > cap_target:
-                mix_at = cap_target
-            # dostosuj fade do dostępnego fragmentu
-            remaining_after_mix = max(0.0, base_cue + effective_duration - mix_at)
-            fade_seconds = min(fade_seconds, remaining_after_mix)
-        return mix_at, fade_seconds, base_cue, effective_duration
 
     def _measure_effective_duration(self, playlist: PlaylistModel, item: PlaylistItem) -> float | None:
         contexts = getattr(self._playback, "contexts", None)
@@ -4375,8 +4335,7 @@ class MainFrame(wx.Frame):
 
     def _compute_mix_trigger_seconds(self, item: PlaylistItem) -> float | None:
         """Calculate absolute time (seconds) to trigger automix/crossfade."""
-        mix_at, _, _, _ = self._resolve_mix_timing(item)
-        return mix_at
+        return _compute_mix_trigger_seconds_impl(item, self._fade_duration)
 
     def _preview_mix_with_next(
         self,
