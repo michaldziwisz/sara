@@ -195,10 +195,6 @@ class _BassLibrary:
     def handle(self):
         return self._lib
 
-    @property
-    def handle(self):  # pragma: no cover - dostęp kontrolowany
-        return self._lib
-
 
 class _BassAsioLibrary:
     """Ładowanie dodatku BASS ASIO (bassasio.dll)."""
