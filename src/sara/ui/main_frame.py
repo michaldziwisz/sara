@@ -928,9 +928,6 @@ class MainFrame(wx.Frame):
         """Announce `message` and optionally override spoken content."""
         self._announcer.announce(category, message, spoken_message=spoken_message)
 
-    def _silence_screen_reader(self) -> None:
-        self._announcer.silence()
-
     def _announce(self, message: str) -> None:
         self._announce_event("general", message)
 
