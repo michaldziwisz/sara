@@ -187,6 +187,11 @@ from sara.ui.controllers.menu_and_shortcuts import (
     should_handle_altgr_track_remaining as _should_handle_altgr_track_remaining_impl,
     update_shortcut_menu_labels as _update_shortcut_menu_labels_impl,
 )
+from sara.ui.controllers.news_audio import (
+    news_device_entries as _news_device_entries_impl,
+    play_news_audio_clip as _play_news_audio_clip_impl,
+    preview_news_clip as _preview_news_clip_impl,
+)
 from sara.ui.mix_preview import (
     measure_effective_duration as _measure_effective_duration_impl,
     preview_mix_with_next as _preview_mix_with_next_impl,
@@ -405,41 +410,14 @@ class MainFrame(wx.Frame):
     def _format_track_name(item: PlaylistItem) -> str:
         return f"{item.artist} - {item.title}" if item.artist else item.title
 
-    def _news_device_entries(self) -> list[tuple[str, str]]:
-        entries: list[tuple[str, str]] = [(None, _("(use global/PFL device)"))]
-        entries.extend((device.id, device.name) for device in self._audio_engine.get_devices())
-        return entries
+    def _news_device_entries(self) -> list[tuple[str | None, str]]:
+        return _news_device_entries_impl(self)
 
     def _play_news_audio_clip(self, model: PlaylistModel, clip_path: Path, device_id: str | None) -> None:
-        if not clip_path.exists():
-            self._announce_event("device", _("Audio file %s does not exist") % clip_path)
-            return
-        configured = model.get_configured_slots()
-        target_device = device_id or (configured[0] if configured else None) or self._settings.get_pfl_device()
-        if not target_device:
-            self._announce_event("device", _("Select a playback device first"))
-            return
-        try:
-            player = self._audio_engine.create_player(target_device)
-        except ValueError:
-            self._announce_event("device", _("Device %s is not available") % target_device)
-            return
-        try:
-            player.play(f"{model.id}:news", str(clip_path))
-        except Exception as exc:  # pylint: disable=broad-except
-            self._announce_event("device", _("Failed to play audio clip: %s") % exc)
+        _play_news_audio_clip_impl(self, model, clip_path, device_id)
 
     def _preview_news_clip(self, clip_path: Path) -> bool:
-        if not clip_path.exists():
-            self._announce_event("pfl", _("Audio file %s does not exist") % clip_path)
-            return False
-        temp_item = PlaylistItem(
-            id=f"news-preview-{clip_path.stem}",
-            path=clip_path,
-            title=clip_path.name,
-            duration_seconds=0.0,
-        )
-        return self._playback.start_preview(temp_item, 0.0)
+        return _preview_news_clip_impl(self, clip_path)
 
     def _persist_playlist_outputs(self, model: PlaylistModel) -> None:
         self._settings.set_playlist_outputs(model.name, model.get_configured_slots())
