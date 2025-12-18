@@ -1,6 +1,7 @@
 import os
 import pytest
-import wx
+
+wx = pytest.importorskip("wx")
 
 from sara.ui.file_selection_dialog import FileSelectionDialog
 

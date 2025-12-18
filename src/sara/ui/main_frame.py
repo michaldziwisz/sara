@@ -39,6 +39,7 @@ from sara.core.mix_planner import (
     register_mix_plan as _register_mix_plan_impl,
     resolve_mix_timing as _resolve_mix_timing_impl,
 )
+from sara.core.mix_points import propagate_mix_points_for_path as _propagate_mix_points_for_path_impl
 from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistKind, PlaylistModel
 from sara.core.shortcuts import get_shortcut
 from sara.ui.undo import InsertOperation, MoveOperation, RemoveOperation, UndoAction
@@ -62,6 +63,10 @@ from sara.ui.clipboard_service import PlaylistClipboard
 from sara.ui.jingle_controller import JingleController
 from sara.ui.jingles_dialog import JinglesDialog
 from sara.ui.dialogs.manage_playlists_dialog import ManagePlaylistsDialog
+from sara.ui.mix_preview import (
+    measure_effective_duration as _measure_effective_duration_impl,
+    preview_mix_with_next as _preview_mix_with_next_impl,
+)
 from sara.ui.mix_runtime import (
     apply_mix_trigger_to_playback as _apply_mix_trigger_to_playback_impl,
     auto_mix_now as _auto_mix_now_impl,
@@ -1879,43 +1884,43 @@ class MainFrame(wx.Frame):
         source_playlist_id: str,
         source_item_id: str,
     ) -> None:
+        playlists = []
+        for panel in self._playlists.values():
+            playlist = getattr(panel, "model", None)
+            if playlist is not None:
+                playlists.append(playlist)
+
+        updated = _propagate_mix_points_for_path_impl(
+            playlists,
+            path=path,
+            mix_values=mix_values,
+            source_playlist_id=source_playlist_id,
+            source_item_id=source_item_id,
+        )
+
         context_map = getattr(self._playback, "contexts", {}) if hasattr(self._playback, "contexts") else {}
-        refreshed: set[str] = set()
-        for pl_id, panel in self._playlists.items():
+        for playlist_id, item_ids in updated.items():
+            panel = self._playlists.get(playlist_id)
+            if panel is None:
+                continue
             playlist = getattr(panel, "model", None)
             if playlist is None:
                 continue
-            updated = False
-            for track in playlist.items:
-                if track.path != path or (pl_id == source_playlist_id and track.id == source_item_id):
+            for item_id in item_ids:
+                track = playlist.get_item(item_id)
+                if not track:
                     continue
-                changed = False
-                for key, attr in (
-                    ("cue_in", "cue_in_seconds"),
-                    ("intro", "intro_seconds"),
-                    ("outro", "outro_seconds"),
-                    ("segue", "segue_seconds"),
-                    ("segue_fade", "segue_fade_seconds"),
-                    ("overlap", "overlap_seconds"),
-                ):
-                    new_val = mix_values.get(key)
-                    if getattr(track, attr) != new_val:
-                        setattr(track, attr, new_val)
-                        changed = True
-                if changed:
-                    updated = True
-                    key = (pl_id, track.id)
-                    if context_map.get(key):
-                        self._apply_mix_trigger_to_playback(playlist_id=pl_id, item=track, panel=panel)
-                    else:
-                        self._clear_mix_plan(pl_id, track.id)
-            if updated and hasattr(panel, "refresh"):
-                if pl_id not in refreshed:
-                    try:
-                        panel.refresh()
-                    except TypeError:
-                        panel.refresh()
-                    refreshed.add(pl_id)
+                key = (playlist_id, track.id)
+                if context_map.get(key):
+                    self._apply_mix_trigger_to_playback(playlist_id=playlist_id, item=track, panel=panel)
+                else:
+                    self._clear_mix_plan(playlist_id, track.id)
+
+            if hasattr(panel, "refresh"):
+                try:
+                    panel.refresh()
+                except TypeError:
+                    panel.refresh()
 
     def _start_playback(
         self,
@@ -3863,44 +3868,7 @@ class MainFrame(wx.Frame):
         )
 
     def _measure_effective_duration(self, playlist: PlaylistModel, item: PlaylistItem) -> float | None:
-        contexts = getattr(self._playback, "contexts", None)
-        if isinstance(contexts, dict):
-            context = contexts.get((playlist.id, item.id))
-            if context:
-                getter = getattr(context.player, "get_length_seconds", None)
-                if getter:
-                    try:
-                        length_seconds = float(getter())
-                    except Exception:
-                        length_seconds = None
-                    else:
-                        if length_seconds and length_seconds > 0:
-                            cue = item.cue_in_seconds or 0.0
-                            return max(0.0, length_seconds - cue)
-        try:
-            from sara.audio.bass import BassManager  # type: ignore
-        except Exception:
-            return None
-        stream = 0
-        manager = None
-        try:
-            manager = BassManager.instance()
-            manager.ensure_device(0)
-            stream = manager.stream_create_file(0, item.path, decode=True, set_device=True)
-            length_seconds = manager.channel_get_length_seconds(stream)
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.debug("Failed to probe track length via BASS for %s: %s", item.path, exc)
-            return None
-        finally:
-            if stream and manager:
-                try:
-                    manager.stream_free(stream)
-                except Exception:
-                    pass
-        if not length_seconds or length_seconds <= 0:
-            return None
-        cue = item.cue_in_seconds or 0.0
-        return max(0.0, length_seconds - cue)
+        return _measure_effective_duration_impl(self, playlist, item)
 
     def _compute_mix_trigger_seconds(self, item: PlaylistItem) -> float | None:
         """Calculate absolute time (seconds) to trigger automix/crossfade."""
@@ -3913,56 +3881,4 @@ class MainFrame(wx.Frame):
         *,
         overrides: dict[str, Optional[float]] | None = None,
     ) -> bool:
-        """Start a short PFL preview of the mix with the next track."""
-        if len(playlist.items) < 2:
-            self._announce_event("pfl", _("No next track to mix"))
-            return False
-        idx = self._index_of_item(playlist, item.id)
-        if idx is None:
-            self._announce_event("pfl", _("No next track to mix"))
-            return False
-        next_idx = (idx + 1) % len(playlist.items)
-        if next_idx == idx:
-            self._announce_event("pfl", _("No next track to mix"))
-            return False
-        next_item = playlist.items[next_idx]
-
-        overrides = dict(overrides or {})
-        preview_pre_seconds = overrides.pop("_preview_pre_seconds", None)
-        mix_plans = getattr(self, "_mix_plans", None)
-        plan = mix_plans.get((playlist.id, item.id)) if mix_plans else None
-        if plan and not overrides and plan.mix_at is not None:
-            mix_at = plan.mix_at
-            fade_seconds = plan.fade_seconds
-            base_cue = plan.base_cue
-            effective_duration = plan.effective_duration
-        else:
-            effective_override = self._measure_effective_duration(playlist, item)
-            mix_at, fade_seconds, base_cue, effective_duration = self._resolve_mix_timing(
-                item,
-                overrides,
-                effective_duration_override=effective_override,
-            )
-        pre_seconds = 4.0 if preview_pre_seconds is None else max(0.0, float(preview_pre_seconds))
-
-        ok = self._playback.start_mix_preview(
-            item,
-            next_item,
-            mix_at_seconds=mix_at,
-            pre_seconds=pre_seconds,
-            fade_seconds=fade_seconds,
-            current_effective_duration=effective_duration,
-            next_cue_override=next_item.cue_in_seconds or 0.0,
-        )
-        logger.debug(
-            "UI: PFL mix preview scheduled mix_at=%s fade=%.3f cue=%.3f effective=%.3f seg=%s ovl=%s",
-            f"{mix_at:.3f}" if mix_at is not None else "None",
-            fade_seconds,
-            base_cue,
-            effective_duration,
-            overrides.get("segue"),
-            overrides.get("overlap"),
-        )
-        if not ok:
-            self._announce_event("pfl", _("No next track to mix"))
-        return ok
+        return _preview_mix_with_next_impl(self, playlist, item, overrides=overrides)
