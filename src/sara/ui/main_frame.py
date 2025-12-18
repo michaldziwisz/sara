@@ -94,6 +94,18 @@ from sara.ui.controllers.playlists_management import (
     on_remove_playlist as _on_remove_playlist_impl,
     prompt_new_playlist as _prompt_new_playlist_impl,
 )
+from sara.ui.controllers.edit_actions import (
+    apply_undo_callback as _apply_undo_callback_impl,
+    finalize_clipboard_paste as _finalize_clipboard_paste_impl,
+    move_selection as _move_selection_impl,
+    on_copy_selection as _on_copy_selection_impl,
+    on_cut_selection as _on_cut_selection_impl,
+    on_delete_selection as _on_delete_selection_impl,
+    on_paste_selection as _on_paste_selection_impl,
+    on_redo as _on_redo_impl,
+    on_undo as _on_undo_impl,
+    push_undo_action as _push_undo_action_impl,
+)
 from sara.ui.controllers.loop_and_remaining import (
     active_playlist_item as _active_playlist_item_impl,
     apply_loop_setting_to_playback as _apply_loop_setting_to_playback_impl,
@@ -1683,24 +1695,10 @@ class MainFrame(wx.Frame):
             self._last_started_item_id[playlist_id] = None
 
     def _push_undo_action(self, model: PlaylistModel, operation) -> None:
-        self._undo_manager.push(UndoAction(model.id, operation))
+        _push_undo_action_impl(self, model, operation)
 
     def _apply_undo_callback(self, action: UndoAction, reverse: bool) -> bool:
-        model = self._get_playlist_model(action.playlist_id)
-        panel = self._playlists.get(action.playlist_id)
-        if model is None or panel is None:
-            return False
-        if self._layout.state.current_id != action.playlist_id:
-            self._layout.set_current(action.playlist_id)
-            self._update_active_playlist_styles()
-        try:
-            indices = action.revert(model) if reverse else action.apply(model)
-        except ValueError as exc:
-            logger.error("Undo operation failed: %s", exc)
-            return False
-        selection = indices if indices else []
-        self._refresh_playlist_view(panel, selection)
-        return True
+        return _apply_undo_callback_impl(self, action, reverse)
 
     def _announce_operation(self, operation, *, undo: bool) -> None:
         if isinstance(operation, InsertOperation):
@@ -1714,88 +1712,13 @@ class MainFrame(wx.Frame):
         self._announce_event("undo_redo", message)
 
     def _on_copy_selection(self, _event: wx.CommandEvent) -> None:
-        context = self._get_selected_items(kinds=(PlaylistKind.MUSIC, PlaylistKind.FOLDER))
-        if context is None:
-            return
-        panel, model, selected = context
-        items = [item for _, item in selected]
-        self._clipboard.set(self._serialize_items(items))
-        existing_paths = [item.path for item in items if item.path.exists()]
-        if existing_paths:
-            self._set_system_clipboard_paths(existing_paths)
-        count = len(items)
-        noun = _("track") if count == 1 else _("tracks")
-        self._announce_event(
-            "clipboard",
-            _("Copied %d %s from playlist %s") % (count, noun, model.name),
-        )
-        panel.focus_list()
+        _on_copy_selection_impl(self, _event)
 
     def _on_cut_selection(self, _event: wx.CommandEvent) -> None:
-        context = self._get_selected_items()
-        if context is None:
-            return
-        panel, model, selected = context
-        items = [item for _, item in selected]
-        self._clipboard.set(self._serialize_items(items))
-        existing_paths = [item.path for item in items if item.path.exists()]
-        if existing_paths:
-            self._set_system_clipboard_paths(existing_paths)
-        indices = sorted(index for index, _ in selected)
-        removed_items = self._remove_items(panel, model, indices)
-        count = len(items)
-        noun = _("track") if count == 1 else _("tracks")
-        self._announce_event("clipboard", _("Cut %d %s") % (count, noun))
-        if removed_items:
-            operation = RemoveOperation(indices=list(indices), items=list(removed_items))
-            self._push_undo_action(model, operation)
+        _on_cut_selection_impl(self, _event)
 
     def _on_paste_selection(self, _event: wx.CommandEvent) -> None:
-        context = self._get_selected_context()
-        panel: PlaylistPanel
-        if context is None:
-            panel = self._get_current_music_panel()
-            if panel is None:
-                return
-            model = panel.model
-            indices: list[int] = []
-        else:
-            panel, model, indices = context
-        index = indices[-1] if indices else None
-        insert_at = index + 1 if index is not None else len(model.items)
-
-        clipboard_paths = self._get_system_clipboard_paths()
-        if clipboard_paths:
-            file_paths, skipped = self._collect_files_from_paths(clipboard_paths)
-            if not file_paths:
-                if skipped:
-                    self._announce_event("clipboard", _("Clipboard does not contain supported audio files"))
-                else:
-                    self._announce_event("clipboard", _("Clipboard does not contain files or folders"))
-                return
-
-            description = _("Loading tracks from clipboard…")
-            self._run_item_loader(
-                description=description,
-                worker=lambda file_paths=file_paths: self._create_items_from_paths(file_paths),
-                on_complete=lambda items, panel=panel, model=model, insert_at=insert_at, anchor=index, skipped=skipped: self._finalize_clipboard_paste(
-                    panel,
-                    model,
-                    items,
-                    insert_at,
-                    anchor,
-                    skipped_files=skipped,
-                ),
-            )
-            return
-
-        if not self._clipboard.is_empty():
-            new_items = [self._create_item_from_serialized(data) for data in self._clipboard.get()]
-            self._finalize_clipboard_paste(panel, model, new_items, insert_at, index, skipped_files=0)
-            return
-
-        self._announce_event("clipboard", _("Clipboard is empty"))
-        return
+        _on_paste_selection_impl(self, _event)
 
     def _finalize_clipboard_paste(
         self,
@@ -1807,67 +1730,21 @@ class MainFrame(wx.Frame):
         *,
         skipped_files: int,
     ) -> None:
-        playlist_id = panel.model.id
-        if playlist_id not in self._playlists or self._playlists.get(playlist_id) is not panel:
-            return
-        if not items:
-            selection = [anchor_index] if anchor_index is not None and anchor_index < len(model.items) else None
-            self._refresh_playlist_view(panel, selection)
-            self._announce_event("clipboard", _("No supported audio files found on the clipboard"))
-            return
-
-        insert_at = max(0, min(insert_at, len(model.items)))
-        model.items[insert_at:insert_at] = items
-        insert_indices = list(range(insert_at, insert_at + len(items)))
-        self._refresh_playlist_view(panel, insert_indices)
-        count = len(items)
-        noun = _("track") if count == 1 else _("tracks")
-        self._announce_event("clipboard", _("Pasted %d %s") % (count, noun))
-        operation = InsertOperation(indices=list(insert_indices), items=list(items))
-        self._push_undo_action(model, operation)
-        if skipped_files:
-            noun = _("file") if skipped_files == 1 else _("files")
-            self._announce_event("clipboard", _("Skipped %d unsupported %s") % (skipped_files, noun))
-
-        return
+        _finalize_clipboard_paste_impl(
+            self,
+            panel,
+            model,
+            items,
+            insert_at,
+            anchor_index,
+            skipped_files=skipped_files,
+        )
 
     def _on_delete_selection(self, _event: wx.CommandEvent) -> None:
-        context = self._get_selected_items()
-        if context is None:
-            return
-        panel, model, selected = context
-        items = [item for _, item in selected]
-        indices = sorted(index for index, _ in selected)
-        removed_items = self._remove_items(panel, model, indices)
-        count = len(items)
-        noun = _("track") if count == 1 else _("tracks")
-        self._announce_event("clipboard", _("Deleted %d %s") % (count, noun))
-        if removed_items:
-            operation = RemoveOperation(indices=list(indices), items=list(removed_items))
-            self._push_undo_action(model, operation)
+        _on_delete_selection_impl(self, _event)
 
     def _move_selection(self, delta: int) -> None:
-        context = self._get_selected_items()
-        if context is None:
-            return
-        panel, model, selected = context
-        indices = [index for index, _item in selected]
-        operation = MoveOperation(original_indices=list(indices), delta=delta)
-        try:
-            new_indices = operation.apply(model)
-        except ValueError:
-            direction = _("up") if delta < 0 else _("down")
-            self._announce_event("clipboard", _("Cannot move further %s") % direction)
-            return
-
-        self._refresh_playlist_view(panel, new_indices)
-        self._push_undo_action(model, operation)
-        count = len(selected)
-        if count == 1:
-            self._announce_event("clipboard", _("Moved %s") % selected[0][1].title)
-        else:
-            noun = _("track") if count == 1 else _("tracks")
-            self._announce_event("clipboard", _("Moved %d %s") % (count, noun))
+        _move_selection_impl(self, delta)
 
     def _on_move_selection_up(self, _event: wx.CommandEvent) -> None:
         self._move_selection(-1)
@@ -1876,16 +1753,10 @@ class MainFrame(wx.Frame):
         self._move_selection(1)
 
     def _on_undo(self, _event: wx.CommandEvent) -> None:
-        if not self._undo_manager.undo():
-            self._announce_event("undo_redo", _("Nothing to undo"))
-            return
-        self._announce_event("undo_redo", _("Undo operation"))
+        _on_undo_impl(self, _event)
 
     def _on_redo(self, _event: wx.CommandEvent) -> None:
-        if not self._undo_manager.redo():
-            self._announce_event("undo_redo", _("Nothing to redo"))
-            return
-        self._announce_event("undo_redo", _("Redo operation"))
+        _on_redo_impl(self, _event)
 
     def _update_active_playlist_styles(self) -> None:
         active_colour = wx.Colour(230, 240, 255)
