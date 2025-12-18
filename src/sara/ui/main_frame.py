@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -18,9 +17,6 @@ from sara.core.media_metadata import (
     save_replay_gain_metadata,
 )
 from sara.core.mix_planner import (
-    MIX_EXPLICIT_PROGRESS_GUARD,
-    MIX_NATIVE_EARLY_GUARD,
-    MIX_NATIVE_LATE_GUARD,
     MixPlan,
     clear_mix_plan as _clear_mix_plan_impl,
     compute_mix_trigger_seconds as _compute_mix_trigger_seconds_impl,
@@ -33,9 +29,8 @@ from sara.core.shortcuts import get_shortcut
 from sara.ui.undo import InsertOperation, MoveOperation, RemoveOperation, UndoAction
 from sara.ui.undo_manager import UndoManager
 from sara.ui.playlist_panel import PlaylistPanel
-from sara.ui.playlist_layout import PlaylistLayoutManager, PlaylistLayoutState
+from sara.ui.playlist_layout import PlaylistLayoutManager
 from sara.ui.announcement_service import AnnouncementService
-from sara.ui.shortcut_utils import format_shortcut_display, parse_shortcut
 from sara.ui.playback_controller import PlaybackContext, PlaybackController
 from sara.ui.auto_mix_tracker import AutoMixTracker
 from sara.ui.clipboard_service import PlaylistClipboard
@@ -225,10 +220,21 @@ class MainFrame(wx.Frame):
     ) -> None:
         super().__init__(parent=parent, id=wx.ID_ANY, title=self.TITLE, size=(1200, 800), **kwargs)
         self.SetName("sara_main_frame")
+        self._init_settings(settings)
+        self._init_playlist_state(state)
+        self._init_audio_controllers()
+        self._init_command_ids()
+        self._init_runtime_state()
+        self._ensure_legacy_hooks()
+        self._init_ui()
+
+    def _init_settings(self, settings: SettingsManager | None) -> None:
         self._settings = settings or SettingsManager()
         set_language(self._settings.get_language())
         if not self._settings.config_path.exists():
             self._settings.save()
+
+    def _init_playlist_state(self, state: AppState | None) -> None:
         self._playlists: Dict[str, PlaylistPanel] = {}
         self._playlist_wrappers: Dict[str, wx.Window] = {}
         self._playlist_headers: Dict[str, wx.StaticText] = {}
@@ -237,6 +243,8 @@ class MainFrame(wx.Frame):
         self._current_index: int = 0
         self._state = state or AppState()
         self._playlist_factory = PlaylistFactory()
+
+    def _init_audio_controllers(self) -> None:
         self._audio_engine = AudioEngine()
         self._playback = PlaybackController(self._audio_engine, self._settings, self._announce_event)
         self._jingles_path = self._settings.config_path.parent / "jingles.sarajingles"
@@ -246,6 +254,8 @@ class MainFrame(wx.Frame):
             self._announce_event,
             set_path=self._jingles_path,
         )
+
+    def _init_command_ids(self) -> None:
         self._play_next_id = wx.NewIdRef()
         self._add_tracks_id = wx.NewIdRef()
         self._assign_device_id = wx.NewIdRef()
@@ -265,6 +275,8 @@ class MainFrame(wx.Frame):
         self._redo_id = wx.NewIdRef()
         self._shortcut_editor_id = wx.NewIdRef()
         self._jingles_manage_id = wx.NewIdRef()
+
+    def _init_runtime_state(self) -> None:
         self._playlist_hotkey_defaults = self._settings.get_playlist_shortcuts()
         self._playlist_action_ids: Dict[str, int] = {}
         self._action_by_id: Dict[int, str] = {}
@@ -285,14 +297,15 @@ class MainFrame(wx.Frame):
         self._last_music_playlist_id: str | None = None
         self._active_folder_preview: tuple[str, str] | None = None
         self._active_break_item: Dict[str, str] = {}  # playlist_id -> item_id z aktywnym breakiem
-        self._mix_trigger_points: Dict[tuple[str, str], float] = {}  # (playlist_id, item_id) -> absolute mix_at seconds
+        self._mix_trigger_points: Dict[
+            tuple[str, str], float
+        ] = {}  # (playlist_id, item_id) -> absolute mix_at seconds
         self._mix_plans: Dict[tuple[str, str], MixPlan] = {}
         self._auto_mix_tracker = AutoMixTracker()  # wirtualny kursor automix niezależny od UI
         self._auto_mix_busy: Dict[str, bool] = {}  # blokada reentrancji per playlist
         self._last_focus_index: Dict[str, int] = {}
 
-        self._ensure_legacy_hooks()
-
+    def _init_ui(self) -> None:
         self.CreateStatusBar()
         self.SetStatusText(_("Ready"))
         self._announcer = AnnouncementService(self._settings, status_callback=self.SetStatusText)
