@@ -134,7 +134,6 @@ from sara.ui.controllers.playlist_focus import (
     update_active_playlist_styles as _update_active_playlist_styles_impl,
 )
 from sara.ui.controllers.playback_state import (
-    cancel_active_playback as _cancel_active_playback_impl,
     get_playback_context as _get_playback_context_impl,
     get_playing_item_id as _get_playing_item_id_impl,
     stop_playlist_playback as _stop_playlist_playback_impl,
@@ -919,9 +918,6 @@ class MainFrame(wx.Frame):
         fade_duration: float = 0.0,
     ) -> None:
         _stop_playlist_playback_impl(self, playlist_id, mark_played=mark_played, fade_duration=fade_duration)
-
-    def _cancel_active_playback(self, playlist_id: str, mark_played: bool = False) -> None:
-        _cancel_active_playback_impl(self, playlist_id, mark_played=mark_played)
 
     def _announce_event(
         self,
