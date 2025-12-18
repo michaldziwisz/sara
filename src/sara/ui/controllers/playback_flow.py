@@ -20,6 +20,34 @@ from sara.ui.playlist_panel import PlaylistPanel
 logger = logging.getLogger(__name__)
 
 
+def play_item_direct(frame, playlist_id: str, item_id: str, *, panel_type=PlaylistPanel) -> bool:
+    panel = frame._playlists.get(playlist_id)
+    playlist = frame._get_playlist_model(playlist_id)
+    if not isinstance(panel, panel_type) or playlist is None:
+        return False
+    if frame._auto_mix_enabled and playlist.kind is PlaylistKind.MUSIC:
+        return frame._auto_mix_play_next(panel)
+    # Tryb ręczny: jeśli jest ustawiona kolejka (zaznaczenia), ma ona zawsze priorytet nad wskazanym/podświetlonym.
+    if (
+        not frame._auto_mix_enabled
+        and playlist.kind is PlaylistKind.MUSIC
+        and frame._playlist_has_selection(playlist_id)
+    ):
+        return frame._start_next_from_playlist(panel, ignore_ui_selection=True, advance_focus=False)
+    item = playlist.get_item(item_id)
+    if item is None:
+        return False
+    if start_playback(frame, panel, item, restart_playing=True):
+        frame._last_started_item_id[playlist.id] = item.id
+        status_message = _("Playing %s from playlist %s") % (frame._format_track_name(item), playlist.name)
+        frame._announce_event("playback_events", status_message, spoken_message="")
+        if frame._swap_play_select and playlist.kind is PlaylistKind.MUSIC:
+            playlist.clear_selection(item.id)
+            frame._refresh_selection_display(playlist.id)
+        return True
+    return False
+
+
 def start_playback(
     frame,
     panel: PlaylistPanel,
@@ -607,4 +635,3 @@ def handle_playback_finished(frame, playlist_id: str, item_id: str) -> None:
             frame._start_next_from_playlist(panel, ignore_ui_selection=True, advance_focus=False)
         except Exception:
             logger.exception("UI: manual queued fallback after finish failed playlist=%s", playlist_id)
-

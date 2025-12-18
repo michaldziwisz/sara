@@ -42,6 +42,7 @@ from sara.ui.clipboard_service import PlaylistClipboard
 from sara.ui.jingle_controller import JingleController
 from sara.ui.controllers.playback_flow import (
     handle_playback_finished as _handle_playback_finished_impl,
+    play_item_direct as _play_item_direct_impl,
     start_next_from_playlist as _start_next_from_playlist_impl,
     start_playback as _start_playback_impl,
 )
@@ -528,27 +529,7 @@ class MainFrame(wx.Frame):
         self._play_item_direct(playlist_id, item_id)
 
     def _play_item_direct(self, playlist_id: str, item_id: str) -> bool:
-        panel = self._playlists.get(playlist_id)
-        playlist = self._get_playlist_model(playlist_id)
-        if not isinstance(panel, PlaylistPanel) or playlist is None:
-            return False
-        if self._auto_mix_enabled and playlist.kind is PlaylistKind.MUSIC:
-            return self._auto_mix_play_next(panel)
-        # Tryb ręczny: jeśli jest ustawiona kolejka (zaznaczenia), ma ona zawsze priorytet nad wskazanym/podświetlonym.
-        if not self._auto_mix_enabled and playlist.kind is PlaylistKind.MUSIC and self._playlist_has_selection(playlist_id):
-            return self._start_next_from_playlist(panel, ignore_ui_selection=True, advance_focus=False)
-        item = playlist.get_item(item_id)
-        if item is None:
-            return False
-        if self._start_playback(panel, item, restart_playing=True):
-            self._last_started_item_id[playlist.id] = item.id
-            status_message = _("Playing %s from playlist %s") % (self._format_track_name(item), playlist.name)
-            self._announce_event("playback_events", status_message, spoken_message="")
-            if self._swap_play_select and playlist.kind is PlaylistKind.MUSIC:
-                playlist.clear_selection(item.id)
-                self._refresh_selection_display(playlist.id)
-            return True
-        return False
+        return _play_item_direct_impl(self, playlist_id, item_id, panel_type=PlaylistPanel)
 
     def _on_new_playlist(self, event: wx.CommandEvent) -> None:
         self._create_playlist_dialog(event)
