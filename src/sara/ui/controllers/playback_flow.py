@@ -13,13 +13,62 @@ import wx
 
 from sara.core.i18n import gettext as _
 from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistKind
+from sara.ui.controllers.playback_next_item import decide_next_item
 from sara.ui.nvda_sleep import notify_nvda_play_next
 from sara.ui.playlist_panel import PlaylistPanel
 
-from sara.ui.controllers.playback_next_item import decide_next_item
-
 
 logger = logging.getLogger(__name__)
+
+
+def _call_after_if_app(func, *args) -> None:
+    app = wx.GetApp()
+    if app:
+        wx.CallAfter(func, *args)
+    else:  # defensive: allow playback controller use without wx.App
+        func(*args)
+
+
+def _prepare_mix_schedule(
+    frame,
+    *,
+    playlist,
+    item: PlaylistItem,
+) -> tuple[float | None, float, float, float, Callable[[], None] | None]:
+    base_cue: float = item.cue_in_seconds or 0.0
+    effective_duration: float = item.effective_duration_seconds
+
+    if playlist.kind is PlaylistKind.MUSIC and item.break_after:
+        return None, 0.0, base_cue, effective_duration, None
+
+    effective_override = None
+    ctx = frame._playback.contexts.get((playlist.id, item.id))
+    if ctx:
+        getter = getattr(ctx.player, "get_length_seconds", None)
+        if getter:
+            try:
+                total_len = float(getter())
+                effective_override = max(0.0, total_len - base_cue)
+                length_diff = abs(effective_override - effective_duration)
+                if length_diff > 0.5:
+                    logger.debug(
+                        "UI: adjusting mix timing with player length playlist=%s item=%s meta_eff=%.3f real_eff=%.3f",
+                        playlist.id,
+                        item.id,
+                        effective_duration,
+                        effective_override,
+                    )
+            except Exception:
+                pass
+
+    mix_trigger_seconds, fade_seconds, base_cue, effective_duration = frame._resolve_mix_timing(
+        item,
+        effective_duration_override=effective_override,
+    )
+    on_mix_trigger: Callable[[], None] | None = lambda pl_id=playlist.id, it_id=item.id: _call_after_if_app(
+        frame._auto_mix_now_from_callback, pl_id, it_id
+    )
+    return mix_trigger_seconds, fade_seconds, base_cue, effective_duration, on_mix_trigger
 
 
 def play_item_direct(frame, playlist_id: str, item_id: str, *, panel_type=PlaylistPanel) -> bool:
@@ -127,18 +176,10 @@ def start_playback(
                 frame._stop_playlist_playback(playlist.id, mark_played=True, fade_duration=fade_seconds)
 
     def _on_finished(finished_item_id: str) -> None:
-        app = wx.GetApp()
-        if app:
-            wx.CallAfter(frame._handle_playback_finished, playlist.id, finished_item_id)
-        else:  # defensive: allow playback controller use without wx.App
-            frame._handle_playback_finished(playlist.id, finished_item_id)
+        _call_after_if_app(frame._handle_playback_finished, playlist.id, finished_item_id)
 
     def _on_progress(progress_item_id: str, seconds: float) -> None:
-        app = wx.GetApp()
-        if app:
-            wx.CallAfter(frame._handle_playback_progress, playlist.id, progress_item_id, seconds)
-        else:
-            frame._handle_playback_progress(playlist.id, progress_item_id, seconds)
+        _call_after_if_app(frame._handle_playback_progress, playlist.id, progress_item_id, seconds)
 
     start_seconds = item.cue_in_seconds or 0.0
     logger.debug("UI: invoking playback controller for item %s at %.3fs", item.id, start_seconds)
@@ -168,41 +209,11 @@ def start_playback(
             overlap_trigger=prefer_overlap,
         )
 
-    mix_trigger_seconds: float | None
-    fade_seconds: float = 0.0
-    base_cue: float = item.cue_in_seconds or 0.0
-    effective_duration: float = item.effective_duration_seconds
-
-    if playlist.kind is PlaylistKind.MUSIC and item.break_after:
-        mix_trigger_seconds = None
-        on_mix_trigger: Callable[[], None] | None = None
-    else:
-        effective_override = None
-        ctx = frame._playback.contexts.get((playlist.id, item.id))
-        if ctx:
-            getter = getattr(ctx.player, "get_length_seconds", None)
-            if getter:
-                try:
-                    total_len = float(getter())
-                    effective_override = max(0.0, total_len - base_cue)
-                    length_diff = abs(effective_override - effective_duration)
-                    if length_diff > 0.5:
-                        logger.debug(
-                            "UI: adjusting mix timing with player length playlist=%s item=%s meta_eff=%.3f real_eff=%.3f",
-                            playlist.id,
-                            item.id,
-                            effective_duration,
-                            effective_override,
-                        )
-                except Exception:
-                    pass
-        mix_trigger_seconds, fade_seconds, base_cue, effective_duration = frame._resolve_mix_timing(
-            item,
-            effective_duration_override=effective_override,
-        )
-        on_mix_trigger = lambda pl_id=playlist.id, it_id=item.id: wx.CallAfter(
-            frame._auto_mix_now_from_callback, pl_id, it_id
-        )
+    mix_trigger_seconds, fade_seconds, base_cue, effective_duration, on_mix_trigger = _prepare_mix_schedule(
+        frame,
+        playlist=playlist,
+        item=item,
+    )
 
     try:
         result = frame._playback.start_item(
