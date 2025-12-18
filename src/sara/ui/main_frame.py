@@ -45,6 +45,14 @@ from sara.ui.controllers.playback_flow import (
     start_next_from_playlist as _start_next_from_playlist_impl,
     start_playback as _start_playback_impl,
 )
+from sara.ui.controllers.playback_navigation import (
+    derive_next_play_index as _derive_next_play_index_impl,
+    handle_playback_progress as _handle_playback_progress_impl,
+    index_of_item as _index_of_item_impl,
+    manual_fade_duration as _manual_fade_duration_impl,
+    on_global_play_next as _on_global_play_next_impl,
+    play_next_alternate as _play_next_alternate_impl,
+)
 from sara.ui.controllers.mix_points_controller import (
     on_mix_points_configure as _on_mix_points_configure_impl,
     propagate_mix_points_for_path as _propagate_mix_points_for_path_impl,
@@ -796,111 +804,23 @@ class MainFrame(wx.Frame):
         )
 
     def _derive_next_play_index(self, playlist: PlaylistModel) -> int | None:
-        if not playlist.items:
-            return None
-        last_id = self._last_started_item_id.get(playlist.id)
-        if not last_id:
-            return 0
-        last_index = self._index_of_item(playlist, last_id)
-        if last_index is None:
-            return 0
-        return (last_index + 1) % len(playlist.items)
+        return _derive_next_play_index_impl(self, playlist)
 
     @staticmethod
     def _index_of_item(playlist: PlaylistModel, item_id: str | None) -> int | None:
-        if not item_id:
-            return None
-        for idx, entry in enumerate(playlist.items):
-            if entry.id == item_id:
-                return idx
-        return None
+        return _index_of_item_impl(playlist, item_id)
 
     def _play_next_alternate(self) -> bool:
-        ordered_ids = [playlist_id for playlist_id in self._layout.state.order if playlist_id in self._playlists]
-        if not ordered_ids:
-            return False
-
-        page_count = len(ordered_ids)
-        start_index = self._current_index % page_count
-        rotated_order = [ordered_ids[(start_index + offset) % page_count] for offset in range(page_count)]
-
-        for playlist_id in rotated_order:
-            panel = self._playlists.get(playlist_id)
-            if panel is None:
-                continue
-            if self._start_next_from_playlist(panel):
-                try:
-                    index = ordered_ids.index(playlist_id)
-                except ValueError:
-                    index = 0
-                self._current_index = (index + 1) % page_count
-                self._layout.set_current(playlist_id)
-                self._update_active_playlist_styles()
-                self._announce_event("playlist", f"Aktywna playlista {panel.model.name}")
-                return True
-
-        return False
+        return _play_next_alternate_impl(self)
 
     def _on_global_play_next(self, event: wx.CommandEvent) -> None:
-        if not self._playlists:
-            self._announce_event("playlist", _("No playlists available"))
-            return
-
-        panel, focus = self._active_news_panel()
-        if panel:
-            if panel.activate_toolbar_control(focus):
-                return
-            if panel.consume_space_shortcut():
-                return
-            if panel.is_edit_control(focus):
-                return
-            return
-
-        if self._alternate_play_next:
-            if not self._play_next_alternate():
-                self._announce_event("playback_events", _("No scheduled tracks available"))
-            return
-
-        panel = self._get_current_music_panel()
-        if panel is None:
-            self._announce_event("playlist", _("Select a playlist first"))
-            return
-
-        # Automix: Play Next zawsze gra kolejny pending w kolejności; break zatrzymuje i wybieramy pending za ostatnim PLAYED.
-        if self._auto_mix_enabled and panel.model.kind is PlaylistKind.MUSIC:
-            if self._auto_mix_play_next(panel):
-                return
-            self._announce_event("playback_events", _("No scheduled tracks available"))
-            return
-
-        if not self._start_next_from_playlist(panel):
-            self._announce_event("playback_events", _("No scheduled tracks available"))
+        _on_global_play_next_impl(self, event)
 
     def _handle_playback_finished(self, playlist_id: str, item_id: str) -> None:
         _handle_playback_finished_impl(self, playlist_id, item_id)
 
     def _handle_playback_progress(self, playlist_id: str, item_id: str, seconds: float) -> None:
-        context_entry = self._playback.contexts.get((playlist_id, item_id))
-        if not context_entry:
-            return
-        panel = self._playlists.get(playlist_id)
-        if not panel:
-            return
-        # automix: ignoruj wczesne wyzwalanie z powodu UI selection – sekwencją zarządza tracker
-        if self._auto_mix_enabled and panel.model.kind is PlaylistKind.MUSIC:
-            queued_selection = False
-        item = next((track for track in panel.model.items if track.id == item_id), None)
-        if not item:
-            return
-        item.update_progress(seconds)
-        panel.update_progress(item_id)
-        self._maybe_focus_playing_item(panel, item_id)
-        self._consider_intro_alert(panel, item, context_entry, seconds)
-        self._consider_track_end_alert(panel, item, context_entry)
-
-        queued_selection = self._playlist_has_selection(playlist_id)
-        if self._auto_mix_enabled or queued_selection:
-            self._auto_mix_state_process(panel, item, context_entry, seconds, queued_selection)
+        _handle_playback_progress_impl(self, playlist_id, item_id, seconds)
 
     def _auto_mix_state_process(
         self,
@@ -931,30 +851,7 @@ class MainFrame(wx.Frame):
         _auto_mix_now_impl(self, playlist, item, panel)
 
     def _manual_fade_duration(self, playlist: PlaylistModel, item: PlaylistItem | None) -> float:
-        fade_seconds = max(0.0, self._fade_duration)
-        if item is None:
-            return fade_seconds
-        plans = getattr(self, "_mix_plans", {}) or {}
-        plan = plans.get((playlist.id, item.id))
-        effective_duration = None
-        if plan:
-            fade_seconds = max(0.0, plan.fade_seconds)
-            effective_duration = plan.effective_duration
-        else:
-            effective_override = self._measure_effective_duration(playlist, item)
-            _mix_at, resolved_fade, _base_cue, effective_duration = self._resolve_mix_timing(
-                item,
-                effective_duration_override=effective_override,
-            )
-            fade_seconds = max(0.0, resolved_fade)
-        if effective_duration is None:
-            effective_duration = item.effective_duration_seconds
-        if effective_duration is not None:
-            current_pos = getattr(item, "current_position", 0.0) or 0.0
-            current_pos = max(0.0, current_pos)
-            remaining = max(0.0, effective_duration - current_pos)
-            fade_seconds = min(fade_seconds, remaining)
-        return fade_seconds
+        return _manual_fade_duration_impl(self, playlist, item)
 
     def _on_playlist_hotkey(self, event: wx.CommandEvent) -> None:
         _handle_playlist_hotkey_impl(self, event)
