@@ -28,7 +28,6 @@ from sara.core.mix_planner import (
     register_mix_plan as _register_mix_plan_impl,
     resolve_mix_timing as _resolve_mix_timing_impl,
 )
-from sara.core.mix_points import propagate_mix_points_for_path as _propagate_mix_points_for_path_impl
 from sara.core.playlist import PlaylistItem, PlaylistKind, PlaylistModel
 from sara.core.shortcuts import get_shortcut
 from sara.ui.undo import InsertOperation, MoveOperation, RemoveOperation, UndoAction
@@ -49,7 +48,10 @@ from sara.ui.controllers.playback_flow import (
     start_next_from_playlist as _start_next_from_playlist_impl,
     start_playback as _start_playback_impl,
 )
-from sara.ui.controllers.mix_points_controller import on_mix_points_configure as _on_mix_points_configure_impl
+from sara.ui.controllers.mix_points_controller import (
+    on_mix_points_configure as _on_mix_points_configure_impl,
+    propagate_mix_points_for_path as _propagate_mix_points_for_path_impl,
+)
 from sara.ui.controllers.playlist_hotkeys import handle_playlist_hotkey as _handle_playlist_hotkey_impl
 from sara.ui.controllers.alerts import (
     announce_intro_remaining as _announce_intro_remaining_impl,
@@ -818,43 +820,13 @@ class MainFrame(wx.Frame):
         source_playlist_id: str,
         source_item_id: str,
     ) -> None:
-        playlists = []
-        for panel in self._playlists.values():
-            playlist = getattr(panel, "model", None)
-            if playlist is not None:
-                playlists.append(playlist)
-
-        updated = _propagate_mix_points_for_path_impl(
-            playlists,
+        _propagate_mix_points_for_path_impl(
+            self,
             path=path,
             mix_values=mix_values,
             source_playlist_id=source_playlist_id,
             source_item_id=source_item_id,
         )
-
-        context_map = getattr(self._playback, "contexts", {}) if hasattr(self._playback, "contexts") else {}
-        for playlist_id, item_ids in updated.items():
-            panel = self._playlists.get(playlist_id)
-            if panel is None:
-                continue
-            playlist = getattr(panel, "model", None)
-            if playlist is None:
-                continue
-            for item_id in item_ids:
-                track = playlist.get_item(item_id)
-                if not track:
-                    continue
-                key = (playlist_id, track.id)
-                if context_map.get(key):
-                    self._apply_mix_trigger_to_playback(playlist_id=playlist_id, item=track, panel=panel)
-                else:
-                    self._clear_mix_plan(playlist_id, track.id)
-
-            if hasattr(panel, "refresh"):
-                try:
-                    panel.refresh()
-                except TypeError:
-                    panel.refresh()
 
     def _start_playback(
         self,

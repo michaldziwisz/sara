@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import wx
 
 from sara.core.i18n import gettext as _
 from sara.core.media_metadata import save_loop_metadata, save_mix_metadata
+from sara.core.mix_points import propagate_mix_points_for_path as _propagate_mix_points_for_path_impl
 from sara.ui.dialogs.mix_point_dialog import MixPointEditorDialog
 
 
@@ -121,3 +124,49 @@ def on_mix_points_configure(frame, playlist_id: str, item_id: str) -> None:
             frame._apply_loop_setting_to_playback(playlist_id=playlist_id, item_id=item.id)
             panel.refresh()
 
+
+def propagate_mix_points_for_path(
+    frame,
+    *,
+    path: Path,
+    mix_values: dict[str, float | None],
+    source_playlist_id: str,
+    source_item_id: str,
+) -> None:
+    playlists = []
+    for panel in frame._playlists.values():
+        playlist = getattr(panel, "model", None)
+        if playlist is not None:
+            playlists.append(playlist)
+
+    updated = _propagate_mix_points_for_path_impl(
+        playlists,
+        path=path,
+        mix_values=mix_values,
+        source_playlist_id=source_playlist_id,
+        source_item_id=source_item_id,
+    )
+
+    context_map = getattr(frame._playback, "contexts", {}) if hasattr(frame._playback, "contexts") else {}
+    for playlist_id, item_ids in updated.items():
+        panel = frame._playlists.get(playlist_id)
+        if panel is None:
+            continue
+        playlist = getattr(panel, "model", None)
+        if playlist is None:
+            continue
+        for item_id in item_ids:
+            track = playlist.get_item(item_id)
+            if not track:
+                continue
+            key = (playlist_id, track.id)
+            if context_map.get(key):
+                frame._apply_mix_trigger_to_playback(playlist_id=playlist_id, item=track, panel=panel)
+            else:
+                frame._clear_mix_plan(playlist_id, track.id)
+
+        if hasattr(panel, "refresh"):
+            try:
+                panel.refresh()
+            except TypeError:
+                panel.refresh()
