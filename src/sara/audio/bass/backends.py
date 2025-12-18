@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from typing import List
 
-from .asio_player import BassAsioPlayer
 from .manager import BassManager
 from .native import BassNotAvailable
 from .player_base import BassPlayer
@@ -74,6 +73,8 @@ class BassAsioBackend:
     def create_player(self, device: "AudioDevice") -> BassAsioPlayer:
         if not self.is_available or self._manager is None:
             raise BassNotAvailable("BASS ASIO backend niedostępny")
+        from .asio_player import BassAsioPlayer
+
         index = device.raw_index
         channel_start = 0
         try:

@@ -40,9 +40,10 @@ def measure_effective_duration(frame: Any, playlist: PlaylistModel, item: Playli
 
     stream = 0
     manager = None
+    device_context = None
     try:
         manager = BassManager.instance()
-        manager.ensure_device(0)
+        device_context = manager.acquire_device(0)
         stream = manager.stream_create_file(0, item.path, decode=True, set_device=True)
         length_seconds = manager.channel_get_length_seconds(stream)
     except Exception as exc:  # pylint: disable=broad-except
@@ -52,6 +53,11 @@ def measure_effective_duration(frame: Any, playlist: PlaylistModel, item: Playli
         if stream and manager:
             try:
                 manager.stream_free(stream)
+            except Exception:
+                pass
+        if device_context:
+            try:
+                device_context.release()
             except Exception:
                 pass
 

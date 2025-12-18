@@ -8,13 +8,6 @@ import warnings
 from typing import Dict, List
 
 from sara.audio.mock_backend import MockBackendProvider, MockPlayer
-from sara.audio.resampling import _resample_to_length
-from sara.audio.sounddevice_backend import (
-    AsioPlayer,
-    SoundDeviceBackend,
-    SoundDevicePlayer,
-    WasapiPlayer,
-)
 from sara.audio.types import AudioDevice, BackendProvider, BackendType, Player
 from sara.core.env import is_e2e_mode
 
@@ -85,6 +78,8 @@ class PycawBackend:
 
     def create_player(self, device: AudioDevice) -> Player:
         try:
+            from sara.audio.sounddevice_backend import WasapiPlayer
+
             return WasapiPlayer(device)
         except Exception as exc:  # pylint: disable=broad-except
             logger.warning("Nie udało się stworzyć playera WASAPI dla %s: %s", device.name, exc)
@@ -110,6 +105,8 @@ class AsioBackend:
 
     def create_player(self, device: AudioDevice) -> Player:
         try:
+            from sara.audio.sounddevice_backend import AsioPlayer
+
             return AsioPlayer(device)
         except Exception as exc:  # pylint: disable=broad-except
             logger.warning("Nie udało się stworzyć playera ASIO dla %s: %s", device.name, exc)
@@ -234,3 +231,20 @@ class AudioEngine:
                 except Exception as exc:  # pylint: disable=broad-except
                     logger.debug("Nie udało się wyczyścić callbacku playera: %s", exc)
 
+
+def __getattr__(name: str):  # pragma: no cover - import-time helper
+    if name in {"AsioPlayer", "SoundDeviceBackend", "SoundDevicePlayer", "WasapiPlayer"}:
+        from sara.audio.sounddevice_backend import (
+            AsioPlayer,
+            SoundDeviceBackend,
+            SoundDevicePlayer,
+            WasapiPlayer,
+        )
+
+        return {
+            "AsioPlayer": AsioPlayer,
+            "SoundDeviceBackend": SoundDeviceBackend,
+            "SoundDevicePlayer": SoundDevicePlayer,
+            "WasapiPlayer": WasapiPlayer,
+        }[name]
+    raise AttributeError(name)
