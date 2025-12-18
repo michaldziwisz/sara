@@ -25,7 +25,7 @@ from sara.core.mix_planner import (
 )
 from sara.core.playlist import PlaylistItem, PlaylistKind, PlaylistModel
 from sara.core.shortcuts import get_shortcut
-from sara.ui.undo import InsertOperation, MoveOperation, RemoveOperation, UndoAction
+from sara.ui.undo import UndoAction
 from sara.ui.undo_manager import UndoManager
 from sara.ui.playlist_panel import PlaylistPanel
 from sara.ui.playlist_layout import PlaylistLayoutManager
@@ -836,17 +836,6 @@ class MainFrame(wx.Frame):
 
     def _apply_undo_callback(self, action: UndoAction, reverse: bool) -> bool:
         return _apply_undo_callback_impl(self, action, reverse)
-
-    def _announce_operation(self, operation, *, undo: bool) -> None:
-        if isinstance(operation, InsertOperation):
-            message = _("Undo paste") if undo else _("Redo paste")
-        elif isinstance(operation, RemoveOperation):
-            message = _("Undo delete") if undo else _("Redo delete")
-        elif isinstance(operation, MoveOperation):
-            message = _("Undo move") if undo else _("Redo move")
-        else:
-            message = _("Undo operation") if undo else _("Redo operation")
-        self._announce_event("undo_redo", message)
 
     def _on_copy_selection(self, _event: wx.CommandEvent) -> None:
         _on_copy_selection_impl(self, _event)
