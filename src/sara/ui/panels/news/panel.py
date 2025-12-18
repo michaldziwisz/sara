@@ -20,6 +20,7 @@ from . import toolbar_navigation
 from . import read_mode
 from . import device_selection
 from . import line_length
+from . import shortcuts
 
 
 class NewsPlaylistPanel(wx.Panel):
@@ -186,75 +187,7 @@ class NewsPlaylistPanel(wx.Panel):
         device_selection.on_device_selected(self, event)
 
     def _handle_char_hook(self, event: wx.KeyEvent) -> None:
-        keycode = event.GetKeyCode()
-        target = event.GetEventObject()
-
-        if event.ControlDown() and not event.AltDown():
-            if keycode in (ord("E"), ord("e")):
-                self._toggle_mode(None)
-                event.StopPropagation()
-                return
-            if keycode in (ord("O"), ord("o")):
-                self._on_load_service(None)
-                event.StopPropagation()
-                return
-            if keycode in (ord("S"), ord("s")):
-                self._on_save_service(None)
-                event.StopPropagation()
-                return
-            if keycode in (ord("P"), ord("p")):
-                if event.ShiftDown():
-                    self._edit_controller.stop_preview()
-                else:
-                    self._edit_controller.preview_audio_at_caret()
-                event.StopPropagation()
-                return
-
-        if self._mode == "read":
-            focused = wx.Window.FindFocus()
-            if focused is self._read_text_ctrl:
-                if self._handle_read_action(event):
-                    event.StopPropagation()
-                    return
-                if keycode == wx.WXK_TAB and not event.ControlDown() and not event.AltDown():
-                    if event.ShiftDown():
-                        self.Navigate(wx.NavigationKeyEvent.IsBackward)
-                    else:
-                        if self._focus_toolbar_from_text(backwards=False):
-                            event.StopPropagation()
-                            return
-                    event.StopPropagation()
-                    return
-            event.Skip()
-            return
-
-        if target is not self._edit_ctrl:
-            event.Skip()
-            return
-
-        if keycode == wx.WXK_TAB and not event.ControlDown() and not event.AltDown():
-            if event.ShiftDown():
-                self.Navigate(wx.NavigationKeyEvent.IsBackward)
-            else:
-                if self._focus_toolbar_from_text(backwards=False):
-                    event.StopPropagation()
-                    return
-            event.StopPropagation()
-            return
-
-        if event.ControlDown() and not event.AltDown() and keycode in (ord("V"), ord("v")):
-            if self._edit_controller.paste_audio_from_clipboard(silent_if_empty=True):
-                event.StopPropagation()
-                return
-            # allow default paste behaviour when clipboard has text only
-
-        if not event.ControlDown() and not event.AltDown() and keycode == wx.WXK_SPACE:
-            self._suppress_play_shortcut = True
-            self._edit_ctrl.WriteText(" ")
-            event.StopPropagation()
-            return
-
-        event.Skip()
+        shortcuts.handle_char_hook(self, event)
 
     def _toggle_mode(self, _event: wx.Event | None) -> None:
         self._remember_caret_position()
