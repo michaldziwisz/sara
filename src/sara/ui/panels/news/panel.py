@@ -19,6 +19,7 @@ from .service_io import NewsServiceIO
 from . import toolbar_navigation
 from . import read_mode
 from . import device_selection
+from . import line_length
 
 
 class NewsPlaylistPanel(wx.Panel):
@@ -342,28 +343,16 @@ class NewsPlaylistPanel(wx.Panel):
         wx.MessageBox(message, _("Error"), parent=self)
 
     def _normalize_line_length(self, value: int) -> int:
-        minimum, maximum = self._line_length_bounds
-        normalized = max(minimum, value)
-        if maximum > minimum:
-            normalized = min(normalized, maximum)
-        return normalized
+        return line_length.normalize_line_length(self, value)
 
     def _sync_line_length_spin(self) -> None:
-        if self._line_length_spin:
-            self._line_length_spin.SetValue(self._normalize_line_length(self._get_line_length()))
+        line_length.sync_line_length_spin(self)
 
     def _handle_line_length_change(self, _event: wx.Event | None) -> None:
-        if not self._line_length_spin or not self._on_line_length_change:
-            return
-        value = self._normalize_line_length(self._line_length_spin.GetValue())
-        self._line_length_spin.SetValue(value)
-        self._on_line_length_change(value)
-        self.refresh_configuration()
+        line_length.handle_line_length_change(self, _event)
 
     def _handle_line_apply(self, _event: wx.Event) -> None:
-        self._handle_line_length_change(None)
-        if self._on_line_length_apply:
-            self._on_line_length_apply()
+        line_length.handle_line_apply(self, _event)
 
     def activate_toolbar_control(self, window: wx.Window | None) -> bool:
         return toolbar_navigation.activate_toolbar_control(self, window)
