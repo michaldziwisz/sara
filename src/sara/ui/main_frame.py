@@ -2,21 +2,14 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
-
 import wx
 
-from sara.audio.engine import Player
 from sara.core.app_state import AppState
 from sara.core.config import SettingsManager
 from sara.core.i18n import gettext as _
 from sara.core.hotkeys import HotkeyAction
-from sara.core.media_metadata import (
-    save_replay_gain_metadata,
-)
+from sara.core.media_metadata import save_replay_gain_metadata
 from sara.core.mix_planner import (
-    MixPlan,
     clear_mix_plan as _clear_mix_plan_impl,
     mark_mix_triggered as _mark_mix_triggered_impl,
     register_mix_plan as _register_mix_plan_impl,
@@ -24,171 +17,31 @@ from sara.core.mix_planner import (
 )
 from sara.core.playlist import PlaylistItem, PlaylistKind, PlaylistModel
 from sara.core.shortcuts import get_shortcut
-from sara.ui.undo import UndoAction
+from sara.ui import mix_preview as _mix_preview
+from sara.ui import mix_runtime as _mix_runtime
 from sara.ui.playlist_panel import PlaylistPanel
-from sara.ui.playback_controller import PlaybackContext
-from sara.ui.controllers.frame_bootstrap import (
-    init_audio_controllers as _init_audio_controllers_impl,
-    init_command_ids as _init_command_ids_impl,
-    init_playlist_state as _init_playlist_state_impl,
-    init_runtime_state as _init_runtime_state_impl,
-    init_settings as _init_settings_impl,
-    init_ui as _init_ui_impl,
-)
-from sara.ui.controllers.playback_flow import (
-    handle_playback_finished as _handle_playback_finished_impl,
-    play_item_direct as _play_item_direct_impl,
-    start_next_from_playlist as _start_next_from_playlist_impl,
-    start_playback as _start_playback_impl,
-)
-from sara.ui.controllers.playback_navigation import (
-    adjust_duration_and_mix_trigger as _adjust_duration_and_mix_trigger_impl,
-    derive_next_play_index as _derive_next_play_index_impl,
-    handle_playback_progress as _handle_playback_progress_impl,
-    index_of_item as _index_of_item_impl,
-    manual_fade_duration as _manual_fade_duration_impl,
-    on_global_play_next as _on_global_play_next_impl,
-    play_next_alternate as _play_next_alternate_impl,
-)
-from sara.ui.controllers.mix_points_controller import (
-    on_mix_points_configure as _on_mix_points_configure_impl,
-    propagate_mix_points_for_path as _propagate_mix_points_for_path_impl,
-)
-from sara.ui.controllers.playlist_hotkeys import handle_playlist_hotkey as _handle_playlist_hotkey_impl
-from sara.ui.controllers.alerts import (
-    announce_intro_remaining as _announce_intro_remaining_impl,
-    announce_track_end_remaining as _announce_track_end_remaining_impl,
-    cleanup_intro_alert_player as _cleanup_intro_alert_player_impl,
-    cleanup_track_end_alert_player as _cleanup_track_end_alert_player_impl,
-    compute_intro_remaining as _compute_intro_remaining_impl,
-    consider_intro_alert as _consider_intro_alert_impl,
-    consider_track_end_alert as _consider_track_end_alert_impl,
-    play_intro_alert as _play_intro_alert_impl,
-    play_track_end_alert as _play_track_end_alert_impl,
-)
-from sara.ui.controllers.automix_flow import (
-    auto_mix_play_next as _auto_mix_play_next_impl,
-    auto_mix_start_index as _auto_mix_start_index_impl,
-    preferred_auto_mix_index as _preferred_auto_mix_index_impl,
-    set_auto_mix_enabled as _set_auto_mix_enabled_impl,
-)
-from sara.ui.controllers.playlist_io import (
-    on_export_playlist as _on_export_playlist_impl,
-    on_import_playlist as _on_import_playlist_impl,
-)
-from sara.ui.controllers.playlists_ui import (
-    add_playlist as _add_playlist_impl,
-    apply_playlist_order as _apply_playlist_order_impl,
-    create_ui as _create_ui_impl,
-    remove_playlist_by_id as _remove_playlist_by_id_impl,
-)
-from sara.ui.controllers.playlists_management import (
-    configure_playlist_devices as _configure_playlist_devices_impl,
-    finalize_add_tracks as _finalize_add_tracks_impl,
-    on_add_tracks as _on_add_tracks_impl,
-    on_assign_device as _on_assign_device_impl,
-    on_manage_playlists as _on_manage_playlists_impl,
-    on_remove_playlist as _on_remove_playlist_impl,
-    prompt_new_playlist as _prompt_new_playlist_impl,
-)
-from sara.ui.controllers.edit_actions import (
-    apply_undo_callback as _apply_undo_callback_impl,
-    finalize_clipboard_paste as _finalize_clipboard_paste_impl,
-    move_selection as _move_selection_impl,
-    on_copy_selection as _on_copy_selection_impl,
-    on_cut_selection as _on_cut_selection_impl,
-    on_delete_selection as _on_delete_selection_impl,
-    on_paste_selection as _on_paste_selection_impl,
-    on_redo as _on_redo_impl,
-    on_undo as _on_undo_impl,
-    push_undo_action as _push_undo_action_impl,
-)
-from sara.ui.controllers.folder_playlists import (
-    handle_folder_preview as _handle_folder_preview_impl,
-    load_folder_playlist as _load_folder_playlist_impl,
-    reload_folder_playlist as _reload_folder_playlist_impl,
-    select_folder_for_playlist as _select_folder_for_playlist_impl,
-    send_folder_items_to_music as _send_folder_items_to_music_impl,
-    stop_preview as _stop_preview_impl,
-)
-from sara.ui.controllers.item_loading import (
-    collect_files_from_paths as _collect_files_from_paths_impl,
-    create_items_from_m3u_entries as _create_items_from_m3u_entries_impl,
-    create_items_from_paths as _create_items_from_paths_impl,
-    load_items_from_sources as _load_items_from_sources_impl,
-    load_playlist_item as _load_playlist_item_impl,
-    metadata_worker_count as _metadata_worker_count_impl,
-    run_item_loader as _run_item_loader_impl,
-)
-from sara.ui.controllers.playlist_focus import (
-    active_news_panel as _active_news_panel_impl,
-    cycle_playlist_focus as _cycle_playlist_focus_impl,
-    focus_playlist_panel as _focus_playlist_panel_impl,
-    focused_playlist_id as _focused_playlist_id_impl,
-    get_current_playlist_panel as _get_current_playlist_panel_impl,
-    handle_focus_click as _handle_focus_click_impl,
-    maybe_focus_playing_item as _maybe_focus_playing_item_impl,
-    on_playlist_focus as _on_playlist_focus_impl,
-    on_playlist_selection_change as _on_playlist_selection_change_impl,
-    on_toggle_selection as _on_toggle_selection_impl,
-    refresh_news_panels as _refresh_news_panels_impl,
-    update_active_playlist_styles as _update_active_playlist_styles_impl,
-)
-from sara.ui.controllers.playback_state import (
-    get_playback_context as _get_playback_context_impl,
-    get_playing_item_id as _get_playing_item_id_impl,
-    stop_playlist_playback as _stop_playlist_playback_impl,
-    supports_mix_trigger as _supports_mix_trigger_impl,
-)
-from sara.ui.controllers.tools_dialogs import (
-    on_edit_shortcuts as _on_edit_shortcuts_impl,
-    on_jingles as _on_jingles_impl,
-    on_options as _on_options_impl,
-)
-from sara.ui.controllers.playlist_mutations import (
-    remove_item_from_playlist as _remove_item_from_playlist_impl,
-    remove_items as _remove_items_impl,
-)
-from sara.ui.controllers.playlist_selection import (
-    get_selected_context as _get_selected_context_impl,
-    get_selected_items as _get_selected_items_impl,
-)
-from sara.ui.controllers.clipboard_helpers import (
-    create_item_from_serialized as _create_item_from_serialized_impl,
-    get_system_clipboard_paths as _get_system_clipboard_paths_impl,
-    serialize_items as _serialize_items_impl,
-    set_system_clipboard_paths as _set_system_clipboard_paths_impl,
-)
-from sara.ui.controllers.loop_and_remaining import (
-    active_playlist_item as _active_playlist_item_impl,
-    apply_loop_setting_to_playback as _apply_loop_setting_to_playback_impl,
-    on_loop_info as _on_loop_info_impl,
-    on_toggle_loop_playback as _on_toggle_loop_playback_impl,
-    on_track_remaining as _on_track_remaining_impl,
-    resolve_remaining_playback as _resolve_remaining_playback_impl,
-    sync_loop_mix_trigger as _sync_loop_mix_trigger_impl,
-)
-from sara.ui.controllers.menu_and_shortcuts import (
-    configure_accelerators as _configure_accelerators_impl,
-    create_menu_bar as _create_menu_bar_impl,
-    handle_global_char_hook as _handle_global_char_hook_impl,
-    update_shortcut_menu_labels as _update_shortcut_menu_labels_impl,
-)
-from sara.ui.controllers.news_audio import (
-    news_device_entries as _news_device_entries_impl,
-    play_news_audio_clip as _play_news_audio_clip_impl,
-    preview_news_clip as _preview_news_clip_impl,
-)
-from sara.ui.mix_preview import (
-    measure_effective_duration as _measure_effective_duration_impl,
-    preview_mix_with_next as _preview_mix_with_next_impl,
-)
-from sara.ui.mix_runtime import (
-    apply_mix_trigger_to_playback as _apply_mix_trigger_to_playback_impl,
-    auto_mix_now_from_callback as _auto_mix_now_from_callback_impl,
-    auto_mix_now as _auto_mix_now_impl,
-    auto_mix_state_process as _auto_mix_state_process_impl,
-)
+from sara.ui.controllers import alerts as _alerts
+from sara.ui.controllers import automix_flow as _automix_flow
+from sara.ui.controllers import clipboard_helpers as _clipboard_helpers
+from sara.ui.controllers import edit_actions as _edit_actions
+from sara.ui.controllers import folder_playlists as _folder_playlists
+from sara.ui.controllers import frame_bootstrap as _frame_bootstrap
+from sara.ui.controllers import item_loading as _item_loading
+from sara.ui.controllers import loop_and_remaining as _loop_and_remaining
+from sara.ui.controllers import menu_and_shortcuts as _menu_and_shortcuts
+from sara.ui.controllers import mix_points_controller as _mix_points_controller
+from sara.ui.controllers import news_audio as _news_audio
+from sara.ui.controllers import playback_flow as _playback_flow
+from sara.ui.controllers import playback_navigation as _playback_navigation
+from sara.ui.controllers import playback_state as _playback_state
+from sara.ui.controllers import playlist_focus as _playlist_focus
+from sara.ui.controllers import playlist_hotkeys as _playlist_hotkeys
+from sara.ui.controllers import playlist_io as _playlist_io
+from sara.ui.controllers import playlist_mutations as _playlist_mutations
+from sara.ui.controllers import playlist_selection as _playlist_selection
+from sara.ui.controllers import playlists_management as _playlists_management
+from sara.ui.controllers import playlists_ui as _playlists_ui
+from sara.ui.controllers import tools_dialogs as _tools_dialogs
 
 
 class MainFrame(wx.Frame):
@@ -196,115 +49,142 @@ class MainFrame(wx.Frame):
 
     TITLE = "SARA"
 
-    _init_settings = _init_settings_impl
-    _init_playlist_state = _init_playlist_state_impl
-    _init_audio_controllers = _init_audio_controllers_impl
-    _init_command_ids = _init_command_ids_impl
-    _init_runtime_state = _init_runtime_state_impl
-    _init_ui = _init_ui_impl
-    _create_menu_bar = _create_menu_bar_impl
-    _update_shortcut_menu_labels = _update_shortcut_menu_labels_impl
-    _create_ui = _create_ui_impl
-    _configure_accelerators = _configure_accelerators_impl
-    _handle_global_char_hook = _handle_global_char_hook_impl
-    add_playlist = _add_playlist_impl
-    _apply_playlist_order = _apply_playlist_order_impl
-    _remove_playlist_by_id = _remove_playlist_by_id_impl
-    _news_device_entries = _news_device_entries_impl
-    _play_news_audio_clip = _play_news_audio_clip_impl
-    _preview_news_clip = _preview_news_clip_impl
-    _select_folder_for_playlist = _select_folder_for_playlist_impl
-    _reload_folder_playlist = _reload_folder_playlist_impl
-    _load_folder_playlist = _load_folder_playlist_impl
-    _handle_folder_preview = _handle_folder_preview_impl
-    _stop_preview = _stop_preview_impl
-    _send_folder_items_to_music = _send_folder_items_to_music_impl
-    _refresh_news_panels = _refresh_news_panels_impl
-    _active_news_panel = _active_news_panel_impl
-    _focused_playlist_id = _focused_playlist_id_impl
-    _focus_playlist_panel = _focus_playlist_panel_impl
-    _cycle_playlist_focus = _cycle_playlist_focus_impl
-    _on_playlist_selection_change = _on_playlist_selection_change_impl
-    _prompt_new_playlist = _prompt_new_playlist_impl
-    _on_add_tracks = _on_add_tracks_impl
-    _finalize_add_tracks = _finalize_add_tracks_impl
-    _on_remove_playlist = _on_remove_playlist_impl
-    _on_manage_playlists = _on_manage_playlists_impl
-    _on_assign_device = _on_assign_device_impl
-    _configure_playlist_devices = _configure_playlist_devices_impl
-    _on_import_playlist = _on_import_playlist_impl
-    _on_export_playlist = _on_export_playlist_impl
-    _on_options = _on_options_impl
-    _on_edit_shortcuts = _on_edit_shortcuts_impl
-    _on_jingles = _on_jingles_impl
-    _set_auto_mix_enabled = _set_auto_mix_enabled_impl
-    _preferred_auto_mix_index = staticmethod(_preferred_auto_mix_index_impl)
-    _on_toggle_loop_playback = _on_toggle_loop_playback_impl
-    _on_loop_info = _on_loop_info_impl
-    _on_track_remaining = _on_track_remaining_impl
-    _apply_loop_setting_to_playback = _apply_loop_setting_to_playback_impl
-    _sync_loop_mix_trigger = _sync_loop_mix_trigger_impl
-    _on_toggle_selection = _on_toggle_selection_impl
-    _auto_mix_play_next = _auto_mix_play_next_impl
-    _on_mix_points_configure = _on_mix_points_configure_impl
-    _adjust_duration_and_mix_trigger = _adjust_duration_and_mix_trigger_impl
-    _derive_next_play_index = _derive_next_play_index_impl
-    _index_of_item = staticmethod(_index_of_item_impl)
-    _play_next_alternate = _play_next_alternate_impl
-    _on_global_play_next = _on_global_play_next_impl
-    _handle_playback_finished = _handle_playback_finished_impl
-    _handle_playback_progress = _handle_playback_progress_impl
-    _auto_mix_state_process = _auto_mix_state_process_impl
-    _auto_mix_now_from_callback = _auto_mix_now_from_callback_impl
-    _auto_mix_now = _auto_mix_now_impl
-    _manual_fade_duration = _manual_fade_duration_impl
-    _on_playlist_hotkey = _handle_playlist_hotkey_impl
-    _get_current_playlist_panel = _get_current_playlist_panel_impl
-    _handle_focus_click = _handle_focus_click_impl
-    _on_playlist_focus = _on_playlist_focus_impl
-    _get_selected_context = _get_selected_context_impl
-    _get_selected_items = _get_selected_items_impl
-    _serialize_items = staticmethod(_serialize_items_impl)
-    _create_item_from_serialized = _create_item_from_serialized_impl
-    _get_system_clipboard_paths = staticmethod(_get_system_clipboard_paths_impl)
-    _set_system_clipboard_paths = staticmethod(_set_system_clipboard_paths_impl)
-    _collect_files_from_paths = staticmethod(_collect_files_from_paths_impl)
-    _metadata_worker_count = staticmethod(_metadata_worker_count_impl)
-    _load_playlist_item = _load_playlist_item_impl
-    _create_items_from_paths = _create_items_from_paths_impl
-    _run_item_loader = _run_item_loader_impl
-    _create_items_from_m3u_entries = _create_items_from_m3u_entries_impl
-    _load_items_from_sources = _load_items_from_sources_impl
-    _maybe_focus_playing_item = _maybe_focus_playing_item_impl
-    _resolve_remaining_playback = _resolve_remaining_playback_impl
-    _active_playlist_item = _active_playlist_item_impl
-    _compute_intro_remaining = staticmethod(_compute_intro_remaining_impl)
-    _announce_intro_remaining = _announce_intro_remaining_impl
-    _announce_track_end_remaining = _announce_track_end_remaining_impl
-    _cleanup_intro_alert_player = _cleanup_intro_alert_player_impl
-    _play_intro_alert = _play_intro_alert_impl
-    _cleanup_track_end_alert_player = _cleanup_track_end_alert_player_impl
-    _play_track_end_alert = _play_track_end_alert_impl
-    _consider_intro_alert = _consider_intro_alert_impl
-    _consider_track_end_alert = _consider_track_end_alert_impl
-    _remove_item_from_playlist = _remove_item_from_playlist_impl
-    _remove_items = _remove_items_impl
-    _push_undo_action = _push_undo_action_impl
-    _apply_undo_callback = _apply_undo_callback_impl
-    _on_copy_selection = _on_copy_selection_impl
-    _on_cut_selection = _on_cut_selection_impl
-    _on_paste_selection = _on_paste_selection_impl
-    _on_delete_selection = _on_delete_selection_impl
-    _move_selection = _move_selection_impl
-    _on_undo = _on_undo_impl
-    _on_redo = _on_redo_impl
-    _update_active_playlist_styles = _update_active_playlist_styles_impl
-    _get_playback_context = _get_playback_context_impl
-    _get_playing_item_id = _get_playing_item_id_impl
-    _stop_playlist_playback = _stop_playlist_playback_impl
-    _supports_mix_trigger = _supports_mix_trigger_impl
-    _measure_effective_duration = _measure_effective_duration_impl
-    _preview_mix_with_next = _preview_mix_with_next_impl
+    _init_settings = _frame_bootstrap.init_settings
+    _init_playlist_state = _frame_bootstrap.init_playlist_state
+    _init_audio_controllers = _frame_bootstrap.init_audio_controllers
+    _init_command_ids = _frame_bootstrap.init_command_ids
+    _init_runtime_state = _frame_bootstrap.init_runtime_state
+    _init_ui = _frame_bootstrap.init_ui
+
+    _create_menu_bar = _menu_and_shortcuts.create_menu_bar
+    _update_shortcut_menu_labels = _menu_and_shortcuts.update_shortcut_menu_labels
+    _configure_accelerators = _menu_and_shortcuts.configure_accelerators
+    _handle_global_char_hook = _menu_and_shortcuts.handle_global_char_hook
+
+    _create_ui = _playlists_ui.create_ui
+    add_playlist = _playlists_ui.add_playlist
+    _apply_playlist_order = _playlists_ui.apply_playlist_order
+    _remove_playlist_by_id = _playlists_ui.remove_playlist_by_id
+
+    _news_device_entries = _news_audio.news_device_entries
+    _play_news_audio_clip = _news_audio.play_news_audio_clip
+    _preview_news_clip = _news_audio.preview_news_clip
+
+    _select_folder_for_playlist = _folder_playlists.select_folder_for_playlist
+    _reload_folder_playlist = _folder_playlists.reload_folder_playlist
+    _load_folder_playlist = _folder_playlists.load_folder_playlist
+    _handle_folder_preview = _folder_playlists.handle_folder_preview
+    _stop_preview = _folder_playlists.stop_preview
+    _send_folder_items_to_music = _folder_playlists.send_folder_items_to_music
+
+    _refresh_news_panels = _playlist_focus.refresh_news_panels
+    _active_news_panel = _playlist_focus.active_news_panel
+    _focused_playlist_id = _playlist_focus.focused_playlist_id
+    _focus_playlist_panel = _playlist_focus.focus_playlist_panel
+    _cycle_playlist_focus = _playlist_focus.cycle_playlist_focus
+    _on_playlist_selection_change = _playlist_focus.on_playlist_selection_change
+    _handle_focus_click = _playlist_focus.handle_focus_click
+    _on_playlist_focus = _playlist_focus.on_playlist_focus
+    _on_toggle_selection = _playlist_focus.on_toggle_selection
+    _maybe_focus_playing_item = _playlist_focus.maybe_focus_playing_item
+    _get_current_playlist_panel = _playlist_focus.get_current_playlist_panel
+    _update_active_playlist_styles = _playlist_focus.update_active_playlist_styles
+
+    _on_playlist_hotkey = _playlist_hotkeys.handle_playlist_hotkey
+    _get_selected_context = _playlist_selection.get_selected_context
+    _get_selected_items = _playlist_selection.get_selected_items
+
+    _configure_playlist_devices = _playlists_management.configure_playlist_devices
+    _finalize_add_tracks = _playlists_management.finalize_add_tracks
+    _on_add_tracks = _playlists_management.on_add_tracks
+    _on_assign_device = _playlists_management.on_assign_device
+    _on_manage_playlists = _playlists_management.on_manage_playlists
+    _on_remove_playlist = _playlists_management.on_remove_playlist
+    _prompt_new_playlist = _playlists_management.prompt_new_playlist
+
+    _on_import_playlist = _playlist_io.on_import_playlist
+    _on_export_playlist = _playlist_io.on_export_playlist
+
+    _on_edit_shortcuts = _tools_dialogs.on_edit_shortcuts
+    _on_jingles = _tools_dialogs.on_jingles
+    _on_options = _tools_dialogs.on_options
+
+    _set_auto_mix_enabled = _automix_flow.set_auto_mix_enabled
+    _preferred_auto_mix_index = staticmethod(_automix_flow.preferred_auto_mix_index)
+    _auto_mix_play_next = _automix_flow.auto_mix_play_next
+    _auto_mix_start_index = _automix_flow.auto_mix_start_index
+
+    _on_mix_points_configure = _mix_points_controller.on_mix_points_configure
+    _propagate_mix_points_for_path = _mix_points_controller.propagate_mix_points_for_path
+
+    _adjust_duration_and_mix_trigger = _playback_navigation.adjust_duration_and_mix_trigger
+    _derive_next_play_index = _playback_navigation.derive_next_play_index
+    _index_of_item = staticmethod(_playback_navigation.index_of_item)
+    _play_next_alternate = _playback_navigation.play_next_alternate
+    _on_global_play_next = _playback_navigation.on_global_play_next
+    _handle_playback_progress = _playback_navigation.handle_playback_progress
+    _manual_fade_duration = _playback_navigation.manual_fade_duration
+
+    _handle_playback_finished = _playback_flow.handle_playback_finished
+    _start_playback = _playback_flow.start_playback
+    _start_next_from_playlist = _playback_flow.start_next_from_playlist
+
+    _get_playback_context = _playback_state.get_playback_context
+    _get_playing_item_id = _playback_state.get_playing_item_id
+    _stop_playlist_playback = _playback_state.stop_playlist_playback
+    _supports_mix_trigger = _playback_state.supports_mix_trigger
+
+    _auto_mix_state_process = _mix_runtime.auto_mix_state_process
+    _auto_mix_now_from_callback = _mix_runtime.auto_mix_now_from_callback
+    _auto_mix_now = _mix_runtime.auto_mix_now
+
+    _announce_intro_remaining = _alerts.announce_intro_remaining
+    _announce_track_end_remaining = _alerts.announce_track_end_remaining
+    _cleanup_intro_alert_player = _alerts.cleanup_intro_alert_player
+    _cleanup_track_end_alert_player = _alerts.cleanup_track_end_alert_player
+    _compute_intro_remaining = staticmethod(_alerts.compute_intro_remaining)
+    _consider_intro_alert = _alerts.consider_intro_alert
+    _consider_track_end_alert = _alerts.consider_track_end_alert
+    _play_intro_alert = _alerts.play_intro_alert
+    _play_track_end_alert = _alerts.play_track_end_alert
+
+    _apply_loop_setting_to_playback = _loop_and_remaining.apply_loop_setting_to_playback
+    _sync_loop_mix_trigger = _loop_and_remaining.sync_loop_mix_trigger
+    _on_loop_info = _loop_and_remaining.on_loop_info
+    _on_toggle_loop_playback = _loop_and_remaining.on_toggle_loop_playback
+    _on_track_remaining = _loop_and_remaining.on_track_remaining
+    _resolve_remaining_playback = _loop_and_remaining.resolve_remaining_playback
+    _active_playlist_item = _loop_and_remaining.active_playlist_item
+
+    _serialize_items = staticmethod(_clipboard_helpers.serialize_items)
+    _create_item_from_serialized = _clipboard_helpers.create_item_from_serialized
+    _get_system_clipboard_paths = staticmethod(_clipboard_helpers.get_system_clipboard_paths)
+    _set_system_clipboard_paths = staticmethod(_clipboard_helpers.set_system_clipboard_paths)
+
+    _remove_item_from_playlist = _playlist_mutations.remove_item_from_playlist
+    _remove_items = _playlist_mutations.remove_items
+
+    _push_undo_action = _edit_actions.push_undo_action
+    _apply_undo_callback = _edit_actions.apply_undo_callback
+    _on_copy_selection = _edit_actions.on_copy_selection
+    _on_cut_selection = _edit_actions.on_cut_selection
+    _on_paste_selection = _edit_actions.on_paste_selection
+    _finalize_clipboard_paste = _edit_actions.finalize_clipboard_paste
+    _on_delete_selection = _edit_actions.on_delete_selection
+    _move_selection = _edit_actions.move_selection
+    _on_undo = _edit_actions.on_undo
+    _on_redo = _edit_actions.on_redo
+
+    _collect_files_from_paths = staticmethod(_item_loading.collect_files_from_paths)
+    _create_items_from_m3u_entries = _item_loading.create_items_from_m3u_entries
+    _create_items_from_paths = _item_loading.create_items_from_paths
+    _load_items_from_sources = _item_loading.load_items_from_sources
+    _load_playlist_item = _item_loading.load_playlist_item
+    _metadata_worker_count = staticmethod(_item_loading.metadata_worker_count)
+    _run_item_loader = _item_loading.run_item_loader
+
+    _measure_effective_duration = _mix_preview.measure_effective_duration
+    _preview_mix_with_next = _mix_preview.preview_mix_with_next
 
     def __init__(
         self,
@@ -327,22 +207,6 @@ class MainFrame(wx.Frame):
     def _ensure_legacy_hooks(self) -> None:
         if not hasattr(self, "_on_new_playlist"):
             self._on_new_playlist = self._create_playlist_dialog  # type: ignore[attr-defined]
-
-    def _auto_mix_start_index(
-        self,
-        panel: PlaylistPanel,
-        idx: int,
-        *,
-        restart_playing: bool = False,
-        overlap_trigger: bool = False,
-    ) -> bool:
-        return _auto_mix_start_index_impl(
-            self,
-            panel,
-            idx,
-            restart_playing=restart_playing,
-            overlap_trigger=overlap_trigger,
-        )
 
     def _refresh_playlist_hotkeys(self) -> None:
         for panel in self._playlists.values():
@@ -383,8 +247,7 @@ class MainFrame(wx.Frame):
         self._play_item_direct(playlist_id, item_id)
 
     def _play_item_direct(self, playlist_id: str, item_id: str) -> bool:
-        return _play_item_direct_impl(self, playlist_id, item_id, panel_type=PlaylistPanel)
-
+        return _playback_flow.play_item_direct(self, playlist_id, item_id, panel_type=PlaylistPanel)
 
     def _on_new_playlist(self, event: wx.CommandEvent) -> None:
         self._create_playlist_dialog(event)
@@ -417,70 +280,13 @@ class MainFrame(wx.Frame):
 
 
     def _apply_mix_trigger_to_playback(self, *, playlist_id: str, item: PlaylistItem, panel: PlaylistPanel) -> None:
-        _apply_mix_trigger_to_playback_impl(
+        _mix_runtime.apply_mix_trigger_to_playback(
             self,
             playlist_id=playlist_id,
             item=item,
             panel=panel,
             call_after=wx.CallAfter,
         )
-
-
-    def _propagate_mix_points_for_path(
-        self,
-        *,
-        path: Path,
-        mix_values: dict[str, float | None],
-        source_playlist_id: str,
-        source_item_id: str,
-    ) -> None:
-        _propagate_mix_points_for_path_impl(
-            self,
-            path=path,
-            mix_values=mix_values,
-            source_playlist_id=source_playlist_id,
-            source_item_id=source_item_id,
-        )
-
-    def _start_playback(
-        self,
-        panel: PlaylistPanel,
-        item: PlaylistItem,
-        *,
-        restart_playing: bool = False,
-        auto_mix_sequence: bool = False,
-        prefer_overlap: bool = False,
-    ) -> bool:
-        return _start_playback_impl(
-            self,
-            panel,
-            item,
-            restart_playing=restart_playing,
-            auto_mix_sequence=auto_mix_sequence,
-            prefer_overlap=prefer_overlap,
-        )
-
-
-    def _start_next_from_playlist(
-        self,
-        panel: PlaylistPanel,
-        *,
-        ignore_ui_selection: bool = False,
-        advance_focus: bool = True,
-        restart_playing: bool = False,
-        force_automix_sequence: bool = False,
-        prefer_overlap: bool = False,
-    ) -> bool:
-        return _start_next_from_playlist_impl(
-            self,
-            panel,
-            ignore_ui_selection=ignore_ui_selection,
-            advance_focus=advance_focus,
-            restart_playing=restart_playing,
-            force_automix_sequence=force_automix_sequence,
-            prefer_overlap=prefer_overlap,
-        )
-
 
     def _get_audio_panel(self, kinds: tuple[PlaylistKind, ...]) -> PlaylistPanel | None:
         panel = self._get_current_playlist_panel()
@@ -520,27 +326,6 @@ class MainFrame(wx.Frame):
     def _forget_last_started_item(self, playlist_id: str, item_id: str) -> None:
         if self._last_started_item_id.get(playlist_id) == item_id:
             self._last_started_item_id[playlist_id] = None
-
-
-    def _finalize_clipboard_paste(
-        self,
-        panel: PlaylistPanel,
-        model: PlaylistModel,
-        items: list[PlaylistItem],
-        insert_at: int,
-        anchor_index: int | None,
-        *,
-        skipped_files: int,
-    ) -> None:
-        _finalize_clipboard_paste_impl(
-            self,
-            panel,
-            model,
-            items,
-            insert_at,
-            anchor_index,
-            skipped_files=skipped_files,
-        )
 
 
     def _on_move_selection_up(self, _event: wx.CommandEvent) -> None:
