@@ -10,10 +10,11 @@ from pathlib import Path
 from threading import Event
 from typing import Callable, Dict, Iterable, Optional, Tuple, TYPE_CHECKING
 
-from sara.audio.engine import AudioDevice, AudioEngine, Player, BackendType
+from sara.audio.engine import AudioDevice, AudioEngine, Player
 from sara.core.config import SettingsManager
 from sara.core.i18n import gettext as _
 from sara.core.playlist import PlaylistItem, PlaylistModel, PlaylistItemStatus
+from sara.ui.playback_device_selection import ensure_player as _ensure_player_impl
 
 if TYPE_CHECKING:  # pragma: no cover - tylko dla typowania
     from sara.audio.mixer import DeviceMixer
@@ -353,106 +354,7 @@ class PlaybackController:
         return context
 
     def _ensure_player(self, playlist: PlaylistModel) -> tuple[Player, str, int] | None:
-        attempts = 0
-        missing_devices: set[str] = set()
-        use_mixer = self._should_use_mixer(playlist)
-
-        def pick_fallback(device_map: dict[str, AudioDevice], busy_devices: set[str]) -> tuple[int, str] | None:
-            # prefer BASS not busy -> any not busy -> busy BASS -> any
-            def score(dev: AudioDevice) -> tuple[int, bool]:
-                return (0 if dev.backend is BackendType.BASS else 1, dev.id in busy_devices)
-
-            sorted_devices = sorted(device_map.values(), key=score)
-            for dev in sorted_devices:
-                if dev.id in busy_devices:
-                    continue
-                return (0, dev.id)
-            if sorted_devices:
-                return (0, sorted_devices[0].id)
-            return None
-
-        while attempts < 2:
-            devices = self._audio_engine.get_devices()
-            if not devices:
-                self._audio_engine.refresh_devices()
-                devices = self._audio_engine.get_devices()
-                if not devices:
-                    self._announce("device", _("No audio devices available"))
-                    return None
-
-            device_map = {device.id: device for device in devices}
-            busy_devices = self.get_busy_device_ids()
-            selection = playlist.select_next_slot(set(device_map.keys()), busy_devices)
-            if selection is None:
-                selection = pick_fallback(device_map, busy_devices)
-                if selection is None:
-                    logger.error(
-                        "PlaybackController: no available slot for playlist=%s configured_slots=%s available=%s busy=%s",
-                        playlist.name,
-                        playlist.get_configured_slots(),
-                        list(device_map.keys()),
-                        list(busy_devices),
-                    )
-                    if playlist.get_configured_slots():
-                        self._announce(
-                            "device",
-                            _("No configured player for playlist %s is available") % playlist.name,
-                        )
-                    return None
-
-            slot_index, device_id = selection
-            device = device_map.get(device_id)
-            if device is None:
-                missing_devices.add(device_id)
-                if playlist.output_slots and 0 <= slot_index < len(playlist.output_slots):
-                    playlist.output_slots[slot_index] = None
-                    self._settings.set_playlist_outputs(playlist.name, playlist.output_slots)
-                    self._settings.save()
-                attempts += 1
-                self._audio_engine.refresh_devices()
-                logger.debug(
-                    "PlaybackController: device %s missing for playlist=%s, refreshing devices (attempt %s)",
-                    device_id,
-                    playlist.name,
-                    attempts,
-                )
-                continue
-            logger.debug(
-                "PlaybackController: selected device %s backend=%s slot=%s use_mixer=%s configured_slots=%s busy=%s",
-                device_id,
-                device.backend if hasattr(device, "backend") else "?",
-                slot_index,
-                use_mixer,
-                playlist.get_configured_slots(),
-                busy_devices,
-            )
-
-            try:
-                # Jeśli backend to BASS lub mixer nie jest dostępny, graj bezpośrednio
-                effective_use_mixer = use_mixer and device.backend not in (BackendType.BASS, BackendType.BASS_ASIO)
-                player: Player
-                if effective_use_mixer:
-                    try:
-                        mixer = self._get_or_create_mixer(device)
-                        MixerPlayer = self._get_mixer_player_class()
-                        player = MixerPlayer(mixer)
-                    except Exception as exc:  # pylint: disable=broad-except
-                        logger.warning("Mixer unavailable for %s, falling back to direct player: %s", device_id, exc)
-                        effective_use_mixer = False
-                if not effective_use_mixer:
-                    player = self._audio_engine.create_player(device_id)
-                return player, device_id, slot_index
-            except ValueError:
-                attempts += 1
-                self._audio_engine.refresh_devices()
-
-        if missing_devices:
-            removed_list = ", ".join(sorted(missing_devices))
-            self._announce(
-                "device",
-                _("Unavailable devices for playlist %s: %s") % (playlist.name, removed_list),
-            )
-        return None
+        return _ensure_player_impl(self, playlist)
 
     def _get_mixer_classes(self):
         from sara.audio.mixer import DeviceMixer, MixerPlayer
