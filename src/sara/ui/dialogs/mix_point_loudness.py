@@ -1,16 +1,10 @@
-"""Loudness helpers used by the mix point editor dialog."""
+"""Backward-compatible module path for mix point loudness helpers."""
 
 from __future__ import annotations
 
-from pathlib import Path
+import sys as _sys
 
-from sara.core.loudness import LoudnessStandard, analyze_loudness
+from sara.ui.dialogs.mix_point import loudness as _impl
 
-
-def compute_normalization_gain(track_path: Path, *, standard: LoudnessStandard) -> tuple[float, float]:
-    """Return (gain_db, measured_lufs) for the selected loudness standard."""
-    measurement = analyze_loudness(track_path, standard=standard)
-    target_lufs = -23.0 if standard is LoudnessStandard.EBU else -24.0
-    gain_db = target_lufs - measurement.integrated_lufs
-    return gain_db, measurement.integrated_lufs
+_sys.modules[__name__] = _impl
 
