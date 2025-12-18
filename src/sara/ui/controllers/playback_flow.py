@@ -71,6 +71,27 @@ def _prepare_mix_schedule(
     return mix_trigger_seconds, fade_seconds, base_cue, effective_duration, on_mix_trigger
 
 
+def _capture_panel_selection(panel: PlaylistPanel) -> tuple[list[int], int]:
+    return panel.get_selected_indices(), panel.get_focused_index()
+
+
+def _refresh_preserving_selection(
+    panel: PlaylistPanel,
+    *,
+    previous_selection: list[int],
+    previous_focus: int,
+    item_count: int,
+) -> None:
+    if previous_selection:
+        panel.refresh(selected_indices=previous_selection, focus=True)
+        return
+    if previous_focus != wx.NOT_FOUND and 0 <= previous_focus < item_count:
+        panel.refresh(focus=False)
+        panel.select_index(previous_focus, focus=True)
+        return
+    panel.refresh(focus=False)
+
+
 def play_item_direct(frame, playlist_id: str, item_id: str, *, panel_type=PlaylistPanel) -> bool:
     panel = frame._playlists.get(playlist_id)
     playlist = frame._get_playlist_model(playlist_id)
@@ -269,8 +290,7 @@ def start_playback(
     )
     frame._adjust_duration_and_mix_trigger(panel, playlist, item, result)
 
-    previous_selection = panel.get_selected_indices()
-    previous_focus = panel.get_focused_index()
+    previous_selection, previous_focus = _capture_panel_selection(panel)
 
     panel.mark_item_status(item.id, PlaylistItemStatus.PLAYING)
     if frame._auto_mix_enabled and playlist.kind is PlaylistKind.MUSIC and frame._focus_playing_track:
@@ -283,13 +303,12 @@ def start_playback(
         if frame._focus_playing_track:
             panel.refresh(focus=False)
         else:
-            if previous_selection:
-                panel.refresh(selected_indices=previous_selection, focus=True)
-            elif previous_focus != wx.NOT_FOUND and 0 <= previous_focus < len(playlist.items):
-                panel.refresh(focus=False)
-                panel.select_index(previous_focus, focus=True)
-            else:
-                panel.refresh(focus=False)
+            _refresh_preserving_selection(
+                panel,
+                previous_selection=previous_selection,
+                previous_focus=previous_focus,
+                item_count=len(playlist.items),
+            )
     frame._focus_lock[playlist.id] = False
     frame._last_started_item_id[playlist.id] = item.id
     if playlist.kind is PlaylistKind.MUSIC and item.break_after:
@@ -518,8 +537,7 @@ def handle_playback_finished(frame, playlist_id: str, item_id: str) -> None:
     item = model.items[item_index]
 
     removed = False
-    previous_selection = panel.get_selected_indices()
-    previous_focus = panel.get_focused_index()
+    previous_selection, previous_focus = _capture_panel_selection(panel)
     if frame._auto_remove_played:
         removed_item = frame._remove_item_from_playlist(panel, model, item_index, refocus=True)
         frame._announce_event("playback_events", _("Removed played track %s") % removed_item.title)
@@ -530,13 +548,12 @@ def handle_playback_finished(frame, playlist_id: str, item_id: str) -> None:
         if frame._focus_playing_track:
             panel.refresh(focus=False)
         else:
-            if previous_selection:
-                panel.refresh(selected_indices=previous_selection, focus=True)
-            elif previous_focus != wx.NOT_FOUND and 0 <= previous_focus < len(model.items):
-                panel.refresh(focus=False)
-                panel.select_index(previous_focus, focus=True)
-            else:
-                panel.refresh(focus=False)
+            _refresh_preserving_selection(
+                panel,
+                previous_selection=previous_selection,
+                previous_focus=previous_focus,
+                item_count=len(model.items),
+            )
 
     if context:
         try:
