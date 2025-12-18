@@ -453,7 +453,6 @@ class SoundDevicePlayer:
             except Exception as exc:  # pylint: disable=broad-except
                 logger.error("Błąd callbacku postępu: %s", exc)
         self._cleanup_transcoded_file()
-        self._cleanup_transcoded_file()
 
     def _open_audio_file(self, path: Path):
         if sf is None:
@@ -656,4 +655,3 @@ class SoundDeviceBackend:
         except Exception as exc:  # pylint: disable=broad-except
             logger.warning("Nie udało się stworzyć SoundDevicePlayer dla %s: %s", device.name, exc)
             return MockPlayer(device)
-
