@@ -80,7 +80,6 @@ from sara.ui.controllers.playlists_ui import (
     add_playlist as _add_playlist_impl,
     apply_playlist_order as _apply_playlist_order_impl,
     create_ui as _create_ui_impl,
-    populate_startup_playlists as _populate_startup_playlists_impl,
     remove_playlist_by_id as _remove_playlist_by_id_impl,
 )
 from sara.ui.controllers.playlists_management import (
@@ -361,9 +360,6 @@ class MainFrame(wx.Frame):
     def _register_accessibility(self) -> None:
         # Placeholder: konfiguracje wx.Accessible zostaną dodane w przyszłych iteracjach
         pass
-
-    def _populate_startup_playlists(self) -> list[PlaylistModel]:
-        return _populate_startup_playlists_impl(self)
 
     def _configure_accelerators(self) -> None:
         _configure_accelerators_impl(self)
