@@ -34,7 +34,6 @@ from sara.core.shortcuts import get_shortcut
 from sara.ui.undo import InsertOperation, MoveOperation, RemoveOperation, UndoAction
 from sara.ui.undo_manager import UndoManager
 from sara.ui.playlist_panel import PlaylistPanel
-from sara.ui.news_playlist_panel import NewsPlaylistPanel
 from sara.ui.playlist_layout import PlaylistLayoutManager, PlaylistLayoutState
 from sara.ui.announcement_service import AnnouncementService
 from sara.ui.options_dialog import OptionsDialog
@@ -118,6 +117,19 @@ from sara.ui.controllers.item_loading import (
     load_playlist_item as _load_playlist_item_impl,
     metadata_worker_count as _metadata_worker_count_impl,
     run_item_loader as _run_item_loader_impl,
+)
+from sara.ui.controllers.playlist_focus import (
+    active_news_panel as _active_news_panel_impl,
+    cycle_playlist_focus as _cycle_playlist_focus_impl,
+    focus_playlist_panel as _focus_playlist_panel_impl,
+    focused_playlist_id as _focused_playlist_id_impl,
+    get_current_playlist_panel as _get_current_playlist_panel_impl,
+    handle_focus_click as _handle_focus_click_impl,
+    maybe_focus_playing_item as _maybe_focus_playing_item_impl,
+    on_playlist_focus as _on_playlist_focus_impl,
+    on_playlist_selection_change as _on_playlist_selection_change_impl,
+    refresh_news_panels as _refresh_news_panels_impl,
+    update_active_playlist_styles as _update_active_playlist_styles_impl,
 )
 from sara.ui.controllers.loop_and_remaining import (
     active_playlist_item as _active_playlist_item_impl,
@@ -516,104 +528,24 @@ class MainFrame(wx.Frame):
 
     def _target_music_playlist(self) -> tuple[PlaylistPanel, PlaylistModel] | None:
         return _target_music_playlist_impl(self)
+
     def _refresh_news_panels(self) -> None:
-        for panel in self._playlists.values():
-            if isinstance(panel, NewsPlaylistPanel):
-                panel.refresh_configuration()
+        _refresh_news_panels_impl(self)
+
     def _active_news_panel(self) -> tuple[NewsPlaylistPanel | None, wx.Window | None]:
-        focus = wx.Window.FindFocus()
-        if focus is None:
-            return None, None
-        for panel in self._playlists.values():
-            if isinstance(panel, NewsPlaylistPanel) and panel.contains_window(focus):
-                return panel, focus
-        return None, focus
+        return _active_news_panel_impl(self)
 
     def _focused_playlist_id(self) -> str | None:
-        focus = wx.Window.FindFocus()
-        if focus is None:
-            return None
-        for playlist_id, wrapper in self._playlist_wrappers.items():
-            current = focus
-            while current:
-                if current is wrapper:
-                    return playlist_id
-                current = current.GetParent()
-        return None
+        return _focused_playlist_id_impl(self)
 
     def _focus_playlist_panel(self, playlist_id: str) -> bool:
-        panel = self._playlists.get(playlist_id)
-        if panel is None:
-            return False
-        if isinstance(panel, NewsPlaylistPanel):
-            panel.focus_default()
-        elif isinstance(panel, PlaylistPanel):
-            panel.focus_list()
-        else:
-            return False
-        self._on_playlist_focus(playlist_id)
-        return True
+        return _focus_playlist_panel_impl(self, playlist_id)
 
     def _cycle_playlist_focus(self, *, backwards: bool) -> bool:
-        order = [playlist_id for playlist_id in self._layout.state.order if playlist_id in self._playlists]
-        if not order:
-            self._announce_event("playlist", _("No playlists available"))
-            return False
-        current_id = self._focused_playlist_id()
-        if current_id in order:
-            current_index = order.index(current_id)
-            next_index = (current_index - 1) if backwards else (current_index + 1)
-        else:
-            next_index = len(order) - 1 if backwards else 0
-        target_id = order[next_index % len(order)]
-        return self._focus_playlist_panel(target_id)
+        return _cycle_playlist_focus_impl(self, backwards=backwards)
 
     def _on_playlist_selection_change(self, playlist_id: str, indices: list[int]) -> None:
-        panel = self._playlists.get(playlist_id)
-        if not isinstance(panel, PlaylistPanel):
-            return
-        # pobierz aktualne zaznaczenia z kontrolki (lista zdarzenia bywa opóźniona)
-        indices = panel.get_selected_indices()
-        playing_id = self._get_playing_item_id(playlist_id)
-        loop_active = False
-        focus_idx = panel.get_focused_index()
-        if focus_idx != wx.NOT_FOUND and 0 <= focus_idx < len(panel.model.items):
-            sel_item = panel.model.items[focus_idx]
-            loop_active = sel_item.has_loop() and (sel_item.loop_enabled or getattr(sel_item, "loop_auto_enabled", False))
-        elif indices:
-            idx0 = indices[0]
-            if 0 <= idx0 < len(panel.model.items):
-                sel_item = panel.model.items[idx0]
-                loop_active = sel_item.has_loop() and (sel_item.loop_enabled or getattr(sel_item, "loop_auto_enabled", False))
-
-        # focus-lock logika jak wcześniej
-        if self._focus_playing_track:
-            if playing_id is None or not indices:
-                self._focus_lock[playlist_id] = False
-            elif len(indices) == 1:
-                selected_index = indices[0]
-                if 0 <= selected_index < len(panel.model.items):
-                    selected_item = panel.model.items[selected_index]
-                    if selected_item.id == playing_id:
-                        self._focus_lock[playlist_id] = False
-                        # nie uciekaj wcześniej – pozwól ogłosić pętlę
-                        if loop_active:
-                            self._announce_event("selection", _("Loop enabled"))
-                        return
-                self._focus_lock[playlist_id] = True
-
-        # komunikat o zaznaczeniu z informacją o pętli/auto-mix
-        # komunikat o pętli przy pojedynczym zaznaczeniu
-        if len(indices) == 1:
-            idx = indices[0]
-            if 0 <= idx < len(panel.model.items):
-                item = panel.model.items[idx]
-                focus_idx = panel.get_focused_index()
-                if focus_idx != wx.NOT_FOUND:
-                    self._last_focus_index[playlist_id] = focus_idx
-                elif idx is not None:
-                    self._last_focus_index[playlist_id] = idx
-        # komunikat o pętli obsługuje teraz sam wiersz (prefiks „Loop” w tytule/statusie)
+        _on_playlist_selection_change_impl(self, playlist_id, indices)
 
     def _on_playlist_play_request(self, playlist_id: str, item_id: str) -> None:
         self._play_item_direct(playlist_id, item_id)
@@ -1153,19 +1085,7 @@ class MainFrame(wx.Frame):
     def _on_playlist_hotkey(self, event: wx.CommandEvent) -> None:
         _handle_playlist_hotkey_impl(self, event)
     def _get_current_playlist_panel(self):
-        current_id = self._layout.state.current_id
-        if current_id and current_id in self._playlists:
-            return self._playlists[current_id]
-
-        for playlist_id in self._layout.state.order:
-            panel = self._playlists.get(playlist_id)
-            if panel:
-                self._layout.set_current(playlist_id)
-                self._current_index = self._layout.current_index()
-                self._update_active_playlist_styles()
-                self._announce_event("playlist", f"{ANNOUNCEMENT_PREFIX}{panel.model.name}")
-                return panel
-        return None
+        return _get_current_playlist_panel_impl(self)
 
     def _get_audio_panel(self, kinds: tuple[PlaylistKind, ...]) -> PlaylistPanel | None:
         panel = self._get_current_playlist_panel()
@@ -1177,23 +1097,10 @@ class MainFrame(wx.Frame):
         return self._get_audio_panel((PlaylistKind.MUSIC,))
 
     def _handle_focus_click(self, event: wx.MouseEvent, playlist_id: str) -> None:
-        self._focus_playlist_panel(playlist_id)
-        event.Skip()
+        _handle_focus_click_impl(self, event, playlist_id)
 
     def _on_playlist_focus(self, playlist_id: str) -> None:
-        if playlist_id not in self._playlists:
-            return
-        current_id = self._layout.state.current_id
-        if current_id == playlist_id:
-            return
-        self._layout.set_current(playlist_id)
-        self._current_index = self._layout.current_index()
-        self._update_active_playlist_styles()
-        panel = self._playlists.get(playlist_id)
-        if panel:
-            self._announce_event("playlist", f"{ANNOUNCEMENT_PREFIX}{panel.model.name}")
-            if isinstance(panel, PlaylistPanel) and panel.model.kind is PlaylistKind.MUSIC:
-                self._last_music_playlist_id = playlist_id
+        _on_playlist_focus_impl(self, playlist_id)
 
     def _get_selected_context(
         self,
@@ -1384,32 +1291,7 @@ class MainFrame(wx.Frame):
         )
 
     def _maybe_focus_playing_item(self, panel: PlaylistPanel, item_id: str) -> None:
-        if not self._focus_playing_track:
-            return
-        playlist_id = panel.model.id
-        if self._focus_lock.get(playlist_id):
-            current = panel.get_selected_indices()
-            if len(current) == 1:
-                selected_index = current[0]
-                if 0 <= selected_index < len(panel.model.items):
-                    if panel.model.items[selected_index].id == item_id:
-                        self._focus_lock[playlist_id] = False
-                    else:
-                        return
-            else:
-                return
-        else:
-            current = panel.get_selected_indices()
-            if len(current) == 1:
-                selected_index = current[0]
-                if 0 <= selected_index < len(panel.model.items):
-                    if panel.model.items[selected_index].id == item_id:
-                        return
-        for index, track in enumerate(panel.model.items):
-            if track.id == item_id:
-                panel.select_index(index)
-                self._focus_lock[playlist_id] = False
-                break
+        _maybe_focus_playing_item_impl(self, panel, item_id)
 
     def _resolve_remaining_playback(self) -> tuple[PlaylistModel, PlaylistItem, float] | None:
         return _resolve_remaining_playback_impl(self)
@@ -1562,29 +1444,7 @@ class MainFrame(wx.Frame):
         _on_redo_impl(self, _event)
 
     def _update_active_playlist_styles(self) -> None:
-        active_colour = wx.Colour(230, 240, 255)
-        inactive_colour = self._playlist_container.GetBackgroundColour()
-        active_text_colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_HIGHLIGHT)
-        inactive_text_colour = wx.SystemSettings.GetColour(wx.SYS_COLOUR_WINDOWTEXT)
-
-        current_id = self._layout.state.current_id
-        for playlist_id, wrapper in self._playlist_wrappers.items():
-            is_active = playlist_id == current_id
-            wrapper.SetBackgroundColour(active_colour if is_active else inactive_colour)
-            wrapper.Refresh()
-            panel = self._playlists.get(playlist_id)
-            if panel:
-                panel.set_active(is_active)
-
-        for playlist_id, header in self._playlist_headers.items():
-            is_active = playlist_id == current_id
-            base_title = self._playlist_titles.get(playlist_id, header.GetLabel())
-            if header.GetLabel() != base_title:
-                header.SetLabel(base_title)
-            header.SetForegroundColour(active_text_colour if is_active else inactive_text_colour)
-            header.Refresh()
-
-        self._playlist_container.Refresh()
+        _update_active_playlist_styles_impl(self)
 
     def _get_playback_context(self, playlist_id: str) -> tuple[tuple[str, str], PlaybackContext] | None:
         return self._playback.get_context(playlist_id)
