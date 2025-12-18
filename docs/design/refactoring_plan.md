@@ -11,7 +11,7 @@ Ten dokument opisuje bezpieczny, iteracyjny plan uporządkowania kodu SARA. Cele
   - `src/sara/audio/bass.py` i `src/sara/audio/bass_player.py` są fasadami nad `bass_native.py`, `bass_manager.py`, `bass_backends.py`, `bass_player_base.py`, `bass_asio_player.py`.
   - `src/sara/audio/mixer/__init__.py` eksportuje API mixera, a implementacja jest poukładana w `src/sara/audio/mixer/…` (device/stream, DSP, render, lifecycle, wątek, manager, player).
     - Kompatybilne importy: `src/sara/audio/device_mixer.py` i `src/sara/audio/mixer_player.py` są fasadami wskazującymi na `sara.audio.mixer`.
-  - `src/sara/audio/sounddevice_player.py` jest fasadą, a implementacja żyje w `src/sara/audio/sounddevice_player_base.py` i `src/sara/audio/sounddevice_profiles.py`.
+  - `src/sara/audio/sounddevice/…` zawiera implementację sounddevice, a `src/sara/audio/sounddevice_player.py`, `src/sara/audio/sounddevice_provider.py`, `src/sara/audio/sounddevice_player_base.py` i `src/sara/audio/sounddevice_profiles.py` są fasadami kompatybilności.
   - Wspólne elementy audio są wydzielone do `src/sara/audio/types.py`, `src/sara/audio/resampling.py` i `src/sara/audio/transcoding.py`.
 
 ## Diagnoza (największe punkty bólu)
@@ -107,7 +107,7 @@ Cel: utrzymać małe, czytelne moduły audio, bez mieszania z UI oraz bez rozbij
 
 Propozycja:
 - utrzymywać „fasady” jako stabilne punkty importów (`sara.audio.bass`, `sara.audio.bass_player`, `sara.audio.mixer`, `sara.audio.sounddevice_backend`, `sara.audio.sounddevice_player`),
-- dalej rozbijać duże implementacje wewnętrzne (np. `sounddevice_player_base.py`, `device_mixer.py`) przez wyciąganie typów i helperów,
+- dalej rozbijać duże implementacje wewnętrzne (np. `sounddevice/player_base.py`, `device_mixer.py`) przez wyciąganie typów i helperów,
 - dążyć do tego, żeby moduły audio nie importowały `sara.audio.engine` (używać `sara.audio.types` + `sara.audio.resampling`).
 
 **Akceptacja:** `pytest` zielone, brak zmian zachowania audio.

@@ -1,7 +1,7 @@
 from threading import Event
 
 from sara.audio.engine import AudioDevice, BackendType, SoundDevicePlayer
-import sara.audio.sounddevice_player_base as sd_player_base
+import sara.audio.sounddevice.player_base as sd_player_base
 
 
 def test_sounddevice_player_fade_out_reduces_gain(monkeypatch):
