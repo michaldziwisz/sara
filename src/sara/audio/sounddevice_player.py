@@ -4,16 +4,13 @@ from __future__ import annotations
 
 import logging
 import math
-import os
-import shutil
-import subprocess
-import tempfile
 import time
 from pathlib import Path
 from threading import Event, Lock, Thread, current_thread
 from typing import Callable, Dict, Optional
 
 from sara.audio.resampling import _resample_to_length
+from sara.audio.transcoding import open_audio_file_with_transcoding
 from sara.audio.types import AudioDevice
 
 logger = logging.getLogger(__name__)
@@ -72,9 +69,6 @@ def _match_sounddevice_device(target_name: str, host_keywords: tuple[str, ...]) 
         _, chosen = min(partial_matches, key=lambda pair: (pair[0], pair[1]))
         return chosen
     return None
-
-
-_TRANSCODE_EXTENSIONS = {".mp4", ".m4a", ".m4v"}
 
 
 class SoundDevicePlayer:
@@ -457,53 +451,10 @@ class SoundDevicePlayer:
         if sf is None:
             raise RuntimeError("soundfile niedostępne")
         self._cleanup_transcoded_file()
-        try:
-            return sf.SoundFile(path, mode="r")
-        except Exception:
-            if path.suffix.lower() not in _TRANSCODE_EXTENSIONS:
-                raise
-            wav_path = self._transcode_source(path)
-            try:
-                sound_file = sf.SoundFile(wav_path, mode="r")
-            except Exception as exc:  # pylint: disable=broad-except
-                try:
-                    wav_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
-                raise RuntimeError("Nie udało się odczytać przekodowanego pliku MP4") from exc
-            self._transcoded_path = wav_path
-            return sound_file
-
-    def _transcode_source(self, source: Path) -> Path:
-        ffmpeg = shutil.which("ffmpeg")
-        if not ffmpeg:
-            raise RuntimeError("FFmpeg jest wymagany do odtwarzania plików MP4/M4A")
-        fd, temp_name = tempfile.mkstemp(suffix=".wav")
-        os.close(fd)
-        target = Path(temp_name)
-        cmd = [
-            ffmpeg,
-            "-y",
-            "-i",
-            str(source),
-            "-vn",
-            "-acodec",
-            "pcm_s16le",
-            "-ar",
-            "48000",
-            "-ac",
-            "2",
-            str(target),
-        ]
-        try:
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except FileNotFoundError as exc:  # pragma: no cover - zależy od środowiska
-            target.unlink(missing_ok=True)
-            raise RuntimeError("FFmpeg nie został znaleziony w PATH") from exc
-        except subprocess.CalledProcessError as exc:
-            target.unlink(missing_ok=True)
-            raise RuntimeError(f"FFmpeg nie mógł zdekodować pliku {source.name}") from exc
-        return target
+        sound_file, transcoded_path = open_audio_file_with_transcoding(path, sf=sf)
+        if transcoded_path is not None:
+            self._transcoded_path = transcoded_path
+        return sound_file
 
     def _cleanup_transcoded_file(self) -> None:
         if self._transcoded_path:
