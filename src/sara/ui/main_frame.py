@@ -73,6 +73,8 @@ from sara.ui.controllers.playlist_io import (
 from sara.ui.controllers.playlists_ui import (
     add_playlist as _add_playlist_impl,
     apply_playlist_order as _apply_playlist_order_impl,
+    create_ui as _create_ui_impl,
+    populate_startup_playlists as _populate_startup_playlists_impl,
     remove_playlist_by_id as _remove_playlist_by_id_impl,
 )
 from sara.ui.controllers.playlists_management import (
@@ -342,69 +344,14 @@ class MainFrame(wx.Frame):
                 panel.set_swap_play_select(self._swap_play_select)
 
     def _create_ui(self) -> None:
-        panel = wx.Panel(self)
-        self._sizer = wx.BoxSizer(wx.VERTICAL)
-        panel.SetSizer(self._sizer)
-
-        self._playlist_container = wx.ScrolledWindow(panel, style=wx.HSCROLL | wx.VSCROLL)
-        self._playlist_container.SetScrollRate(10, 10)
-        self._playlist_sizer = wx.WrapSizer(wx.HORIZONTAL)
-        self._playlist_container.SetSizer(self._playlist_sizer)
-        self._sizer.Add(self._playlist_container, 1, wx.EXPAND | wx.ALL, 10)
-
-        existing_playlists = list(self._state.iter_playlists())
-        if not existing_playlists:
-            existing_playlists = self._populate_startup_playlists()
-            if not existing_playlists:
-                shortcut_label = format_shortcut_display(self._settings.get_shortcut("playlist_menu", "new"))
-                if not shortcut_label:
-                    descriptor = get_shortcut("playlist_menu", "new")
-                    if descriptor:
-                        shortcut_label = format_shortcut_display(descriptor.default)
-                if shortcut_label:
-                    self._announce_event(
-                        "playlist",
-                        _("No playlists available. Use %s to add a new playlist.") % shortcut_label,
-                    )
-                else:
-                    self._announce_event(
-                        "playlist",
-                        _("No playlists available. Use the Playlist menu to add one."),
-                    )
-        for playlist in existing_playlists:
-            self.add_playlist(playlist)
-        if self._layout.state.order:
-            wx.CallAfter(self._focus_playlist_panel, self._layout.state.order[0])
+        _create_ui_impl(self)
 
     def _register_accessibility(self) -> None:
         # Placeholder: konfiguracje wx.Accessible zostaną dodane w przyszłych iteracjach
         pass
 
     def _populate_startup_playlists(self) -> list[PlaylistModel]:
-        created: list[PlaylistModel] = []
-        for entry in self._settings.get_startup_playlists():
-            name = entry.get("name")
-            if not name:
-                continue
-            existing = next((pl for pl in self._state.iter_playlists() if pl.name == name), None)
-            if existing:
-                created.append(existing)
-                continue
-            kind = entry.get("kind", PlaylistKind.MUSIC)
-            if not isinstance(kind, PlaylistKind):
-                try:
-                    kind = PlaylistKind(kind)
-                except Exception:
-                    kind = PlaylistKind.MUSIC
-            folder_path = entry.get("folder_path")
-            if folder_path and not isinstance(folder_path, Path):
-                folder_path = Path(folder_path)
-            model = self._playlist_factory.create_playlist(name, kind=kind, folder_path=folder_path)
-            slots = entry.get("slots", [])
-            if isinstance(slots, list) and kind is not PlaylistKind.FOLDER:
-                model.set_output_slots(slots)
-            created.append(model)
-        return created
+        return _populate_startup_playlists_impl(self)
 
     def _configure_accelerators(self) -> None:
         _configure_accelerators_impl(self)

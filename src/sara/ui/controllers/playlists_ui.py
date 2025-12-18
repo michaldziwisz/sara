@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import wx
 
+from pathlib import Path
+
 from sara.core.hotkeys import HotkeyAction
 from sara.core.i18n import gettext as _
 from sara.core.playlist import PlaylistKind, PlaylistModel
+from sara.core.shortcuts import get_shortcut
 from sara.ui.folder_playlist_panel import FolderPlaylistPanel
 from sara.ui.news_playlist_panel import NewsPlaylistPanel
 from sara.ui.playlist_panel import PlaylistPanel
+from sara.ui.shortcut_utils import format_shortcut_display
 
 
 def add_playlist(frame, model: PlaylistModel) -> None:
@@ -137,3 +141,65 @@ def remove_playlist_by_id(frame, playlist_id: str, *, announce: bool = True) -> 
         frame._announce_event("playlist", _("Removed playlist %s") % title)
     return True
 
+
+def create_ui(frame) -> None:
+    panel = wx.Panel(frame)
+    frame._sizer = wx.BoxSizer(wx.VERTICAL)
+    panel.SetSizer(frame._sizer)
+
+    frame._playlist_container = wx.ScrolledWindow(panel, style=wx.HSCROLL | wx.VSCROLL)
+    frame._playlist_container.SetScrollRate(10, 10)
+    frame._playlist_sizer = wx.WrapSizer(wx.HORIZONTAL)
+    frame._playlist_container.SetSizer(frame._playlist_sizer)
+    frame._sizer.Add(frame._playlist_container, 1, wx.EXPAND | wx.ALL, 10)
+
+    existing_playlists = list(frame._state.iter_playlists())
+    if not existing_playlists:
+        existing_playlists = populate_startup_playlists(frame)
+        if not existing_playlists:
+            shortcut_label = format_shortcut_display(frame._settings.get_shortcut("playlist_menu", "new"))
+            if not shortcut_label:
+                descriptor = get_shortcut("playlist_menu", "new")
+                if descriptor:
+                    shortcut_label = format_shortcut_display(descriptor.default)
+            if shortcut_label:
+                frame._announce_event(
+                    "playlist",
+                    _("No playlists available. Use %s to add a new playlist.") % shortcut_label,
+                )
+            else:
+                frame._announce_event(
+                    "playlist",
+                    _("No playlists available. Use the Playlist menu to add one."),
+                )
+    for playlist in existing_playlists:
+        add_playlist(frame, playlist)
+    if frame._layout.state.order:
+        wx.CallAfter(frame._focus_playlist_panel, frame._layout.state.order[0])
+
+
+def populate_startup_playlists(frame) -> list[PlaylistModel]:
+    created: list[PlaylistModel] = []
+    for entry in frame._settings.get_startup_playlists():
+        name = entry.get("name")
+        if not name:
+            continue
+        existing = next((pl for pl in frame._state.iter_playlists() if pl.name == name), None)
+        if existing:
+            created.append(existing)
+            continue
+        kind = entry.get("kind", PlaylistKind.MUSIC)
+        if not isinstance(kind, PlaylistKind):
+            try:
+                kind = PlaylistKind(kind)
+            except Exception:
+                kind = PlaylistKind.MUSIC
+        folder_path = entry.get("folder_path")
+        if folder_path and not isinstance(folder_path, Path):
+            folder_path = Path(folder_path)
+        model = frame._playlist_factory.create_playlist(name, kind=kind, folder_path=folder_path)
+        slots = entry.get("slots", [])
+        if isinstance(slots, list) and kind is not PlaylistKind.FOLDER:
+            model.set_output_slots(slots)
+        created.append(model)
+    return created
