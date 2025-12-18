@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -70,6 +69,7 @@ from sara.ui.controllers.alerts import (
 from sara.ui.controllers.automix_flow import (
     auto_mix_play_next as _auto_mix_play_next_impl,
     auto_mix_start_index as _auto_mix_start_index_impl,
+    preferred_auto_mix_index as _preferred_auto_mix_index_impl,
     set_auto_mix_enabled as _set_auto_mix_enabled_impl,
 )
 from sara.ui.controllers.playlist_io import (
@@ -185,12 +185,10 @@ from sara.ui.mix_preview import (
 )
 from sara.ui.mix_runtime import (
     apply_mix_trigger_to_playback as _apply_mix_trigger_to_playback_impl,
+    auto_mix_now_from_callback as _auto_mix_now_from_callback_impl,
     auto_mix_now as _auto_mix_now_impl,
     auto_mix_state_process as _auto_mix_state_process_impl,
 )
-
-
-logger = logging.getLogger(__name__)
 
 
 class MainFrame(wx.Frame):
@@ -424,19 +422,7 @@ class MainFrame(wx.Frame):
         _set_auto_mix_enabled_impl(self, enabled, reason=reason)
 
     def _preferred_auto_mix_index(self, panel: PlaylistPanel, item_count: int) -> int:
-        try:
-            selected = panel.get_selected_indices()
-        except Exception:
-            selected = []
-        idx = selected[0] if selected else None
-        if idx is None:
-            try:
-                focus_idx = panel.get_focused_index()
-            except Exception:
-                focus_idx = wx.NOT_FOUND
-            idx = focus_idx if focus_idx != wx.NOT_FOUND else 0
-        idx = max(0, min(idx, max(0, item_count - 1)))
-        return idx
+        return _preferred_auto_mix_index_impl(panel, item_count)
 
     def _on_toggle_loop_playback(self, _event: wx.CommandEvent) -> None:
         _on_toggle_loop_playback_impl(self, _event)
@@ -578,19 +564,7 @@ class MainFrame(wx.Frame):
         _auto_mix_state_process_impl(self, panel, item, context_entry, seconds, queued_selection)
 
     def _auto_mix_now_from_callback(self, playlist_id: str, item_id: str) -> None:
-        playlist = self._get_playlist_model(playlist_id)
-        if not playlist:
-            return
-        panel = self._playlists.get(playlist_id)
-        if not panel:
-            return
-        item = playlist.get_item(item_id)
-        if not item:
-            return
-        try:
-            self._auto_mix_now(playlist, item, panel)
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.exception("UI: auto_mix_now callback failed playlist=%s item=%s err=%s", playlist_id, item_id, exc)
+        _auto_mix_now_from_callback_impl(self, playlist_id, item_id)
 
     def _auto_mix_now(self, playlist: PlaylistModel, item: PlaylistItem, panel: PlaylistPanel) -> None:
         _auto_mix_now_impl(self, playlist, item, panel)

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 
+import wx
+
 from sara.core.i18n import gettext as _
 from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistKind
 from sara.ui.playlist_panel import PlaylistPanel
@@ -12,6 +14,22 @@ from sara.ui.playlist_panel import PlaylistPanel
 logger = logging.getLogger(__name__)
 
 ANNOUNCEMENT_PREFIX = "\uf8ff"
+
+
+def preferred_auto_mix_index(panel: PlaylistPanel, item_count: int) -> int:
+    try:
+        selected = panel.get_selected_indices()
+    except Exception:
+        selected = []
+    idx = selected[0] if selected else None
+    if idx is None:
+        try:
+            focus_idx = panel.get_focused_index()
+        except Exception:
+            focus_idx = wx.NOT_FOUND
+        idx = focus_idx if focus_idx != wx.NOT_FOUND else 0
+    idx = max(0, min(idx, max(0, item_count - 1)))
+    return idx
 
 
 def set_auto_mix_enabled(frame, enabled: bool, *, reason: str | None = None) -> None:
