@@ -177,7 +177,6 @@ from sara.ui.controllers.loop_and_remaining import (
 )
 from sara.ui.controllers.menu_and_shortcuts import (
     apply_shortcut_to_menu_item as _apply_shortcut_to_menu_item_impl,
-    append_shortcut_menu_item as _append_shortcut_menu_item_impl,
     configure_accelerators as _configure_accelerators_impl,
     create_menu_bar as _create_menu_bar_impl,
     handle_global_char_hook as _handle_global_char_hook_impl,
@@ -341,26 +340,6 @@ class MainFrame(wx.Frame):
 
     def _create_menu_bar(self) -> None:
         _create_menu_bar_impl(self)
-
-    def _append_shortcut_menu_item(
-        self,
-        menu: wx.Menu,
-        command_id: wx.WindowIDRef | int,
-        base_label: str,
-        scope: str,
-        action: str,
-        *,
-        check: bool = False,
-    ) -> wx.MenuItem:
-        return _append_shortcut_menu_item_impl(
-            self,
-            menu,
-            command_id,
-            base_label,
-            scope,
-            action,
-            check=check,
-        )
 
     def _register_menu_shortcut(self, menu_item: wx.MenuItem, base_label: str, scope: str, action: str) -> None:
         _register_menu_shortcut_impl(self, menu_item, base_label, scope, action)
