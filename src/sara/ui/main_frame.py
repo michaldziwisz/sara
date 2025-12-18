@@ -35,14 +35,11 @@ from sara.ui.undo_manager import UndoManager
 from sara.ui.playlist_panel import PlaylistPanel
 from sara.ui.playlist_layout import PlaylistLayoutManager, PlaylistLayoutState
 from sara.ui.announcement_service import AnnouncementService
-from sara.ui.options_dialog import OptionsDialog
-from sara.ui.shortcut_editor_dialog import ShortcutEditorDialog
 from sara.ui.shortcut_utils import format_shortcut_display, parse_shortcut
 from sara.ui.playback_controller import PlaybackContext, PlaybackController
 from sara.ui.auto_mix_tracker import AutoMixTracker
 from sara.ui.clipboard_service import PlaylistClipboard
 from sara.ui.jingle_controller import JingleController
-from sara.ui.jingles_dialog import JinglesDialog
 from sara.ui.controllers.playback_flow import (
     handle_playback_finished as _handle_playback_finished_impl,
     start_next_from_playlist as _start_next_from_playlist_impl,
@@ -140,6 +137,11 @@ from sara.ui.controllers.playback_state import (
     get_playing_item_id as _get_playing_item_id_impl,
     stop_playlist_playback as _stop_playlist_playback_impl,
     supports_mix_trigger as _supports_mix_trigger_impl,
+)
+from sara.ui.controllers.tools_dialogs import (
+    on_edit_shortcuts as _on_edit_shortcuts_impl,
+    on_jingles as _on_jingles_impl,
+    on_options as _on_options_impl,
 )
 from sara.ui.controllers.loop_and_remaining import (
     active_playlist_item as _active_playlist_item_impl,
@@ -633,68 +635,13 @@ class MainFrame(wx.Frame):
         event.Skip()
 
     def _on_options(self, event: wx.CommandEvent) -> None:
-        current_language = self._settings.get_language()
-        dialog = OptionsDialog(self, settings=self._settings, audio_engine=self._audio_engine)
-        if dialog.ShowModal() == wx.ID_OK:
-            self._settings.save()
-            self._fade_duration = max(self._settings.get_playback_fade_seconds(), 0.0)
-            self._playback.reload_pfl_device()
-            self._alternate_play_next = self._settings.get_alternate_play_next()
-            self._swap_play_select = self._settings.get_swap_play_select()
-            self._auto_remove_played = self._settings.get_auto_remove_played()
-            self._focus_playing_track = self._settings.get_focus_playing_track()
-            self._intro_alert_seconds = self._settings.get_intro_alert_seconds()
-            self._track_end_alert_seconds = self._settings.get_track_end_alert_seconds()
-            self._refresh_news_panels()
-            self._apply_swap_play_select_option()
-            new_language = self._settings.get_language()
-            if new_language != current_language:
-                set_language(new_language)
-                wx.MessageBox(
-                    _("Language change will apply after restarting the application."),
-                    _("Information"),
-                    parent=self,
-                )
-        dialog.Destroy()
+        _on_options_impl(self, event)
 
     def _on_edit_shortcuts(self, _event: wx.CommandEvent) -> None:
-        dialog = ShortcutEditorDialog(self, settings=self._settings)
-        if dialog.ShowModal() == wx.ID_OK:
-            values = dialog.get_values()
-            for (scope, action), shortcut in values.items():
-                if get_shortcut(scope, action) is None:
-                    continue
-                self._settings.set_shortcut(scope, action, shortcut)
-            self._settings.save()
-            self._playlist_hotkey_defaults = self._settings.get_playlist_shortcuts()
-            self._refresh_playlist_hotkeys()
-            self._update_shortcut_menu_labels()
-            self._configure_accelerators()
-            self._announce_event("hotkeys", _("Keyboard shortcuts saved"))
-        dialog.Destroy()
+        _on_edit_shortcuts_impl(self, _event)
 
     def _on_jingles(self, _event: wx.CommandEvent) -> None:
-        dialog = JinglesDialog(
-            self,
-            audio_engine=self._audio_engine,
-            jingle_set=self._jingles.jingle_set,
-            set_path=self._jingles_path,
-            active_page_index=self._jingles.active_page_index,
-            device_id=self._settings.get_jingles_device(),
-        )
-        try:
-            if dialog.ShowModal() != wx.ID_OK:
-                return
-            result = dialog.get_result()
-        finally:
-            dialog.Destroy()
-
-        self._settings.set_jingles_device(result.device_id)
-        self._settings.save()
-        self._jingles.reload_set()
-        self._jingles.set_active_page_index(result.active_page_index)
-        self._jingles.set_device_id(result.device_id)
-        self._announce_event("jingles", self._jingles.page_label())
+        _on_jingles_impl(self, _event)
 
     def _on_toggle_auto_mix(self, event: wx.CommandEvent) -> None:
         self._set_auto_mix_enabled(not self._auto_mix_enabled)
