@@ -17,6 +17,7 @@ from sara.ui.news_mode_controller import NewsEditController, NewsReadController
 
 from .service_io import NewsServiceIO
 from . import toolbar_navigation
+from . import read_mode
 
 
 class NewsPlaylistPanel(wx.Panel):
@@ -441,92 +442,22 @@ class NewsPlaylistPanel(wx.Panel):
 
     # ------------------------------ rendering -------------------------------
     def _render_read_panel(self) -> None:
-        wrapper = wx.BoxSizer(wx.VERTICAL)
-        for child in self._read_panel.GetChildren():
-            child.Destroy()
-        self._read_text_ctrl = None
-        view_model = self._read_controller.build_view(self.model.news_markdown or "")
-        article_lines = view_model.lines
-        audio_entries = view_model.audio_paths
-
-        if article_lines:
-            text_value = "\n".join(article_lines)
-        else:
-            text_value = _("No content. Switch to edit mode to add text.")
-
-        self._read_text_ctrl = wx.TextCtrl(
-            self._read_panel,
-            value=text_value,
-            style=wx.TE_READONLY | wx.TE_MULTILINE | wx.BORDER_NONE | wx.TE_PROCESS_TAB,
-        )
-        self._read_text_ctrl.Bind(wx.EVT_SET_FOCUS, self._notify_focus)
-        self._read_text_ctrl.Bind(wx.EVT_CHAR_HOOK, self._handle_char_hook)
-        self._read_text_ctrl.Bind(wx.EVT_KEY_DOWN, self._handle_read_key)
-        wrapper.Add(self._read_text_ctrl, 1, wx.EXPAND | wx.ALL, 4)
-
-        for index, path in enumerate(audio_entries, start=1):
-            filename = Path(path).name
-            button = wx.Button(self._read_panel, label=_("Play audio %d: %s") % (index, filename))
-            button.Bind(wx.EVT_BUTTON, lambda evt, clip=path: self._play_clip(clip))
-            wrapper.Add(button, 0, wx.ALL, 4)
-
-        self._read_panel.SetSizer(wrapper)
-        self._read_panel.SetupScrolling(scroll_x=False, scroll_y=True)
-        self._restore_caret_position(self._read_text_ctrl)
+        read_mode.render_read_panel(self)
 
     def _handle_read_action(self, event: wx.KeyEvent) -> bool:
-        line_index = self._current_read_line()
-        action = self._read_controller.handle_key(
-            event.GetKeyCode(),
-            shift=event.ShiftDown(),
-            control=event.ControlDown(),
-            alt=event.AltDown(),
-            current_line=line_index,
-        )
-        if action.play_path:
-            self._play_clip(action.play_path)
-        if action.focus_line is not None:
-            self._focus_read_line(action.focus_line)
-        return action.handled
+        return read_mode.handle_read_action(self, event)
 
     def _current_read_line(self) -> int | None:
-        if not self._read_text_ctrl:
-            return None
-        pos = self._read_text_ctrl.GetInsertionPoint()
-        success, _, line_index = self._read_text_ctrl.PositionToXY(pos)
-        return line_index if success else None
+        return read_mode.current_read_line(self)
 
     def _focus_read_line(self, line_index: int | None) -> None:
-        if line_index is None or not self._read_text_ctrl:
-            return
-        pos_target = self._read_text_ctrl.XYToPosition(0, line_index)
-        if pos_target == wx.NOT_FOUND:
-            return
-        self._read_text_ctrl.SetInsertionPoint(pos_target)
-        self._read_text_ctrl.ShowPosition(pos_target)
-        self._read_text_ctrl.SetFocus()
-        self._update_caret_from_read()
+        read_mode.focus_read_line(self, line_index)
 
     def _handle_read_key(self, event: wx.KeyEvent) -> None:
-        keycode = event.GetKeyCode()
-        handled = self._handle_read_action(event)
-        if handled:
-            event.StopPropagation()
-            return
-        if keycode == wx.WXK_TAB and not event.ControlDown() and not event.AltDown():
-            if event.ShiftDown():
-                self.Navigate(wx.NavigationKeyEvent.IsBackward)
-            else:
-                if self._focus_toolbar_from_text(backwards=False):
-                    event.StopPropagation()
-                    return
-            event.StopPropagation()
-            return
-        event.Skip()
+        read_mode.handle_read_key(self, event)
 
     def _play_clip(self, path_str: str) -> None:
-        device_id = self.model.output_device or (self.model.output_slots[0] if self.model.output_slots else None)
-        self._on_play_audio(Path(path_str), device_id)
+        read_mode.play_clip(self, path_str)
 
     def consume_space_shortcut(self) -> bool:
         if self._suppress_play_shortcut:
