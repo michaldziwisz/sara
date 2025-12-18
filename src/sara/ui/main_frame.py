@@ -19,7 +19,6 @@ from sara.core.media_metadata import (
 from sara.core.mix_planner import (
     MixPlan,
     clear_mix_plan as _clear_mix_plan_impl,
-    compute_mix_trigger_seconds as _compute_mix_trigger_seconds_impl,
     mark_mix_triggered as _mark_mix_triggered_impl,
     register_mix_plan as _register_mix_plan_impl,
     resolve_mix_timing as _resolve_mix_timing_impl,
@@ -986,10 +985,6 @@ class MainFrame(wx.Frame):
 
     def _measure_effective_duration(self, playlist: PlaylistModel, item: PlaylistItem) -> float | None:
         return _measure_effective_duration_impl(self, playlist, item)
-
-    def _compute_mix_trigger_seconds(self, item: PlaylistItem) -> float | None:
-        """Calculate absolute time (seconds) to trigger automix/crossfade."""
-        return _compute_mix_trigger_seconds_impl(item, self._fade_duration)
 
     def _preview_mix_with_next(
         self,
