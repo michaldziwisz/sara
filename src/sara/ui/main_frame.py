@@ -21,7 +21,6 @@ from sara.core.media_metadata import (
     AudioMetadata,
     extract_metadata,
     is_supported_audio_file,
-    save_loop_metadata,
     save_replay_gain_metadata,
 )
 from sara.core.mix_planner import (
@@ -84,6 +83,15 @@ from sara.ui.controllers.playlist_io import (
     on_import_playlist as _on_import_playlist_impl,
     parse_m3u as _parse_m3u_impl,
 )
+from sara.ui.controllers.loop_and_remaining import (
+    active_playlist_item as _active_playlist_item_impl,
+    apply_loop_setting_to_playback as _apply_loop_setting_to_playback_impl,
+    on_loop_info as _on_loop_info_impl,
+    on_toggle_loop_playback as _on_toggle_loop_playback_impl,
+    on_track_remaining as _on_track_remaining_impl,
+    resolve_remaining_playback as _resolve_remaining_playback_impl,
+    sync_loop_mix_trigger as _sync_loop_mix_trigger_impl,
+)
 from sara.ui.controllers.menu_and_shortcuts import (
     configure_accelerators as _configure_accelerators_impl,
     create_menu_bar as _create_menu_bar_impl,
@@ -97,7 +105,6 @@ from sara.ui.mix_runtime import (
     apply_mix_trigger_to_playback as _apply_mix_trigger_to_playback_impl,
     auto_mix_now as _auto_mix_now_impl,
     auto_mix_state_process as _auto_mix_state_process_impl,
-    sync_loop_mix_trigger as _sync_loop_mix_trigger_impl,
 )
 
 
@@ -1138,79 +1145,7 @@ class MainFrame(wx.Frame):
         return idx
 
     def _on_toggle_loop_playback(self, _event: wx.CommandEvent) -> None:
-        # 1) Jeśli gdziekolwiek gra pętla – wyłącz ją globalnie, niezależnie od zaznaczenia/playlisty.
-        def _find_active_loop() -> tuple[PlaylistItem, PlaylistModel] | None:
-            for (pl_id, item_id), _ctx in self._playback.contexts.items():
-                panel = self._playlists.get(pl_id)
-                if not isinstance(panel, PlaylistPanel):
-                    continue
-                item = panel.model.get_item(item_id)
-                if item and item.loop_enabled and item.has_loop():
-                    return item, panel.model
-            return None
-
-        active = _find_active_loop()
-        if active:
-            playing_item, playing_model = active
-            playing_item.loop_enabled = False
-            playing_item.loop_auto_enabled = False
-            if not save_loop_metadata(
-                playing_item.path,
-                playing_item.loop_start_seconds,
-                playing_item.loop_end_seconds,
-                playing_item.loop_enabled,
-                playing_item.loop_auto_enabled,
-            ):
-                self._announce_event("loop", _("Failed to update loop metadata"))
-            self._apply_loop_setting_to_playback(playlist_id=playing_model.id, item_id=playing_item.id)
-            self._announce_event("loop", _("Track looping disabled"))
-            remaining = self._compute_intro_remaining(playing_item)
-            if remaining is not None:
-                # tylko czas, bez dodatkowych prefiksów
-                self._announce_intro_remaining(remaining, prefix_only=True)
-            panel = self._playlists.get(playing_model.id)
-            current_panel = self._get_current_music_panel()
-            if isinstance(panel, PlaylistPanel):
-                try:
-                    sel = panel.get_selected_indices()
-                except Exception:
-                    sel = []
-                panel.refresh(selected_indices=sel, focus=(current_panel is panel))
-            return
-
-        # 2) W przeciwnym razie toggle dotyczy zaznaczonego utworu.
-        context = self._get_selected_context()
-        if context is None:
-            self._announce_event("playlist", _("No track selected"))
-            return
-        panel, model, indices = context
-        idx = indices[0]
-        if not (0 <= idx < len(model.items)):
-            self._announce_event("playlist", _("No track selected"))
-            return
-        item = model.items[idx]
-        if not item.has_loop():
-            self._announce_event("loop", _("Track has no loop defined"))
-            return
-
-        item.loop_enabled = not item.loop_enabled
-        item.loop_auto_enabled = item.loop_enabled
-        if not save_loop_metadata(
-            item.path,
-            item.loop_start_seconds,
-            item.loop_end_seconds,
-            item.loop_enabled,
-            item.loop_auto_enabled,
-        ):
-            self._announce_event("loop", _("Failed to update loop metadata"))
-        self._apply_loop_setting_to_playback(playlist_id=model.id, item_id=item.id)
-        state = _("enabled") if item.loop_enabled else _("disabled")
-        self._announce_event("loop", _("Track looping %s") % state)
-        if not item.loop_enabled:
-            remaining = self._compute_intro_remaining(item)
-            if remaining is not None:
-                self._announce_intro_remaining(remaining, prefix_only=True)
-        panel.refresh(selected_indices=[idx], focus=False)
+        _on_toggle_loop_playback_impl(self, _event)
 
     def _apply_replay_gain(self, item: PlaylistItem, gain_db: float | None) -> None:
         item.replay_gain_db = gain_db
@@ -1220,78 +1155,13 @@ class MainFrame(wx.Frame):
             self._announce_event("pfl", _("Updated ReplayGain for %s") % item.title)
 
     def _on_loop_info(self, _event: wx.CommandEvent) -> None:
-        context = self._get_selected_context()
-        if context is None:
-            return
-        _panel, model, indices = context
-        index = indices[0]
-        if not (0 <= index < len(model.items)):
-            self._announce_event("playlist", _("No track selected"))
-            return
-        item = model.items[index]
-        messages: list[str] = []
-        if item.has_loop():
-            start = item.loop_start_seconds or 0.0
-            end = item.loop_end_seconds or 0.0
-            state = _("active") if item.loop_enabled else _("disabled")
-            messages.append(_("Loop from %.2f to %.2f seconds, looping %s") % (start, end, state))
-        else:
-            messages.append(_("Track has no loop defined"))
-
-        intro = item.intro_seconds
-        if intro is not None:
-            cue = item.cue_in_seconds or 0.0
-            intro_length = max(0.0, intro - cue)
-            messages.append(_("Intro length: {seconds:.1f} seconds").format(seconds=intro_length))
-        else:
-            messages.append(_("Intro not defined"))
-
-        self._announce_event("loop", ". ".join(messages))
+        _on_loop_info_impl(self, _event)
 
     def _on_track_remaining(self, _event: wx.CommandEvent | None = None) -> None:
-        info = self._resolve_remaining_playback()
-        if info is None:
-            self._announce_event("playback_events", _("No active playback to report remaining time"))
-            return
-        playlist, item, remaining = info
-        if item.effective_duration_seconds <= 0:
-            self._announce_event("playback_events", _("Remaining time unavailable for %s") % item.title)
-            return
-        total_seconds = max(0, int(round(remaining)))
-        hours, remainder = divmod(total_seconds, 3600)
-        minutes, seconds = divmod(remainder, 60)
-        if hours:
-            time_text = f"{hours:d}:{minutes:02d}:{seconds:02d}"
-        else:
-            time_text = f"{minutes:02d}:{seconds:02d}"
-        # Najpierw czas, następnie (jeśli aktywna) informacja o pętli, potem kontekst
-        parts: list[str] = [time_text]
-        if item.loop_enabled and item.has_loop():
-            parts.append(_("Loop enabled"))
-        parts.append(_("Track: %(track)s. Playlist: %(playlist)s.") % {"track": item.title, "playlist": playlist.name})
-        self._announce_event("playback_events", " ".join(parts))
+        _on_track_remaining_impl(self, _event)
 
     def _apply_loop_setting_to_playback(self, *, playlist_id: str | None = None, item_id: str | None = None) -> None:
-        for (pl_id, item_id_key), context in list(self._playback.contexts.items()):
-            if playlist_id is not None and pl_id != playlist_id:
-                continue
-            if item_id is not None and item_id_key != item_id:
-                continue
-
-            playlist = self._get_playlist_model(pl_id)
-            if not playlist:
-                continue
-            item = playlist.get_item(item_id_key)
-            if not item:
-                continue
-            try:
-                if item.loop_enabled and item.has_loop():
-                    context.player.set_loop(item.loop_start_seconds, item.loop_end_seconds)
-                else:
-                    context.player.set_loop(None, None)
-            except Exception as exc:  # pylint: disable=broad-except
-                logger.debug("Failed to synchronise playback loop: %s", exc)
-            self._sync_loop_mix_trigger(panel=self._playlists.get(pl_id), playlist=playlist, item=item, context=context)
+        _apply_loop_setting_to_playback_impl(self, playlist_id=playlist_id, item_id=item_id)
 
     def _sync_loop_mix_trigger(
         self,
@@ -1301,14 +1171,7 @@ class MainFrame(wx.Frame):
         item: PlaylistItem,
         context: PlaybackContext,
     ) -> None:
-        _sync_loop_mix_trigger_impl(
-            self,
-            panel=panel,
-            playlist=playlist,
-            item=item,
-            context=context,
-            call_after=wx.CallAfter,
-        )
+        _sync_loop_mix_trigger_impl(self, panel=panel, playlist=playlist, item=item, context=context)
 
     def _apply_mix_trigger_to_playback(self, *, playlist_id: str, item: PlaylistItem, panel: PlaylistPanel) -> None:
         _apply_mix_trigger_to_playback_impl(
@@ -1985,40 +1848,10 @@ class MainFrame(wx.Frame):
                 break
 
     def _resolve_remaining_playback(self) -> tuple[PlaylistModel, PlaylistItem, float] | None:
-        candidate_ids: list[str] = []
-        panel = self._get_current_music_panel()
-        if panel:
-            candidate_ids.append(panel.model.id)
-        for playlist_id, _item_id in self._playback.contexts.keys():
-            if playlist_id not in candidate_ids:
-                candidate_ids.append(playlist_id)
-        for playlist_id in candidate_ids:
-            panel = self._playlists.get(playlist_id)
-            if not isinstance(panel, PlaylistPanel):
-                continue
-            item = self._active_playlist_item(panel.model)
-            if item is None:
-                continue
-            remaining = max(0.0, item.effective_duration_seconds - item.current_position)
-            return panel.model, item, remaining
-        return None
+        return _resolve_remaining_playback_impl(self)
 
     def _active_playlist_item(self, playlist: PlaylistModel) -> PlaylistItem | None:
-        playlist_keys = [key for key in self._playback.contexts.keys() if key[0] == playlist.id]
-        if not playlist_keys:
-            return None
-        last_started = self._last_started_item_id.get(playlist.id)
-        if last_started:
-            candidate_key = (playlist.id, last_started)
-            if candidate_key in self._playback.contexts:
-                item = playlist.get_item(last_started)
-                if item:
-                    return item
-        for key in reversed(list(playlist_keys)):
-            item = playlist.get_item(key[1])
-            if item:
-                return item
-        return None
+        return _active_playlist_item_impl(self, playlist)
 
     def _compute_intro_remaining(self, item: PlaylistItem, absolute_seconds: float | None = None) -> float | None:
         return _compute_intro_remaining_impl(item, absolute_seconds)
