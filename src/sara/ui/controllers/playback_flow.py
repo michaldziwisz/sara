@@ -378,6 +378,7 @@ def start_next_from_playlist(
         )
 
     if frame._auto_mix_enabled and playlist.kind is PlaylistKind.MUSIC:
+        next_idx = frame._auto_mix_tracker.next_index(playlist, break_resume_index=playlist.break_resume_index)
         current_ctx = frame._get_playback_context(playlist.id)
         if current_ctx:
             key, _ctx = current_ctx
