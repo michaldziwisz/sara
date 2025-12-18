@@ -12,6 +12,7 @@ from typing import Callable, Optional
 
 from .manager import BassManager, _AsioDeviceContext, _DeviceContext
 from .native import BassNotAvailable, _BassConstants
+from .player_monitor import start_monitor as _start_monitor_impl
 
 logger = logging.getLogger(__name__)
 _DEBUG_LOOP = bool(os.environ.get("SARA_DEBUG_LOOP"))
@@ -157,94 +158,13 @@ class BassPlayer:
             self._fade_thread = None
 
     def _start_monitor(self) -> None:
-        if self._monitor_thread and self._monitor_thread.is_alive():
-            return
-        self._monitor_stop.clear()
-
-        def _runner() -> None:
-            while not self._monitor_stop.is_set():
-                try:
-                    if self._stream:
-                        now = time.time()
-                        if (
-                            self._progress_callback
-                            and self._current_item_id
-                            and (now - self._last_progress_ts) >= 0.05
-                        ):
-                            try:
-                                pos = self._manager.channel_get_seconds(self._stream)
-                                self._progress_callback(self._current_item_id, pos)
-                            except Exception:
-                                pass
-                            self._last_progress_ts = now
-                        # nadzoruj pętlę również po stronie Python, żeby uniknąć pominiętych synców
-                        if (
-                            self._loop_guard_enabled
-                            and self._loop_active
-                            and self._loop_end is not None
-                            and self._loop_start is not None
-                        ):
-                            try:
-                                pos = self._manager.channel_get_seconds(self._stream)
-                                now = time.time()
-                                if self._debug_loop and (now - self._last_loop_debug_log) > 0.5:
-                                    logger.debug(
-                                        "Loop debug: pos=%.6f start=%.6f end=%.6f stream=%s",
-                                        pos,
-                                        self._loop_start,
-                                        self._loop_end,
-                                        self._stream,
-                                    )
-                                    self._last_loop_debug_log = now
-                                # strażnik awaryjny: pozwól syncowi zadziałać, a reaguj dopiero PO końcu
-                                if (now - self._last_loop_jump_ts) > 0.004:
-                                    guard_slack = (
-                                        _LOOP_GUARD_BASE_SLACK if self._loop_guard_armed else _LOOP_GUARD_FALLBACK_SLACK
-                                    )
-                                    if pos > (self._loop_end + guard_slack):
-                                        self._jump_to_loop_start("guard", pos)
-                                        continue
-                                    # twardy clamp tylko przy dużym odjechaniu
-                                    if pos > (self._loop_end + 0.05):
-                                        self._jump_to_loop_start("clamp", pos)
-                                        continue
-                            except Exception as exc:
-                                if self._debug_loop:
-                                    logger.debug("Loop debug: guard check failed: %s", exc)
-                        active = self._is_active()
-                        if not active:
-                            # Jeśli pętla ma być aktywna, próbujemy wznowić bez wyzwalania zakończenia
-                            if self._loop_active and self._stream:
-                                try:
-                                    if self._loop_start_bytes:
-                                        self._manager.channel_set_position_bytes(self._stream, self._loop_start_bytes)
-                                    # jeśli strumień nie gra, wznów go
-                                    try:
-                                        self._manager.channel_play(self._stream, False)
-                                    except Exception:
-                                        pass
-                                except Exception as exc:
-                                    if self._debug_loop:
-                                        logger.debug("Loop debug: monitor restart failed: %s", exc)
-                                # nawet jeśli się nie udało, nie zgłaszaj zakończenia – próbuj ponownie
-                                time.sleep(self._MONITOR_INTERVAL)
-                                continue
-                            if self._finished_callback and self._current_item_id:
-                                try:
-                                    self._finished_callback(self._current_item_id)
-                                except Exception:
-                                    pass
-                            # zwolnij zasoby po naturalnym zakończeniu
-                            try:
-                                self.stop(_from_fade=True)
-                            except Exception:
-                                pass
-                            break
-                    time.sleep(self._MONITOR_INTERVAL)
-                except Exception:
-                    break
-        self._monitor_thread = threading.Thread(target=_runner, daemon=True, name="bass-monitor")
-        self._monitor_thread.start()
+        _start_monitor_impl(
+            self,
+            monitor_interval=self._MONITOR_INTERVAL,
+            loop_guard_base_slack=_LOOP_GUARD_BASE_SLACK,
+            loop_guard_fallback_slack=_LOOP_GUARD_FALLBACK_SLACK,
+            logger=logger,
+        )
 
     def _jump_to_loop_start(self, reason: str, pos: Optional[float] = None) -> None:
         """Przeskocz na początek pętli i zinstrumentuj przebiegi."""
