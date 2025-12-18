@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from .accelerators import configure_accelerators
-from .global_shortcuts import (
+from .menu.accelerators import configure_accelerators
+from .menu.global_shortcuts import (
     handle_global_char_hook,
     handle_jingles_key,
     should_handle_altgr_track_remaining,
 )
-from .menu_bar import (
+from .menu.menu_bar import (
     append_shortcut_menu_item,
     apply_shortcut_to_menu_item,
     create_menu_bar,
