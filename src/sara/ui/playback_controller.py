@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 import logging
-import threading
-import time
 from dataclasses import dataclass
 from pathlib import Path
-from threading import Event
 from typing import Callable, Dict, Iterable, Optional, Tuple, TYPE_CHECKING
 
 from sara.audio.engine import AudioDevice, AudioEngine, Player
@@ -16,6 +13,8 @@ from sara.core.i18n import gettext as _
 from sara.core.playlist import PlaylistItem, PlaylistModel, PlaylistItemStatus
 from sara.ui.playback_device_selection import ensure_player as _ensure_player_impl
 from sara.ui.playback_mixer_support import PlaybackMixerSupportMixin
+from sara.ui.playback_preview import PreviewContext
+from sara.ui import playback_preview as _playback_preview
 
 if TYPE_CHECKING:  # pragma: no cover - tylko dla typowania
     from sara.audio.mixer import DeviceMixer
@@ -33,14 +32,6 @@ class PlaybackContext:
     intro_seconds: float | None = None
     intro_alert_triggered: bool = False
     track_end_alert_triggered: bool = False
-
-
-@dataclass
-class PreviewContext:
-    players: list[Player]
-    device_id: str
-    item_path: Path
-    finished_event: Event | None = None
 
 
 class PlaybackController(PlaybackMixerSupportMixin):
@@ -375,32 +366,7 @@ class PlaybackController(PlaybackMixerSupportMixin):
         self._cleanup_unused_mixers()
 
     def stop_preview(self, *, wait: bool = True) -> None:
-        if not self._preview_context:
-            return
-        context = self._preview_context
-        self._preview_context = None
-        finished_event = context.finished_event if wait else None
-        # sygnalizuj wątkom podglądu, że mają się zatrzymać
-        try:
-            if context.finished_event:
-                context.finished_event.set()
-        except Exception:  # pylint: disable=broad-except
-            pass
-        for player in context.players:
-            try:
-                if hasattr(player, "set_loop"):
-                    player.set_loop(None, None)
-            except Exception:  # pylint: disable=broad-except
-                pass
-            try:
-                player.stop()
-            except Exception:  # pylint: disable=broad-except
-                pass
-        if wait and finished_event:
-            try:
-                finished_event.wait(timeout=0.5)
-            except Exception:  # pylint: disable=broad-except
-                pass
+        _playback_preview.stop_preview(self, wait=wait)
 
     def start_preview(
         self,
@@ -409,74 +375,7 @@ class PlaybackController(PlaybackMixerSupportMixin):
         *,
         loop_range: tuple[float, float] | None = None,
     ) -> bool:
-        logger.debug(
-            "PlaybackController: start_preview item=%s start=%.3f loop=%s device=%s",
-            getattr(item, "title", item.id),
-            start,
-            loop_range,
-            self._pfl_device_id,
-        )
-        if loop_range is not None and loop_range[1] <= loop_range[0]:
-            self._announce("loop", _("Loop end must be greater than start"))
-            return False
-
-        self.stop_preview(wait=True)
-
-        pfl_device_id = self._pfl_device_id or self._settings.get_pfl_device()
-        if not pfl_device_id:
-            self._announce("pfl", _("Configure a PFL device in Options"))
-            return False
-
-        known_devices = {device.id for device in self._audio_engine.get_devices()}
-        if pfl_device_id not in known_devices:
-            self._audio_engine.refresh_devices()
-            known_devices = {device.id for device in self._audio_engine.get_devices()}
-        if pfl_device_id not in known_devices:
-            self._announce("pfl", _("Selected PFL device is not available"))
-            return False
-
-        if pfl_device_id in self.get_busy_device_ids():
-            self._announce("pfl", _("PFL device is currently in use"))
-            return False
-
-        try:
-            player = self._audio_engine.create_player(pfl_device_id)
-        except Exception as exc:  # pylint: disable=broad-except
-            self._announce("pfl", _("Failed to prepare PFL preview: %s") % exc)
-            return False
-
-        finished_event: Event | None = None
-        try:
-            player.set_finished_callback(None)
-            player.set_progress_callback(None)
-            player.set_gain_db(item.replay_gain_db)
-            finished_event = player.play(
-                item.id + ":preview",
-                str(item.path),
-                start_seconds=start,
-                # Pozwól na zapętlenie tylko przy aktywnym loop_range – w pozostałych
-                # przypadkach podsłuch powinien naturalnie się zatrzymać.
-                allow_loop=bool(loop_range),
-            )
-            if loop_range:
-                player.set_loop(loop_range[0], loop_range[1])
-            else:
-                player.set_loop(None, None)
-        except Exception as exc:  # pylint: disable=broad-except
-            self._announce("pfl", _("Preview error: %s") % exc)
-            try:
-                player.stop()
-            except Exception:  # pylint: disable=broad-except
-                pass
-            return False
-
-        self._preview_context = PreviewContext(
-            players=[player],
-            device_id=pfl_device_id,
-            item_path=item.path,
-            finished_event=finished_event,
-        )
-        return True
+        return _playback_preview.start_preview(self, item, start, loop_range=loop_range)
 
     def start_mix_preview(
         self,
@@ -495,135 +394,19 @@ class PlaybackController(PlaybackMixerSupportMixin):
         przed punktem miksu, player B startuje dokładnie w punkcie mix_at_seconds (relatywnie
         do startu A). Fade A jest stosowany opcjonalnie.
         """
-        self.stop_preview(wait=False)
-
-        pfl_device_id = self._pfl_device_id or self._settings.get_pfl_device()
-        if not pfl_device_id:
-            self._announce("pfl", _("Configure a PFL device in Options"))
-            return False
-
-        known_devices = {device.id for device in self._audio_engine.get_devices()}
-        if pfl_device_id not in known_devices:
-            self._audio_engine.refresh_devices()
-            known_devices = {device.id for device in self._audio_engine.get_devices()}
-        if pfl_device_id not in known_devices:
-            self._announce("pfl", _("Selected PFL device is not available"))
-            return False
-
-        try:
-            player_a = self._audio_engine.create_player(pfl_device_id)
-            player_b = self._audio_engine.create_player(pfl_device_id)
-        except Exception as exc:  # pylint: disable=broad-except
-            self._announce("pfl", _("Failed to prepare mix preview: %s") % exc)
-            return False
-
-        try:
-            player_a.set_gain_db(current_item.replay_gain_db)
-        except Exception:  # pylint: disable=broad-except
-            pass
-        try:
-            player_b.set_gain_db(next_item.replay_gain_db)
-        except Exception:  # pylint: disable=broad-except
-            pass
-
-        start_a = max(0.0, mix_at_seconds - pre_seconds)
-        effective_duration = (
-            max(0.0, current_effective_duration)
-            if current_effective_duration is not None
-            else current_item.effective_duration_seconds
+        return _playback_preview.start_mix_preview(
+            self,
+            current_item,
+            next_item,
+            mix_at_seconds=mix_at_seconds,
+            pre_seconds=pre_seconds,
+            fade_seconds=fade_seconds,
+            current_effective_duration=current_effective_duration,
+            next_cue_override=next_cue_override,
         )
-        remaining_current = max(0.0, effective_duration - mix_at_seconds)
-        fade_len = min(max(0.0, fade_seconds), remaining_current) if remaining_current > 0 else 0.0
-        next_start = next_cue_override if next_cue_override is not None else (next_item.cue_in_seconds or 0.0)
-        delay_b = max(0.0, mix_at_seconds - start_a)
-
-        logger.debug(
-            "PFL mix preview: current=%s next=%s mix_at=%.3f pre=%.3f fade=%.3f cue_next=%.3f",
-            current_item.title,
-            next_item.title,
-            mix_at_seconds,
-            pre_seconds,
-            fade_len,
-            next_start,
-        )
-
-        stop_event = Event()
-
-        # jeśli trigger w przeszłości, odpal B natychmiast i skróć pre-window
-        if delay_b <= 0:
-            delay_b = 0.0
-            start_a = max(0.0, mix_at_seconds - pre_seconds)
-
-        def _fire_mix() -> None:
-            if stop_event.is_set():
-                return
-            try:
-                player_b.play(next_item.id, str(next_item.path), start_seconds=next_start, allow_loop=False)
-            except Exception:
-                return
-            if fade_len > 0:
-                try:
-                    player_a.fade_out(fade_len)
-                except Exception:
-                    pass
-
-        def _schedule_mix_trigger() -> None:
-            if delay_b <= 0:
-                _fire_mix()
-                return
-            apply_trigger = getattr(player_a, "_apply_mix_trigger", None)
-            if callable(apply_trigger):
-                try:
-                    apply_trigger(mix_at_seconds, _fire_mix)
-                    return
-                except Exception:  # pragma: no cover - defensywne
-                    logger.debug("PFL mix preview: failed to arm BASS trigger, falling back to timer", exc_info=True)
-
-            def _fallback_wait() -> None:
-                stop_event.wait(timeout=delay_b)
-                if stop_event.is_set():
-                    return
-                _fire_mix()
-
-            threading.Thread(target=_fallback_wait, daemon=True).start()
-
-        try:
-            player_a.play(current_item.id, str(current_item.path), start_seconds=start_a, allow_loop=False)
-        except Exception as exc:  # pylint: disable=broad-except
-            self._announce("pfl", _("Failed to start mix preview: %s") % exc)
-            return False
-
-        _schedule_mix_trigger()
-
-        # auto-stop po krótkim oknie odsłuchu (pre + fade + zapas)
-        total_preview = pre_seconds + max(fade_len, 0.0) + 4.0
-        
-        def _auto_stop() -> None:
-            stop_event.wait(timeout=total_preview)
-            self.stop_preview(wait=False)
-
-        threading.Thread(target=_auto_stop, daemon=True).start()
-
-        self._preview_context = PreviewContext(
-            players=[player_a, player_b],
-            device_id=pfl_device_id,
-            item_path=current_item.path,
-            finished_event=stop_event,
-        )
-        return True
 
     def update_loop_preview(self, item: PlaylistItem, start: float, end: float) -> bool:
-        if end <= start:
-            return False
-        context = self._preview_context
-        if not context or context.item_path != item.path:
-            return False
-        try:
-            context.player.set_loop(start, end)
-        except Exception as exc:  # pylint: disable=broad-except
-            self._announce("pfl", _("Preview error: %s") % exc)
-            return False
-        return True
+        return _playback_preview.update_loop_preview(self, item, start, end)
 
 
 __all__ = ["PlaybackContext", "PlaybackController", "PreviewContext"]
