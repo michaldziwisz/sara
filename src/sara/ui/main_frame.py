@@ -135,7 +135,6 @@ from sara.ui.controllers.playlist_focus import (
 )
 from sara.ui.controllers.playback_state import (
     cancel_active_playback as _cancel_active_playback_impl,
-    get_busy_device_ids as _get_busy_device_ids_impl,
     get_playback_context as _get_playback_context_impl,
     get_playing_item_id as _get_playing_item_id_impl,
     stop_playlist_playback as _stop_playlist_playback_impl,
@@ -906,9 +905,6 @@ class MainFrame(wx.Frame):
 
     def _get_playing_item_id(self, playlist_id: str) -> str | None:
         return _get_playing_item_id_impl(self, playlist_id)
-
-    def _get_busy_device_ids(self) -> set[str]:
-        return _get_busy_device_ids_impl(self)
 
     def _refresh_selection_display(self, playlist_id: str) -> None:
         panel = self._playlists.get(playlist_id)
