@@ -177,9 +177,15 @@ from sara.ui.controllers.loop_and_remaining import (
     sync_loop_mix_trigger as _sync_loop_mix_trigger_impl,
 )
 from sara.ui.controllers.menu_and_shortcuts import (
+    apply_shortcut_to_menu_item as _apply_shortcut_to_menu_item_impl,
+    append_shortcut_menu_item as _append_shortcut_menu_item_impl,
     configure_accelerators as _configure_accelerators_impl,
     create_menu_bar as _create_menu_bar_impl,
+    handle_global_char_hook as _handle_global_char_hook_impl,
     handle_jingles_key as _handle_jingles_key_impl,
+    register_menu_shortcut as _register_menu_shortcut_impl,
+    should_handle_altgr_track_remaining as _should_handle_altgr_track_remaining_impl,
+    update_shortcut_menu_labels as _update_shortcut_menu_labels_impl,
 )
 from sara.ui.mix_preview import (
     measure_effective_duration as _measure_effective_duration_impl,
@@ -324,30 +330,24 @@ class MainFrame(wx.Frame):
         *,
         check: bool = False,
     ) -> wx.MenuItem:
-        item_id = int(command_id)
-        menu_item = menu.AppendCheckItem(item_id, base_label) if check else menu.Append(item_id, base_label)
-        self._register_menu_shortcut(menu_item, base_label, scope, action)
-        return menu_item
+        return _append_shortcut_menu_item_impl(
+            self,
+            menu,
+            command_id,
+            base_label,
+            scope,
+            action,
+            check=check,
+        )
 
     def _register_menu_shortcut(self, menu_item: wx.MenuItem, base_label: str, scope: str, action: str) -> None:
-        if get_shortcut(scope, action) is None:
-            raise ValueError(f"Shortcut not registered for action {scope}:{action}")
-        self._shortcut_menu_items[(scope, action)] = (menu_item, base_label)
-        self._apply_shortcut_to_menu_item(scope, action)
+        _register_menu_shortcut_impl(self, menu_item, base_label, scope, action)
 
     def _apply_shortcut_to_menu_item(self, scope: str, action: str) -> None:
-        entry = self._shortcut_menu_items.get((scope, action))
-        if not entry:
-            return
-        menu_item, base_label = entry
-        shortcut_value = self._settings.get_shortcut(scope, action)
-        shortcut_label = format_shortcut_display(shortcut_value)
-        label = base_label if not shortcut_label else f"{base_label}\t{shortcut_label}"
-        menu_item.SetItemLabel(label)
+        _apply_shortcut_to_menu_item_impl(self, scope, action)
 
     def _update_shortcut_menu_labels(self) -> None:
-        for scope, action in self._shortcut_menu_items.keys():
-            self._apply_shortcut_to_menu_item(scope, action)
+        _update_shortcut_menu_labels_impl(self)
 
     def _refresh_playlist_hotkeys(self) -> None:
         for panel in self._playlists.values():
@@ -376,35 +376,13 @@ class MainFrame(wx.Frame):
         _configure_accelerators_impl(self)
 
     def _handle_global_char_hook(self, event: wx.KeyEvent) -> None:
-        keycode = event.GetKeyCode()
-        if self._should_handle_altgr_track_remaining(event, keycode):
-            self._on_track_remaining()
-            return
-        if keycode == wx.WXK_F6:
-            if self._cycle_playlist_focus(backwards=event.ShiftDown()):
-                return
-        if self._handle_jingles_key(event):
-            return
-        panel, focus = self._active_news_panel()
-        if keycode == wx.WXK_SPACE and panel and panel.is_edit_control(focus):
-            event.Skip()
-            event.StopPropagation()
-            return
-        event.Skip()
+        _handle_global_char_hook_impl(self, event)
 
     def _handle_jingles_key(self, event: wx.KeyEvent) -> bool:
         return _handle_jingles_key_impl(self, event)
 
     def _should_handle_altgr_track_remaining(self, event: wx.KeyEvent, keycode: int) -> bool:
-        if keycode not in (ord("T"), ord("t")):
-            return False
-        modifiers = event.GetModifiers()
-        altgr_flag = getattr(wx, "MOD_ALTGR", None)
-        if isinstance(modifiers, int) and altgr_flag and modifiers & altgr_flag:
-            return True
-        if event.AltDown() and event.ControlDown() and not event.MetaDown():
-            return True
-        return False
+        return _should_handle_altgr_track_remaining_impl(event, keycode)
 
     def add_playlist(self, model: PlaylistModel) -> None:
         _add_playlist_impl(self, model)

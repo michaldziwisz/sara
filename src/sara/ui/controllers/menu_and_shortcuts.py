@@ -6,7 +6,76 @@ import wx
 
 from sara.core.i18n import gettext as _
 from sara.core.shortcuts import get_shortcut
-from sara.ui.shortcut_utils import parse_shortcut
+from sara.ui.shortcut_utils import format_shortcut_display, parse_shortcut
+
+
+def append_shortcut_menu_item(
+    frame,
+    menu: wx.Menu,
+    command_id: wx.WindowIDRef | int,
+    base_label: str,
+    scope: str,
+    action: str,
+    *,
+    check: bool = False,
+) -> wx.MenuItem:
+    item_id = int(command_id)
+    menu_item = menu.AppendCheckItem(item_id, base_label) if check else menu.Append(item_id, base_label)
+    register_menu_shortcut(frame, menu_item, base_label, scope, action)
+    return menu_item
+
+
+def register_menu_shortcut(frame, menu_item: wx.MenuItem, base_label: str, scope: str, action: str) -> None:
+    if get_shortcut(scope, action) is None:
+        raise ValueError(f"Shortcut not registered for action {scope}:{action}")
+    frame._shortcut_menu_items[(scope, action)] = (menu_item, base_label)
+    apply_shortcut_to_menu_item(frame, scope, action)
+
+
+def apply_shortcut_to_menu_item(frame, scope: str, action: str) -> None:
+    entry = frame._shortcut_menu_items.get((scope, action))
+    if not entry:
+        return
+    menu_item, base_label = entry
+    shortcut_value = frame._settings.get_shortcut(scope, action)
+    shortcut_label = format_shortcut_display(shortcut_value)
+    label = base_label if not shortcut_label else f"{base_label}\t{shortcut_label}"
+    menu_item.SetItemLabel(label)
+
+
+def update_shortcut_menu_labels(frame) -> None:
+    for scope, action in frame._shortcut_menu_items.keys():
+        apply_shortcut_to_menu_item(frame, scope, action)
+
+
+def should_handle_altgr_track_remaining(event: wx.KeyEvent, keycode: int) -> bool:
+    if keycode not in (ord("T"), ord("t")):
+        return False
+    modifiers = event.GetModifiers()
+    altgr_flag = getattr(wx, "MOD_ALTGR", None)
+    if isinstance(modifiers, int) and altgr_flag and modifiers & altgr_flag:
+        return True
+    if event.AltDown() and event.ControlDown() and not event.MetaDown():
+        return True
+    return False
+
+
+def handle_global_char_hook(frame, event: wx.KeyEvent) -> None:
+    keycode = event.GetKeyCode()
+    if should_handle_altgr_track_remaining(event, keycode):
+        frame._on_track_remaining()
+        return
+    if keycode == wx.WXK_F6:
+        if frame._cycle_playlist_focus(backwards=event.ShiftDown()):
+            return
+    if handle_jingles_key(frame, event):
+        return
+    panel, focus = frame._active_news_panel()
+    if keycode == wx.WXK_SPACE and panel and panel.is_edit_control(focus):
+        event.Skip()
+        event.StopPropagation()
+        return
+    event.Skip()
 
 
 def create_menu_bar(frame) -> None:
@@ -16,42 +85,45 @@ def create_menu_bar(frame) -> None:
 
     playlist_menu = wx.Menu()
     new_item = playlist_menu.Append(wx.ID_NEW, _("&New playlist"))
-    frame._register_menu_shortcut(new_item, _("&New playlist"), "playlist_menu", "new")
+    register_menu_shortcut(frame, new_item, _("&New playlist"), "playlist_menu", "new")
     add_tracks_item = playlist_menu.Append(int(frame._add_tracks_id), _("Add &tracks…"))
-    frame._register_menu_shortcut(add_tracks_item, _("Add &tracks…"), "playlist_menu", "add_tracks")
+    register_menu_shortcut(frame, add_tracks_item, _("Add &tracks…"), "playlist_menu", "add_tracks")
     assign_device_item = playlist_menu.Append(int(frame._assign_device_id), _("Assign &audio device…"))
-    frame._register_menu_shortcut(assign_device_item, _("Assign &audio device…"), "playlist_menu", "assign_device")
+    register_menu_shortcut(
+        frame, assign_device_item, _("Assign &audio device…"), "playlist_menu", "assign_device"
+    )
     import_item = playlist_menu.Append(wx.ID_OPEN, _("&Import playlist"))
-    frame._register_menu_shortcut(import_item, _("&Import playlist"), "playlist_menu", "import")
+    register_menu_shortcut(frame, import_item, _("&Import playlist"), "playlist_menu", "import")
     playlist_menu.AppendSeparator()
     remove_item = playlist_menu.Append(int(frame._remove_playlist_id), _("&Remove playlist"))
     manage_item = playlist_menu.Append(int(frame._manage_playlists_id), _("Manage &playlists…"))
-    frame._register_menu_shortcut(remove_item, _("&Remove playlist"), "playlist_menu", "remove")
-    frame._register_menu_shortcut(manage_item, _("Manage &playlists…"), "playlist_menu", "manage")
+    register_menu_shortcut(frame, remove_item, _("&Remove playlist"), "playlist_menu", "remove")
+    register_menu_shortcut(frame, manage_item, _("Manage &playlists…"), "playlist_menu", "manage")
     playlist_menu.AppendSeparator()
     export_item = playlist_menu.Append(wx.ID_SAVE, _("&Export playlist…"))
-    frame._register_menu_shortcut(export_item, _("&Export playlist…"), "playlist_menu", "export")
+    register_menu_shortcut(frame, export_item, _("&Export playlist…"), "playlist_menu", "export")
     exit_item = playlist_menu.Append(wx.ID_EXIT, _("E&xit"))
-    frame._register_menu_shortcut(exit_item, _("E&xit"), "playlist_menu", "exit")
+    register_menu_shortcut(frame, exit_item, _("E&xit"), "playlist_menu", "exit")
     menu_bar.Append(playlist_menu, _("&Playlist"))
 
     edit_menu = wx.Menu()
-    frame._append_shortcut_menu_item(edit_menu, frame._undo_id, _("&Undo"), "edit", "undo")
-    frame._append_shortcut_menu_item(edit_menu, frame._redo_id, _("Re&do"), "edit", "redo")
+    append_shortcut_menu_item(frame, edit_menu, frame._undo_id, _("&Undo"), "edit", "undo")
+    append_shortcut_menu_item(frame, edit_menu, frame._redo_id, _("Re&do"), "edit", "redo")
     edit_menu.AppendSeparator()
-    frame._append_shortcut_menu_item(edit_menu, frame._cut_id, _("Cu&t"), "edit", "cut")
-    frame._append_shortcut_menu_item(edit_menu, frame._copy_id, _("&Copy"), "edit", "copy")
-    frame._append_shortcut_menu_item(edit_menu, frame._paste_id, _("&Paste"), "edit", "paste")
+    append_shortcut_menu_item(frame, edit_menu, frame._cut_id, _("Cu&t"), "edit", "cut")
+    append_shortcut_menu_item(frame, edit_menu, frame._copy_id, _("&Copy"), "edit", "copy")
+    append_shortcut_menu_item(frame, edit_menu, frame._paste_id, _("&Paste"), "edit", "paste")
     edit_menu.AppendSeparator()
-    frame._append_shortcut_menu_item(edit_menu, frame._delete_id, _("&Delete"), "edit", "delete")
+    append_shortcut_menu_item(frame, edit_menu, frame._delete_id, _("&Delete"), "edit", "delete")
     edit_menu.AppendSeparator()
-    frame._append_shortcut_menu_item(edit_menu, frame._move_up_id, _("Move &up"), "edit", "move_up")
-    frame._append_shortcut_menu_item(edit_menu, frame._move_down_id, _("Move &down"), "edit", "move_down")
+    append_shortcut_menu_item(frame, edit_menu, frame._move_up_id, _("Move &up"), "edit", "move_up")
+    append_shortcut_menu_item(frame, edit_menu, frame._move_down_id, _("Move &down"), "edit", "move_down")
     menu_bar.Append(edit_menu, _("&Edit"))
 
     tools_menu = wx.Menu()
     options_id = wx.NewIdRef()
-    frame._append_shortcut_menu_item(
+    append_shortcut_menu_item(
+        frame,
         tools_menu,
         frame._loop_playback_toggle_id,
         _("Toggle track &loop"),
@@ -59,14 +131,16 @@ def create_menu_bar(frame) -> None:
         "loop_playback_toggle",
     )
 
-    frame._append_shortcut_menu_item(
+    append_shortcut_menu_item(
+        frame,
         tools_menu,
         frame._loop_info_id,
         _("Loop &information"),
         "global",
         "loop_info",
     )
-    frame._append_shortcut_menu_item(
+    append_shortcut_menu_item(
+        frame,
         tools_menu,
         frame._track_remaining_id,
         _("Track &remaining time"),
@@ -231,4 +305,3 @@ def handle_jingles_key(frame, event: wx.KeyEvent) -> bool:
         return True
 
     return False
-
