@@ -156,6 +156,10 @@ from sara.ui.controllers.tools_dialogs import (
     on_jingles as _on_jingles_impl,
     on_options as _on_options_impl,
 )
+from sara.ui.controllers.playlist_mutations import (
+    remove_item_from_playlist as _remove_item_from_playlist_impl,
+    remove_items as _remove_items_impl,
+)
 from sara.ui.controllers.clipboard_helpers import (
     create_item_from_serialized as _create_item_from_serialized_impl,
     get_system_clipboard_paths as _get_system_clipboard_paths_impl,
@@ -977,40 +981,12 @@ class MainFrame(wx.Frame):
     def _remove_item_from_playlist(
         self, panel: PlaylistPanel, model: PlaylistModel, index: int, *, refocus: bool = True
     ) -> PlaylistItem:
-        item = model.items.pop(index)
-        if model.break_resume_index is not None:
-            if index < model.break_resume_index:
-                model.break_resume_index = max(0, model.break_resume_index - 1)
-            elif index == model.break_resume_index and model.break_resume_index >= len(model.items):
-                model.break_resume_index = None
-        was_selected = item.is_selected
-        item.is_selected = was_selected
-        self._forget_last_started_item(model.id, item.id)
-        if any(key == (model.id, item.id) for key in self._playback.contexts):
-            self._stop_playlist_playback(model.id, mark_played=False, fade_duration=0.0)
-        if refocus:
-            if model.items:
-                next_index = min(index, len(model.items) - 1)
-                self._refresh_playlist_view(panel, [next_index])
-            else:
-                self._refresh_playlist_view(panel, None)
-        return item
+        return _remove_item_from_playlist_impl(self, panel, model, index, refocus=refocus)
 
     def _remove_items(
         self, panel: PlaylistPanel, model: PlaylistModel, indices: list[int]
     ) -> list[PlaylistItem]:
-        if not indices:
-            return []
-        removed: list[PlaylistItem] = []
-        for index in sorted(indices, reverse=True):
-            removed.append(self._remove_item_from_playlist(panel, model, index, refocus=False))
-        removed.reverse()
-        if model.items:
-            next_index = min(indices[0], len(model.items) - 1)
-            self._refresh_playlist_view(panel, [next_index])
-        else:
-            self._refresh_playlist_view(panel, None)
-        return removed
+        return _remove_items_impl(self, panel, model, indices)
 
     def _forget_last_started_item(self, playlist_id: str, item_id: str) -> None:
         if self._last_started_item_id.get(playlist_id) == item_id:
