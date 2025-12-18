@@ -181,7 +181,6 @@ from sara.ui.controllers.menu_and_shortcuts import (
     create_menu_bar as _create_menu_bar_impl,
     handle_global_char_hook as _handle_global_char_hook_impl,
     handle_jingles_key as _handle_jingles_key_impl,
-    register_menu_shortcut as _register_menu_shortcut_impl,
     should_handle_altgr_track_remaining as _should_handle_altgr_track_remaining_impl,
     update_shortcut_menu_labels as _update_shortcut_menu_labels_impl,
 )
@@ -340,9 +339,6 @@ class MainFrame(wx.Frame):
 
     def _create_menu_bar(self) -> None:
         _create_menu_bar_impl(self)
-
-    def _register_menu_shortcut(self, menu_item: wx.MenuItem, base_label: str, scope: str, action: str) -> None:
-        _register_menu_shortcut_impl(self, menu_item, base_label, scope, action)
 
     def _apply_shortcut_to_menu_item(self, scope: str, action: str) -> None:
         _apply_shortcut_to_menu_item_impl(self, scope, action)
