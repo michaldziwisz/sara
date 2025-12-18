@@ -196,6 +196,116 @@ class MainFrame(wx.Frame):
 
     TITLE = "SARA"
 
+    _init_settings = _init_settings_impl
+    _init_playlist_state = _init_playlist_state_impl
+    _init_audio_controllers = _init_audio_controllers_impl
+    _init_command_ids = _init_command_ids_impl
+    _init_runtime_state = _init_runtime_state_impl
+    _init_ui = _init_ui_impl
+    _create_menu_bar = _create_menu_bar_impl
+    _update_shortcut_menu_labels = _update_shortcut_menu_labels_impl
+    _create_ui = _create_ui_impl
+    _configure_accelerators = _configure_accelerators_impl
+    _handle_global_char_hook = _handle_global_char_hook_impl
+    add_playlist = _add_playlist_impl
+    _apply_playlist_order = _apply_playlist_order_impl
+    _remove_playlist_by_id = _remove_playlist_by_id_impl
+    _news_device_entries = _news_device_entries_impl
+    _play_news_audio_clip = _play_news_audio_clip_impl
+    _preview_news_clip = _preview_news_clip_impl
+    _select_folder_for_playlist = _select_folder_for_playlist_impl
+    _reload_folder_playlist = _reload_folder_playlist_impl
+    _load_folder_playlist = _load_folder_playlist_impl
+    _handle_folder_preview = _handle_folder_preview_impl
+    _stop_preview = _stop_preview_impl
+    _send_folder_items_to_music = _send_folder_items_to_music_impl
+    _refresh_news_panels = _refresh_news_panels_impl
+    _active_news_panel = _active_news_panel_impl
+    _focused_playlist_id = _focused_playlist_id_impl
+    _focus_playlist_panel = _focus_playlist_panel_impl
+    _cycle_playlist_focus = _cycle_playlist_focus_impl
+    _on_playlist_selection_change = _on_playlist_selection_change_impl
+    _prompt_new_playlist = _prompt_new_playlist_impl
+    _on_add_tracks = _on_add_tracks_impl
+    _finalize_add_tracks = _finalize_add_tracks_impl
+    _on_remove_playlist = _on_remove_playlist_impl
+    _on_manage_playlists = _on_manage_playlists_impl
+    _on_assign_device = _on_assign_device_impl
+    _configure_playlist_devices = _configure_playlist_devices_impl
+    _on_import_playlist = _on_import_playlist_impl
+    _on_export_playlist = _on_export_playlist_impl
+    _on_options = _on_options_impl
+    _on_edit_shortcuts = _on_edit_shortcuts_impl
+    _on_jingles = _on_jingles_impl
+    _set_auto_mix_enabled = _set_auto_mix_enabled_impl
+    _preferred_auto_mix_index = staticmethod(_preferred_auto_mix_index_impl)
+    _on_toggle_loop_playback = _on_toggle_loop_playback_impl
+    _on_loop_info = _on_loop_info_impl
+    _on_track_remaining = _on_track_remaining_impl
+    _apply_loop_setting_to_playback = _apply_loop_setting_to_playback_impl
+    _sync_loop_mix_trigger = _sync_loop_mix_trigger_impl
+    _on_toggle_selection = _on_toggle_selection_impl
+    _auto_mix_play_next = _auto_mix_play_next_impl
+    _on_mix_points_configure = _on_mix_points_configure_impl
+    _adjust_duration_and_mix_trigger = _adjust_duration_and_mix_trigger_impl
+    _derive_next_play_index = _derive_next_play_index_impl
+    _index_of_item = staticmethod(_index_of_item_impl)
+    _play_next_alternate = _play_next_alternate_impl
+    _on_global_play_next = _on_global_play_next_impl
+    _handle_playback_finished = _handle_playback_finished_impl
+    _handle_playback_progress = _handle_playback_progress_impl
+    _auto_mix_state_process = _auto_mix_state_process_impl
+    _auto_mix_now_from_callback = _auto_mix_now_from_callback_impl
+    _auto_mix_now = _auto_mix_now_impl
+    _manual_fade_duration = _manual_fade_duration_impl
+    _on_playlist_hotkey = _handle_playlist_hotkey_impl
+    _get_current_playlist_panel = _get_current_playlist_panel_impl
+    _handle_focus_click = _handle_focus_click_impl
+    _on_playlist_focus = _on_playlist_focus_impl
+    _get_selected_context = _get_selected_context_impl
+    _get_selected_items = _get_selected_items_impl
+    _serialize_items = staticmethod(_serialize_items_impl)
+    _create_item_from_serialized = _create_item_from_serialized_impl
+    _get_system_clipboard_paths = staticmethod(_get_system_clipboard_paths_impl)
+    _set_system_clipboard_paths = staticmethod(_set_system_clipboard_paths_impl)
+    _collect_files_from_paths = staticmethod(_collect_files_from_paths_impl)
+    _metadata_worker_count = staticmethod(_metadata_worker_count_impl)
+    _load_playlist_item = _load_playlist_item_impl
+    _create_items_from_paths = _create_items_from_paths_impl
+    _run_item_loader = _run_item_loader_impl
+    _create_items_from_m3u_entries = _create_items_from_m3u_entries_impl
+    _load_items_from_sources = _load_items_from_sources_impl
+    _maybe_focus_playing_item = _maybe_focus_playing_item_impl
+    _resolve_remaining_playback = _resolve_remaining_playback_impl
+    _active_playlist_item = _active_playlist_item_impl
+    _compute_intro_remaining = staticmethod(_compute_intro_remaining_impl)
+    _announce_intro_remaining = _announce_intro_remaining_impl
+    _announce_track_end_remaining = _announce_track_end_remaining_impl
+    _cleanup_intro_alert_player = _cleanup_intro_alert_player_impl
+    _play_intro_alert = _play_intro_alert_impl
+    _cleanup_track_end_alert_player = _cleanup_track_end_alert_player_impl
+    _play_track_end_alert = _play_track_end_alert_impl
+    _consider_intro_alert = _consider_intro_alert_impl
+    _consider_track_end_alert = _consider_track_end_alert_impl
+    _remove_item_from_playlist = _remove_item_from_playlist_impl
+    _remove_items = _remove_items_impl
+    _push_undo_action = _push_undo_action_impl
+    _apply_undo_callback = _apply_undo_callback_impl
+    _on_copy_selection = _on_copy_selection_impl
+    _on_cut_selection = _on_cut_selection_impl
+    _on_paste_selection = _on_paste_selection_impl
+    _on_delete_selection = _on_delete_selection_impl
+    _move_selection = _move_selection_impl
+    _on_undo = _on_undo_impl
+    _on_redo = _on_redo_impl
+    _update_active_playlist_styles = _update_active_playlist_styles_impl
+    _get_playback_context = _get_playback_context_impl
+    _get_playing_item_id = _get_playing_item_id_impl
+    _stop_playlist_playback = _stop_playlist_playback_impl
+    _supports_mix_trigger = _supports_mix_trigger_impl
+    _measure_effective_duration = _measure_effective_duration_impl
+    _preview_mix_with_next = _preview_mix_with_next_impl
+
     def __init__(
         self,
         parent: wx.Window | None = None,
@@ -213,24 +323,6 @@ class MainFrame(wx.Frame):
         self._init_runtime_state()
         self._ensure_legacy_hooks()
         self._init_ui()
-
-    def _init_settings(self, settings: SettingsManager | None) -> None:
-        _init_settings_impl(self, settings)
-
-    def _init_playlist_state(self, state: AppState | None) -> None:
-        _init_playlist_state_impl(self, state)
-
-    def _init_audio_controllers(self) -> None:
-        _init_audio_controllers_impl(self)
-
-    def _init_command_ids(self) -> None:
-        _init_command_ids_impl(self)
-
-    def _init_runtime_state(self) -> None:
-        _init_runtime_state_impl(self)
-
-    def _init_ui(self) -> None:
-        _init_ui_impl(self)
 
     def _ensure_legacy_hooks(self) -> None:
         if not hasattr(self, "_on_new_playlist"):
@@ -252,12 +344,6 @@ class MainFrame(wx.Frame):
             overlap_trigger=overlap_trigger,
         )
 
-    def _create_menu_bar(self) -> None:
-        _create_menu_bar_impl(self)
-
-    def _update_shortcut_menu_labels(self) -> None:
-        _update_shortcut_menu_labels_impl(self)
-
     def _refresh_playlist_hotkeys(self) -> None:
         for panel in self._playlists.values():
             model = panel.model
@@ -271,21 +357,9 @@ class MainFrame(wx.Frame):
             if isinstance(panel, PlaylistPanel) and panel.model.kind is PlaylistKind.MUSIC:
                 panel.set_swap_play_select(self._swap_play_select)
 
-    def _create_ui(self) -> None:
-        _create_ui_impl(self)
-
     def _register_accessibility(self) -> None:
         # Placeholder: konfiguracje wx.Accessible zostaną dodane w przyszłych iteracjach
         pass
-
-    def _configure_accelerators(self) -> None:
-        _configure_accelerators_impl(self)
-
-    def _handle_global_char_hook(self, event: wx.KeyEvent) -> None:
-        _handle_global_char_hook_impl(self, event)
-
-    def add_playlist(self, model: PlaylistModel) -> None:
-        _add_playlist_impl(self, model)
 
     def _get_playlist_model(self, playlist_id: str) -> PlaylistModel | None:
         return self._state.playlists.get(playlist_id)
@@ -296,64 +370,14 @@ class MainFrame(wx.Frame):
             return False
         return any(item.is_selected for item in model.items)
 
-    def _apply_playlist_order(self, order: list[str]) -> None:
-        _apply_playlist_order_impl(self, order)
-
-    def _remove_playlist_by_id(self, playlist_id: str, *, announce: bool = True) -> bool:
-        return _remove_playlist_by_id_impl(self, playlist_id, announce=announce)
-
     @staticmethod
     def _format_track_name(item: PlaylistItem) -> str:
         return f"{item.artist} - {item.title}" if item.artist else item.title
-
-    def _news_device_entries(self) -> list[tuple[str | None, str]]:
-        return _news_device_entries_impl(self)
-
-    def _play_news_audio_clip(self, model: PlaylistModel, clip_path: Path, device_id: str | None) -> None:
-        _play_news_audio_clip_impl(self, model, clip_path, device_id)
-
-    def _preview_news_clip(self, clip_path: Path) -> bool:
-        return _preview_news_clip_impl(self, clip_path)
 
     def _persist_playlist_outputs(self, model: PlaylistModel) -> None:
         self._settings.set_playlist_outputs(model.name, model.get_configured_slots())
         self._settings.save()
 
-    def _select_folder_for_playlist(self, playlist_id: str) -> None:
-        _select_folder_for_playlist_impl(self, playlist_id)
-
-    def _reload_folder_playlist(self, playlist_id: str) -> None:
-        _reload_folder_playlist_impl(self, playlist_id)
-
-    def _load_folder_playlist(self, playlist: PlaylistModel, *, announce: bool = True) -> None:
-        _load_folder_playlist_impl(self, playlist, announce=announce)
-
-    def _handle_folder_preview(self, playlist_id: str, item_id: str) -> None:
-        _handle_folder_preview_impl(self, playlist_id, item_id)
-
-    def _stop_preview(self) -> None:
-        _stop_preview_impl(self)
-
-    def _send_folder_items_to_music(self, playlist_id: str, item_ids: Sequence[str]) -> None:
-        _send_folder_items_to_music_impl(self, playlist_id, item_ids)
-
-    def _refresh_news_panels(self) -> None:
-        _refresh_news_panels_impl(self)
-
-    def _active_news_panel(self) -> tuple[NewsPlaylistPanel | None, wx.Window | None]:
-        return _active_news_panel_impl(self)
-
-    def _focused_playlist_id(self) -> str | None:
-        return _focused_playlist_id_impl(self)
-
-    def _focus_playlist_panel(self, playlist_id: str) -> bool:
-        return _focus_playlist_panel_impl(self, playlist_id)
-
-    def _cycle_playlist_focus(self, *, backwards: bool) -> bool:
-        return _cycle_playlist_focus_impl(self, backwards=backwards)
-
-    def _on_playlist_selection_change(self, playlist_id: str, indices: list[int]) -> None:
-        _on_playlist_selection_change_impl(self, playlist_id, indices)
 
     def _on_playlist_play_request(self, playlist_id: str, item_id: str) -> None:
         self._play_item_direct(playlist_id, item_id)
@@ -361,38 +385,12 @@ class MainFrame(wx.Frame):
     def _play_item_direct(self, playlist_id: str, item_id: str) -> bool:
         return _play_item_direct_impl(self, playlist_id, item_id, panel_type=PlaylistPanel)
 
+
     def _on_new_playlist(self, event: wx.CommandEvent) -> None:
         self._create_playlist_dialog(event)
 
     def _create_playlist_dialog(self, _event: wx.CommandEvent) -> None:
         self._prompt_new_playlist()
-
-    def _prompt_new_playlist(self) -> PlaylistModel | None:
-        return _prompt_new_playlist_impl(self)
-
-    def _on_add_tracks(self, event: wx.CommandEvent) -> None:
-        _on_add_tracks_impl(self, event)
-
-    def _finalize_add_tracks(self, panel: PlaylistPanel, new_items: list[PlaylistItem]) -> None:
-        _finalize_add_tracks_impl(self, panel, new_items)
-
-    def _on_remove_playlist(self, _event: wx.CommandEvent) -> None:
-        _on_remove_playlist_impl(self, _event)
-
-    def _on_manage_playlists(self, _event: wx.CommandEvent) -> None:
-        _on_manage_playlists_impl(self, _event)
-
-    def _on_assign_device(self, _event: wx.CommandEvent) -> None:
-        _on_assign_device_impl(self, _event)
-
-    def _configure_playlist_devices(self, playlist_id: str) -> list[str | None] | None:
-        return _configure_playlist_devices_impl(self, playlist_id)
-
-    def _on_import_playlist(self, event: wx.CommandEvent) -> None:
-        _on_import_playlist_impl(self, event)
-
-    def _on_export_playlist(self, _event: wx.CommandEvent) -> None:
-        _on_export_playlist_impl(self, _event)
 
     def _on_exit(self, event: wx.CommandEvent) -> None:
         try:
@@ -407,26 +405,8 @@ class MainFrame(wx.Frame):
             pass
         event.Skip()
 
-    def _on_options(self, event: wx.CommandEvent) -> None:
-        _on_options_impl(self, event)
-
-    def _on_edit_shortcuts(self, _event: wx.CommandEvent) -> None:
-        _on_edit_shortcuts_impl(self, _event)
-
-    def _on_jingles(self, _event: wx.CommandEvent) -> None:
-        _on_jingles_impl(self, _event)
-
     def _on_toggle_auto_mix(self, event: wx.CommandEvent) -> None:
         self._set_auto_mix_enabled(not self._auto_mix_enabled)
-
-    def _set_auto_mix_enabled(self, enabled: bool, *, reason: str | None = None) -> None:
-        _set_auto_mix_enabled_impl(self, enabled, reason=reason)
-
-    def _preferred_auto_mix_index(self, panel: PlaylistPanel, item_count: int) -> int:
-        return _preferred_auto_mix_index_impl(panel, item_count)
-
-    def _on_toggle_loop_playback(self, _event: wx.CommandEvent) -> None:
-        _on_toggle_loop_playback_impl(self, _event)
 
     def _apply_replay_gain(self, item: PlaylistItem, gain_db: float | None) -> None:
         item.replay_gain_db = gain_db
@@ -435,24 +415,6 @@ class MainFrame(wx.Frame):
         else:
             self._announce_event("pfl", _("Updated ReplayGain for %s") % item.title)
 
-    def _on_loop_info(self, _event: wx.CommandEvent) -> None:
-        _on_loop_info_impl(self, _event)
-
-    def _on_track_remaining(self, _event: wx.CommandEvent | None = None) -> None:
-        _on_track_remaining_impl(self, _event)
-
-    def _apply_loop_setting_to_playback(self, *, playlist_id: str | None = None, item_id: str | None = None) -> None:
-        _apply_loop_setting_to_playback_impl(self, playlist_id=playlist_id, item_id=item_id)
-
-    def _sync_loop_mix_trigger(
-        self,
-        *,
-        panel: PlaylistPanel | None,
-        playlist: PlaylistModel,
-        item: PlaylistItem,
-        context: PlaybackContext,
-    ) -> None:
-        _sync_loop_mix_trigger_impl(self, panel=panel, playlist=playlist, item=item, context=context)
 
     def _apply_mix_trigger_to_playback(self, *, playlist_id: str, item: PlaylistItem, panel: PlaylistPanel) -> None:
         _apply_mix_trigger_to_playback_impl(
@@ -463,14 +425,6 @@ class MainFrame(wx.Frame):
             call_after=wx.CallAfter,
         )
 
-    def _on_toggle_selection(self, playlist_id: str, item_id: str) -> None:
-        _on_toggle_selection_impl(self, playlist_id, item_id)
-
-    def _auto_mix_play_next(self, panel: PlaylistPanel) -> bool:
-        return _auto_mix_play_next_impl(self, panel)
-
-    def _on_mix_points_configure(self, playlist_id: str, item_id: str) -> None:
-        _on_mix_points_configure_impl(self, playlist_id, item_id)
 
     def _propagate_mix_points_for_path(
         self,
@@ -506,14 +460,6 @@ class MainFrame(wx.Frame):
             prefer_overlap=prefer_overlap,
         )
 
-    def _adjust_duration_and_mix_trigger(
-        self,
-        panel: PlaylistPanel,
-        playlist: PlaylistModel,
-        item: PlaylistItem,
-        context: PlaybackContext,
-    ) -> None:
-        _adjust_duration_and_mix_trigger_impl(self, panel, playlist, item, context)
 
     def _start_next_from_playlist(
         self,
@@ -535,49 +481,6 @@ class MainFrame(wx.Frame):
             prefer_overlap=prefer_overlap,
         )
 
-    def _derive_next_play_index(self, playlist: PlaylistModel) -> int | None:
-        return _derive_next_play_index_impl(self, playlist)
-
-    @staticmethod
-    def _index_of_item(playlist: PlaylistModel, item_id: str | None) -> int | None:
-        return _index_of_item_impl(playlist, item_id)
-
-    def _play_next_alternate(self) -> bool:
-        return _play_next_alternate_impl(self)
-
-    def _on_global_play_next(self, event: wx.CommandEvent) -> None:
-        _on_global_play_next_impl(self, event)
-
-    def _handle_playback_finished(self, playlist_id: str, item_id: str) -> None:
-        _handle_playback_finished_impl(self, playlist_id, item_id)
-
-    def _handle_playback_progress(self, playlist_id: str, item_id: str, seconds: float) -> None:
-        _handle_playback_progress_impl(self, playlist_id, item_id, seconds)
-
-    def _auto_mix_state_process(
-        self,
-        panel: PlaylistPanel,
-        item: PlaylistItem,
-        context_entry: PlaybackContext,
-        seconds: float,
-        queued_selection: bool,
-    ) -> None:
-        _auto_mix_state_process_impl(self, panel, item, context_entry, seconds, queued_selection)
-
-    def _auto_mix_now_from_callback(self, playlist_id: str, item_id: str) -> None:
-        _auto_mix_now_from_callback_impl(self, playlist_id, item_id)
-
-    def _auto_mix_now(self, playlist: PlaylistModel, item: PlaylistItem, panel: PlaylistPanel) -> None:
-        _auto_mix_now_impl(self, playlist, item, panel)
-
-    def _manual_fade_duration(self, playlist: PlaylistModel, item: PlaylistItem | None) -> float:
-        return _manual_fade_duration_impl(self, playlist, item)
-
-    def _on_playlist_hotkey(self, event: wx.CommandEvent) -> None:
-        _handle_playlist_hotkey_impl(self, event)
-
-    def _get_current_playlist_panel(self):
-        return _get_current_playlist_panel_impl(self)
 
     def _get_audio_panel(self, kinds: tuple[PlaylistKind, ...]) -> PlaylistPanel | None:
         panel = self._get_current_playlist_panel()
@@ -588,31 +491,6 @@ class MainFrame(wx.Frame):
     def _get_current_music_panel(self) -> PlaylistPanel | None:
         return self._get_audio_panel((PlaylistKind.MUSIC,))
 
-    def _handle_focus_click(self, event: wx.MouseEvent, playlist_id: str) -> None:
-        _handle_focus_click_impl(self, event, playlist_id)
-
-    def _on_playlist_focus(self, playlist_id: str) -> None:
-        _on_playlist_focus_impl(self, playlist_id)
-
-    def _get_selected_context(
-        self,
-        *,
-        kinds: tuple[PlaylistKind, ...] = (PlaylistKind.MUSIC,),
-    ) -> tuple[PlaylistPanel, PlaylistModel, list[int]] | None:
-        return _get_selected_context_impl(self, kinds=kinds)
-
-    def _get_selected_items(
-        self,
-        *,
-        kinds: tuple[PlaylistKind, ...] = (PlaylistKind.MUSIC,),
-    ) -> tuple[PlaylistPanel, PlaylistModel, list[tuple[int, PlaylistItem]]] | None:
-        return _get_selected_items_impl(self, kinds=kinds)
-
-    def _serialize_items(self, items: List[PlaylistItem]) -> List[Dict[str, Any]]:
-        return _serialize_items_impl(items)
-
-    def _create_item_from_serialized(self, data: Dict[str, Any]) -> PlaylistItem:
-        return _create_item_from_serialized_impl(self, data)
 
     def _refresh_playlist_view(self, panel: PlaylistPanel, selection: list[int] | None) -> None:
         if selection is None:
@@ -621,45 +499,6 @@ class MainFrame(wx.Frame):
             panel.refresh(selection)
         panel.focus_list()
 
-    def _get_system_clipboard_paths(self) -> list[Path]:
-        return _get_system_clipboard_paths_impl()
-
-    def _set_system_clipboard_paths(self, paths: list[Path]) -> None:
-        _set_system_clipboard_paths_impl(paths)
-
-    def _collect_files_from_paths(self, paths: list[Path]) -> tuple[list[Path], int]:
-        return _collect_files_from_paths_impl(paths)
-
-    def _metadata_worker_count(self, total: int) -> int:
-        return _metadata_worker_count_impl(total)
-
-    def _load_playlist_item(
-        self,
-        path: Path,
-        entry: dict[str, Any] | None = None,
-    ) -> PlaylistItem | None:
-        return _load_playlist_item_impl(self, path, entry)
-
-    def _create_items_from_paths(self, file_paths: list[Path]) -> list[PlaylistItem]:
-        return _create_items_from_paths_impl(self, file_paths)
-
-    def _run_item_loader(
-        self,
-        *,
-        description: str,
-        worker: Callable[[], list[PlaylistItem]],
-        on_complete: Callable[[list[PlaylistItem]], None],
-    ) -> None:
-        _run_item_loader_impl(self, description=description, worker=worker, on_complete=on_complete)
-
-    def _create_items_from_m3u_entries(self, entries: list[dict[str, Any]]) -> list[PlaylistItem]:
-        return _create_items_from_m3u_entries_impl(self, entries)
-
-    def _load_items_from_sources(
-        self,
-        sources: list[tuple[Path, dict[str, Any] | None]],
-    ) -> list[PlaylistItem]:
-        return _load_items_from_sources_impl(self, sources)
 
     def _finalize_import_playlist(self, panel: PlaylistPanel, new_items: list[PlaylistItem], filename: str) -> None:
         playlist_id = panel.model.id
@@ -675,81 +514,13 @@ class MainFrame(wx.Frame):
             _("Imported %d items from %s") % (len(new_items), filename),
         )
 
-    def _maybe_focus_playing_item(self, panel: PlaylistPanel, item_id: str) -> None:
-        _maybe_focus_playing_item_impl(self, panel, item_id)
 
-    def _resolve_remaining_playback(self) -> tuple[PlaylistModel, PlaylistItem, float] | None:
-        return _resolve_remaining_playback_impl(self)
 
-    def _active_playlist_item(self, playlist: PlaylistModel) -> PlaylistItem | None:
-        return _active_playlist_item_impl(self, playlist)
-
-    def _compute_intro_remaining(self, item: PlaylistItem, absolute_seconds: float | None = None) -> float | None:
-        return _compute_intro_remaining_impl(item, absolute_seconds)
-
-    def _announce_intro_remaining(self, remaining: float, *, prefix_only: bool = False) -> None:
-        _announce_intro_remaining_impl(self, remaining, prefix_only=prefix_only)
-
-    def _announce_track_end_remaining(self, remaining: float) -> None:
-        _announce_track_end_remaining_impl(self, remaining)
-
-    def _cleanup_intro_alert_player(self, player: Player) -> None:
-        _cleanup_intro_alert_player_impl(self, player)
-
-    def _play_intro_alert(self) -> bool:
-        return _play_intro_alert_impl(self)
-
-    def _cleanup_track_end_alert_player(self, player: Player) -> None:
-        _cleanup_track_end_alert_player_impl(self, player)
-
-    def _play_track_end_alert(self) -> bool:
-        return _play_track_end_alert_impl(self)
-
-    def _consider_intro_alert(
-        self,
-        panel: PlaylistPanel,
-        item: PlaylistItem,
-        context: PlaybackContext,
-        absolute_seconds: float,
-    ) -> None:
-        _consider_intro_alert_impl(self, panel, item, context, absolute_seconds)
-
-    def _consider_track_end_alert(
-        self,
-        _panel: PlaylistPanel,
-        item: PlaylistItem,
-        context: PlaybackContext,
-    ) -> None:
-        _consider_track_end_alert_impl(self, _panel, item, context)
-
-    def _remove_item_from_playlist(
-        self, panel: PlaylistPanel, model: PlaylistModel, index: int, *, refocus: bool = True
-    ) -> PlaylistItem:
-        return _remove_item_from_playlist_impl(self, panel, model, index, refocus=refocus)
-
-    def _remove_items(
-        self, panel: PlaylistPanel, model: PlaylistModel, indices: list[int]
-    ) -> list[PlaylistItem]:
-        return _remove_items_impl(self, panel, model, indices)
 
     def _forget_last_started_item(self, playlist_id: str, item_id: str) -> None:
         if self._last_started_item_id.get(playlist_id) == item_id:
             self._last_started_item_id[playlist_id] = None
 
-    def _push_undo_action(self, model: PlaylistModel, operation) -> None:
-        _push_undo_action_impl(self, model, operation)
-
-    def _apply_undo_callback(self, action: UndoAction, reverse: bool) -> bool:
-        return _apply_undo_callback_impl(self, action, reverse)
-
-    def _on_copy_selection(self, _event: wx.CommandEvent) -> None:
-        _on_copy_selection_impl(self, _event)
-
-    def _on_cut_selection(self, _event: wx.CommandEvent) -> None:
-        _on_cut_selection_impl(self, _event)
-
-    def _on_paste_selection(self, _event: wx.CommandEvent) -> None:
-        _on_paste_selection_impl(self, _event)
 
     def _finalize_clipboard_paste(
         self,
@@ -771,11 +542,6 @@ class MainFrame(wx.Frame):
             skipped_files=skipped_files,
         )
 
-    def _on_delete_selection(self, _event: wx.CommandEvent) -> None:
-        _on_delete_selection_impl(self, _event)
-
-    def _move_selection(self, delta: int) -> None:
-        _move_selection_impl(self, delta)
 
     def _on_move_selection_up(self, _event: wx.CommandEvent) -> None:
         self._move_selection(-1)
@@ -783,34 +549,12 @@ class MainFrame(wx.Frame):
     def _on_move_selection_down(self, _event: wx.CommandEvent) -> None:
         self._move_selection(1)
 
-    def _on_undo(self, _event: wx.CommandEvent) -> None:
-        _on_undo_impl(self, _event)
-
-    def _on_redo(self, _event: wx.CommandEvent) -> None:
-        _on_redo_impl(self, _event)
-
-    def _update_active_playlist_styles(self) -> None:
-        _update_active_playlist_styles_impl(self)
-
-    def _get_playback_context(self, playlist_id: str) -> tuple[tuple[str, str], PlaybackContext] | None:
-        return _get_playback_context_impl(self, playlist_id)
-
-    def _get_playing_item_id(self, playlist_id: str) -> str | None:
-        return _get_playing_item_id_impl(self, playlist_id)
 
     def _refresh_selection_display(self, playlist_id: str) -> None:
         panel = self._playlists.get(playlist_id)
         if panel:
             panel.refresh()
 
-    def _stop_playlist_playback(
-        self,
-        playlist_id: str,
-        *,
-        mark_played: bool,
-        fade_duration: float = 0.0,
-    ) -> None:
-        _stop_playlist_playback_impl(self, playlist_id, mark_played=mark_played, fade_duration=fade_duration)
 
     def _announce_event(
         self,
@@ -825,8 +569,6 @@ class MainFrame(wx.Frame):
     def _announce(self, message: str) -> None:
         self._announce_event("general", message)
 
-    def _supports_mix_trigger(self, player: Player | None) -> bool:
-        return _supports_mix_trigger_impl(self, player)
 
     def _register_mix_plan(
         self,
@@ -873,15 +615,3 @@ class MainFrame(wx.Frame):
             overrides,
             effective_duration_override=effective_duration_override,
         )
-
-    def _measure_effective_duration(self, playlist: PlaylistModel, item: PlaylistItem) -> float | None:
-        return _measure_effective_duration_impl(self, playlist, item)
-
-    def _preview_mix_with_next(
-        self,
-        playlist: PlaylistModel,
-        item: PlaylistItem,
-        *,
-        overrides: dict[str, Optional[float]] | None = None,
-    ) -> bool:
-        return _preview_mix_with_next_impl(self, playlist, item, overrides=overrides)
