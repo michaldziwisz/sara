@@ -29,7 +29,7 @@ from sara.core.mix_planner import (
     resolve_mix_timing as _resolve_mix_timing_impl,
 )
 from sara.core.mix_points import propagate_mix_points_for_path as _propagate_mix_points_for_path_impl
-from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistKind, PlaylistModel
+from sara.core.playlist import PlaylistItem, PlaylistKind, PlaylistModel
 from sara.core.shortcuts import get_shortcut
 from sara.ui.undo import InsertOperation, MoveOperation, RemoveOperation, UndoAction
 from sara.ui.undo_manager import UndoManager
@@ -130,6 +130,14 @@ from sara.ui.controllers.playlist_focus import (
     on_playlist_selection_change as _on_playlist_selection_change_impl,
     refresh_news_panels as _refresh_news_panels_impl,
     update_active_playlist_styles as _update_active_playlist_styles_impl,
+)
+from sara.ui.controllers.playback_state import (
+    cancel_active_playback as _cancel_active_playback_impl,
+    get_busy_device_ids as _get_busy_device_ids_impl,
+    get_playback_context as _get_playback_context_impl,
+    get_playing_item_id as _get_playing_item_id_impl,
+    stop_playlist_playback as _stop_playlist_playback_impl,
+    supports_mix_trigger as _supports_mix_trigger_impl,
 )
 from sara.ui.controllers.loop_and_remaining import (
     active_playlist_item as _active_playlist_item_impl,
@@ -1447,17 +1455,13 @@ class MainFrame(wx.Frame):
         _update_active_playlist_styles_impl(self)
 
     def _get_playback_context(self, playlist_id: str) -> tuple[tuple[str, str], PlaybackContext] | None:
-        return self._playback.get_context(playlist_id)
+        return _get_playback_context_impl(self, playlist_id)
 
     def _get_playing_item_id(self, playlist_id: str) -> str | None:
-        context = self._get_playback_context(playlist_id)
-        if context is None:
-            return None
-        key, _ctx = context
-        return key[1]
+        return _get_playing_item_id_impl(self, playlist_id)
 
     def _get_busy_device_ids(self) -> set[str]:
-        return self._playback.get_busy_device_ids()
+        return _get_busy_device_ids_impl(self)
 
     def _refresh_selection_display(self, playlist_id: str) -> None:
         panel = self._playlists.get(playlist_id)
@@ -1471,35 +1475,10 @@ class MainFrame(wx.Frame):
         mark_played: bool,
         fade_duration: float = 0.0,
     ) -> None:
-        removed_contexts = self._playback.stop_playlist(playlist_id, fade_duration=fade_duration)
-        panel = self._playlists.get(playlist_id)
-        if not panel:
-            return
-        model = panel.model
-        for key, _context in removed_contexts:
-            self._clear_mix_plan(key[0], key[1])
-            item_index = next((idx for idx, track in enumerate(model.items) if track.id == key[1]), None)
-            item = model.items[item_index] if item_index is not None else None
-            if not item:
-                continue
-            if mark_played:
-                if item.break_after and model.kind is PlaylistKind.MUSIC:
-                    target_index = (item_index + 1) if item_index is not None else None
-                    if target_index is not None and target_index >= len(model.items):
-                        target_index = None
-                    model.break_resume_index = target_index
-                    item.break_after = False
-                item.status = PlaylistItemStatus.PLAYED
-                item.current_position = item.duration_seconds
-            else:
-                item.status = PlaylistItemStatus.PENDING
-                item.current_position = 0.0
-            panel.mark_item_status(item.id, item.status)
-            panel.update_progress(item.id)
-            panel.refresh()
+        _stop_playlist_playback_impl(self, playlist_id, mark_played=mark_played, fade_duration=fade_duration)
 
     def _cancel_active_playback(self, playlist_id: str, mark_played: bool = False) -> None:
-        self._stop_playlist_playback(playlist_id, mark_played=mark_played, fade_duration=0.0)
+        _cancel_active_playback_impl(self, playlist_id, mark_played=mark_played)
 
     def _announce_event(
         self,
@@ -1518,12 +1497,7 @@ class MainFrame(wx.Frame):
         self._announce_event("general", message)
 
     def _supports_mix_trigger(self, player: Player | None) -> bool:
-        if player is None:
-            return False
-        try:
-            return self._playback.supports_mix_trigger(player)
-        except Exception:
-            return False
+        return _supports_mix_trigger_impl(self, player)
 
     def _register_mix_plan(
         self,
