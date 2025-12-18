@@ -111,7 +111,6 @@ from sara.ui.controllers.folder_playlists import (
     stop_preview as _stop_preview_impl,
 )
 from sara.ui.controllers.item_loading import (
-    build_playlist_item as _build_playlist_item_impl,
     collect_files_from_paths as _collect_files_from_paths_impl,
     create_items_from_m3u_entries as _create_items_from_m3u_entries_impl,
     create_items_from_paths as _create_items_from_paths_impl,
@@ -731,24 +730,6 @@ class MainFrame(wx.Frame):
 
     def _metadata_worker_count(self, total: int) -> int:
         return _metadata_worker_count_impl(total)
-
-    def _build_playlist_item(
-        self,
-        path: Path,
-        metadata: AudioMetadata,
-        *,
-        override_title: str | None = None,
-        override_artist: str | None = None,
-        override_duration: float | None = None,
-    ) -> PlaylistItem:
-        return _build_playlist_item_impl(
-            self,
-            path,
-            metadata,
-            override_title=override_title,
-            override_artist=override_artist,
-            override_duration=override_duration,
-        )
 
     def _load_playlist_item(
         self,
