@@ -1,6 +1,6 @@
 """Backward-compatible import path for `FileSelectionDialog`.
 
-The implementation lives in `sara.ui.dialogs.file_selection_dialog`.
+The implementation lives in `sara.ui.dialogs.file_selection.dialog`.
 """
 
 from __future__ import annotations
@@ -12,4 +12,3 @@ __all__ = [
     "ensure_save_selection",
     "parse_file_wildcard",
 ]
-
