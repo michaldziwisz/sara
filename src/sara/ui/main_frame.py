@@ -178,7 +178,6 @@ from sara.ui.controllers.menu_and_shortcuts import (
     configure_accelerators as _configure_accelerators_impl,
     create_menu_bar as _create_menu_bar_impl,
     handle_global_char_hook as _handle_global_char_hook_impl,
-    handle_jingles_key as _handle_jingles_key_impl,
     should_handle_altgr_track_remaining as _should_handle_altgr_track_remaining_impl,
     update_shortcut_menu_labels as _update_shortcut_menu_labels_impl,
 )
@@ -366,9 +365,6 @@ class MainFrame(wx.Frame):
 
     def _handle_global_char_hook(self, event: wx.KeyEvent) -> None:
         _handle_global_char_hook_impl(self, event)
-
-    def _handle_jingles_key(self, event: wx.KeyEvent) -> bool:
-        return _handle_jingles_key_impl(self, event)
 
     def _should_handle_altgr_track_remaining(self, event: wx.KeyEvent, keycode: int) -> bool:
         return _should_handle_altgr_track_remaining_impl(event, keycode)
