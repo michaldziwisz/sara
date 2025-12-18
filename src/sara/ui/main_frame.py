@@ -155,6 +155,12 @@ from sara.ui.controllers.tools_dialogs import (
     on_jingles as _on_jingles_impl,
     on_options as _on_options_impl,
 )
+from sara.ui.controllers.clipboard_helpers import (
+    create_item_from_serialized as _create_item_from_serialized_impl,
+    get_system_clipboard_paths as _get_system_clipboard_paths_impl,
+    serialize_items as _serialize_items_impl,
+    set_system_clipboard_paths as _set_system_clipboard_paths_impl,
+)
 from sara.ui.controllers.loop_and_remaining import (
     active_playlist_item as _active_playlist_item_impl,
     apply_loop_setting_to_playback as _apply_loop_setting_to_playback_impl,
@@ -857,51 +863,10 @@ class MainFrame(wx.Frame):
         return panel, model, selected
 
     def _serialize_items(self, items: List[PlaylistItem]) -> List[Dict[str, Any]]:
-        serialized: List[Dict[str, Any]] = []
-        for item in items:
-            serialized.append(
-                {
-                    "path": str(item.path),
-                    "title": item.title,
-                    "artist": item.artist,
-                    "duration": item.duration_seconds,
-                    "replay_gain_db": item.replay_gain_db,
-                    "cue_in": item.cue_in_seconds,
-                    "segue": item.segue_seconds,
-                    "segue_fade": item.segue_fade_seconds,
-                    "overlap": item.overlap_seconds,
-                    "intro": item.intro_seconds,
-                    "outro": item.outro_seconds,
-                    "loop_start": item.loop_start_seconds,
-                    "loop_end": item.loop_end_seconds,
-                    "loop_auto_enabled": item.loop_auto_enabled,
-                    "loop_enabled": item.loop_enabled,
-                }
-            )
-        return serialized
+        return _serialize_items_impl(items)
 
     def _create_item_from_serialized(self, data: Dict[str, Any]) -> PlaylistItem:
-        path = Path(data["path"])
-        loop_auto_enabled = bool(data.get("loop_auto_enabled"))
-        loop_enabled = bool(data.get("loop_enabled")) or loop_auto_enabled
-        item = self._playlist_factory.create_item(
-            path=path,
-            title=data.get("title", path.stem),
-            artist=data.get("artist"),
-            duration_seconds=float(data.get("duration", 0.0)),
-            replay_gain_db=data.get("replay_gain_db"),
-            cue_in_seconds=data.get("cue_in"),
-            segue_seconds=data.get("segue"),
-            segue_fade_seconds=data.get("segue_fade"),
-            overlap_seconds=data.get("overlap"),
-            intro_seconds=data.get("intro"),
-            outro_seconds=data.get("outro"),
-            loop_start_seconds=data.get("loop_start"),
-            loop_end_seconds=data.get("loop_end"),
-            loop_auto_enabled=loop_auto_enabled,
-            loop_enabled=loop_enabled,
-        )
-        return item
+        return _create_item_from_serialized_impl(self, data)
 
     def _refresh_playlist_view(self, panel: PlaylistPanel, selection: list[int] | None) -> None:
         if selection is None:
@@ -911,35 +876,10 @@ class MainFrame(wx.Frame):
         panel.focus_list()
 
     def _get_system_clipboard_paths(self) -> list[Path]:
-        paths: list[Path] = []
-        clipboard = wx.TheClipboard
-        if not clipboard.Open():
-            return paths
-        try:
-            data = wx.FileDataObject()
-            if clipboard.GetData(data):
-                paths = [Path(filename) for filename in data.GetFilenames()]
-        finally:
-            clipboard.Close()
-        return paths
+        return _get_system_clipboard_paths_impl()
 
     def _set_system_clipboard_paths(self, paths: list[Path]) -> None:
-        clipboard = wx.TheClipboard
-        if not clipboard.Open():
-            return
-        try:
-            data = wx.FileDataObject()
-            added = False
-            for path in paths:
-                try:
-                    data.AddFile(str(path))
-                    added = True
-                except Exception:
-                    continue
-            if added:
-                clipboard.SetData(data)
-        finally:
-            clipboard.Close()
+        _set_system_clipboard_paths_impl(paths)
 
     def _collect_files_from_paths(self, paths: list[Path]) -> tuple[list[Path], int]:
         return _collect_files_from_paths_impl(paths)
