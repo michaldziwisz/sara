@@ -76,6 +76,10 @@ from sara.ui.controllers.alerts import (
     play_intro_alert as _play_intro_alert_impl,
     play_track_end_alert as _play_track_end_alert_impl,
 )
+from sara.ui.controllers.automix_flow import (
+    auto_mix_play_next as _auto_mix_play_next_impl,
+    auto_mix_start_index as _auto_mix_start_index_impl,
+)
 from sara.ui.mix_preview import (
     measure_effective_duration as _measure_effective_duration_impl,
     preview_mix_with_next as _preview_mix_with_next_impl,
@@ -202,52 +206,13 @@ class MainFrame(wx.Frame):
         restart_playing: bool = False,
         overlap_trigger: bool = False,
     ) -> bool:
-        """Sekwencyjny start utworu o podanym indeksie w automixie (bez patrzenia na fokus/selection)."""
-        playlist = panel.model
-        total = len(playlist.items)
-        if total == 0:
-            return False
-        idx = idx % total
-
-        # zatrzymaj bieżący odtwarzacz (jeśli jest) i oznacz PLAYED, chyba że overlap_trigger
-        current_ctx = self._get_playback_context(playlist.id)
-        if current_ctx and not overlap_trigger:
-            key, _ctx = current_ctx
-            playing_item = playlist.get_item(key[1])
-            if playing_item:
-                playing_item.is_selected = False
-                playing_item.status = PlaylistItemStatus.PLAYED
-                playing_item.current_position = playing_item.effective_duration_seconds
-            self._stop_playlist_playback(
-                playlist.id,
-                mark_played=True,
-                fade_duration=max(0.0, self._fade_duration),
-            )
-
-        next_item = playlist.items[idx]
-        next_item.is_selected = False
-        next_item.status = PlaylistItemStatus.PENDING
-        next_item.current_position = 0.0
-
-        logger.debug(
-            "UI: automix direct start idx=%s id=%s total=%s",
-            idx,
-            getattr(next_item, "id", None),
-            total,
-        )
-
-        # restart_playing=True pozwala ominąć blokadę „PLAYED” w automixie
-        started = self._start_playback(
+        return _auto_mix_start_index_impl(
+            self,
             panel,
-            next_item,
-            restart_playing=True,
-            auto_mix_sequence=True,
-            prefer_overlap=overlap_trigger,
+            idx,
+            restart_playing=restart_playing,
+            overlap_trigger=overlap_trigger,
         )
-        if started:
-            self._last_started_item_id[playlist.id] = next_item.id
-            self._auto_mix_tracker.set_last_started(playlist.id, next_item.id)
-        return started
 
     def _create_menu_bar(self) -> None:
         menu_bar = wx.MenuBar()
@@ -1675,107 +1640,7 @@ class MainFrame(wx.Frame):
             self._announce_event("selection", _("Selection removed from %s") % item.title)
 
     def _auto_mix_play_next(self, panel: PlaylistPanel) -> bool:
-        """Play Next w automixie: gra kolejny utwór sekwencyjnie; break przechodzi dalej (z zawijaniem)."""
-        playlist = panel.model
-        if not playlist.items:
-            return False
-
-        # jeśli aktywna jest pętla z loop_hold – zatrzymaj ją z fade i przesuń kursor,
-        # aby kolejny indeks wskazywał następny element zamiast restartować bed
-        loop_hold_keys = [
-            key
-            for key, state in self._playback.auto_mix_state.items()
-            if state == "loop_hold" and key[0] == playlist.id
-        ]
-        if loop_hold_keys:
-            stopped = False
-            try:
-                self._stop_playlist_playback(
-                    playlist.id,
-                    mark_played=True,
-                    fade_duration=max(0.0, self._fade_duration),
-                )
-                stopped = True
-            except Exception:
-                logger.debug("UI: failed to stop loop_hold playback playlist=%s", playlist.id)
-            finally:
-                for key in loop_hold_keys:
-                    self._playback.auto_mix_state.pop(key, None)
-            if stopped:
-                last_loop_item_id = loop_hold_keys[-1][1]
-                self._last_started_item_id[playlist.id] = last_loop_item_id
-                try:
-                    self._auto_mix_tracker.set_last_started(playlist.id, last_loop_item_id)
-                except Exception:
-                    logger.debug(
-                        "UI: failed to update auto-mix tracker after loop_hold stop playlist=%s item=%s",
-                        playlist.id,
-                        last_loop_item_id,
-                    )
-
-        if self._auto_mix_busy.get(playlist.id):
-            logger.debug("UI: automix play_next ignored (busy) playlist=%s", playlist.id)
-            return False
-        self._auto_mix_busy[playlist.id] = True
-        result = False
-        try:
-            # konsumuj ewentualne breaki na już zagranych utworach, aby nie zatrzymywały kolejnych przebiegów
-            for track in playlist.items:
-                if track.status is PlaylistItemStatus.PLAYED and track.break_after:
-                    track.break_after = False
-
-            total = len(playlist.items)
-
-            # Jeśli obecnie gra utwór z breakiem i użytkownik wywoła Play Next – potraktuj break jak zakończony.
-            current_ctx = self._get_playback_context(playlist.id)
-            if current_ctx:
-                key, _ctx = current_ctx
-                playing_item = playlist.get_item(key[1])
-                if playing_item and playing_item.break_after and playing_item.status is PlaylistItemStatus.PLAYING:
-                    idx_playing = self._index_of_item(playlist, playing_item.id) or 0
-                    next_idx = (idx_playing + 1) % len(playlist.items)
-                    playing_item.break_after = False
-                    playing_item.is_selected = False
-                    playing_item.status = PlaylistItemStatus.PLAYED
-                    playing_item.current_position = playing_item.effective_duration_seconds
-                    playlist.break_resume_index = next_idx
-                    self._active_break_item.pop(playlist.id, None)
-                    self._stop_playlist_playback(
-                        playlist.id,
-                        mark_played=True,
-                        fade_duration=max(0.0, self._fade_duration),
-                    )
-                    self._auto_mix_tracker.set_last_started(playlist.id, playlist.items[next_idx].id)
-                    result = self._auto_mix_start_index(panel, next_idx, restart_playing=False)
-                    return result
-
-            idx = self._auto_mix_tracker.next_index(playlist, break_resume_index=playlist.break_resume_index)
-            playlist.break_resume_index = None
-
-            # jeśli wybrany indeks to aktualnie grający utwór, przeskocz dalej, by uniknąć restartu
-            current_ctx = self._get_playback_context(playlist.id)
-            if current_ctx:
-                key, ctx = current_ctx
-                current_item_id = key[1]
-                try_playing = playlist.items[idx]
-                if try_playing.id == current_item_id:
-                    for _ in range(len(playlist.items)):
-                        idx = (idx + 1) % len(playlist.items)
-                        if playlist.items[idx].id != current_item_id and playlist.items[idx].status is not PlaylistItemStatus.PLAYING:
-                            break
-
-            logger.debug(
-                "UI: automix play_next choose idx=%s total=%s last=%s",
-                idx,
-                total,
-                self._auto_mix_tracker._last_item_id.get(playlist.id),
-            )
-            # zapamiętaj kandydat przed startem; commit nastąpi po starcie
-            self._auto_mix_tracker.stage_next(playlist.id, playlist.items[idx].id)
-            result = self._auto_mix_start_index(panel, idx, restart_playing=False)
-            return result
-        finally:
-            self._auto_mix_busy[playlist.id] = False
+        return _auto_mix_play_next_impl(self, panel)
 
     def _on_mix_points_configure(self, playlist_id: str, item_id: str) -> None:
         _on_mix_points_configure_impl(self, playlist_id, item_id)
