@@ -80,6 +80,11 @@ from sara.ui.controllers.automix_flow import (
     auto_mix_play_next as _auto_mix_play_next_impl,
     auto_mix_start_index as _auto_mix_start_index_impl,
 )
+from sara.ui.controllers.menu_and_shortcuts import (
+    configure_accelerators as _configure_accelerators_impl,
+    create_menu_bar as _create_menu_bar_impl,
+    handle_jingles_key as _handle_jingles_key_impl,
+)
 from sara.ui.mix_preview import (
     measure_effective_duration as _measure_effective_duration_impl,
     preview_mix_with_next as _preview_mix_with_next_impl,
@@ -215,100 +220,7 @@ class MainFrame(wx.Frame):
         )
 
     def _create_menu_bar(self) -> None:
-        menu_bar = wx.MenuBar()
-
-        self._shortcut_menu_items.clear()
-
-        playlist_menu = wx.Menu()
-        new_item = playlist_menu.Append(wx.ID_NEW, _("&New playlist"))
-        self._register_menu_shortcut(new_item, _("&New playlist"), "playlist_menu", "new")
-        add_tracks_item = playlist_menu.Append(int(self._add_tracks_id), _("Add &tracks…"))
-        self._register_menu_shortcut(add_tracks_item, _("Add &tracks…"), "playlist_menu", "add_tracks")
-        assign_device_item = playlist_menu.Append(int(self._assign_device_id), _("Assign &audio device…"))
-        self._register_menu_shortcut(assign_device_item, _("Assign &audio device…"), "playlist_menu", "assign_device")
-        import_item = playlist_menu.Append(wx.ID_OPEN, _("&Import playlist"))
-        self._register_menu_shortcut(import_item, _("&Import playlist"), "playlist_menu", "import")
-        playlist_menu.AppendSeparator()
-        remove_item = playlist_menu.Append(int(self._remove_playlist_id), _("&Remove playlist"))
-        manage_item = playlist_menu.Append(int(self._manage_playlists_id), _("Manage &playlists…"))
-        self._register_menu_shortcut(remove_item, _("&Remove playlist"), "playlist_menu", "remove")
-        self._register_menu_shortcut(manage_item, _("Manage &playlists…"), "playlist_menu", "manage")
-        playlist_menu.AppendSeparator()
-        export_item = playlist_menu.Append(wx.ID_SAVE, _("&Export playlist…"))
-        self._register_menu_shortcut(export_item, _("&Export playlist…"), "playlist_menu", "export")
-        exit_item = playlist_menu.Append(wx.ID_EXIT, _("E&xit"))
-        self._register_menu_shortcut(exit_item, _("E&xit"), "playlist_menu", "exit")
-        menu_bar.Append(playlist_menu, _("&Playlist"))
-
-        edit_menu = wx.Menu()
-        self._append_shortcut_menu_item(edit_menu, self._undo_id, _("&Undo"), "edit", "undo")
-        self._append_shortcut_menu_item(edit_menu, self._redo_id, _("Re&do"), "edit", "redo")
-        edit_menu.AppendSeparator()
-        self._append_shortcut_menu_item(edit_menu, self._cut_id, _("Cu&t"), "edit", "cut")
-        self._append_shortcut_menu_item(edit_menu, self._copy_id, _("&Copy"), "edit", "copy")
-        self._append_shortcut_menu_item(edit_menu, self._paste_id, _("&Paste"), "edit", "paste")
-        edit_menu.AppendSeparator()
-        self._append_shortcut_menu_item(edit_menu, self._delete_id, _("&Delete"), "edit", "delete")
-        edit_menu.AppendSeparator()
-        self._append_shortcut_menu_item(edit_menu, self._move_up_id, _("Move &up"), "edit", "move_up")
-        self._append_shortcut_menu_item(edit_menu, self._move_down_id, _("Move &down"), "edit", "move_down")
-        menu_bar.Append(edit_menu, _("&Edit"))
-
-        tools_menu = wx.Menu()
-        options_id = wx.NewIdRef()
-        self._append_shortcut_menu_item(
-            tools_menu,
-            self._loop_playback_toggle_id,
-            _("Toggle track &loop"),
-            "global",
-            "loop_playback_toggle",
-        )
-
-        self._append_shortcut_menu_item(
-            tools_menu,
-            self._loop_info_id,
-            _("Loop &information"),
-            "global",
-            "loop_info",
-        )
-        self._append_shortcut_menu_item(
-            tools_menu,
-            self._track_remaining_id,
-            _("Track &remaining time"),
-            "global",
-            "track_remaining",
-        )
-
-        tools_menu.Append(int(self._shortcut_editor_id), _("Edit &shortcuts…"))
-        tools_menu.Append(int(self._jingles_manage_id), _("&Jingles…"))
-        tools_menu.Append(int(options_id), _("&Options…"))
-        menu_bar.Append(tools_menu, _("&Tools"))
-
-        self.SetMenuBar(menu_bar)
-
-        self.Bind(wx.EVT_MENU, self._on_new_playlist, id=wx.ID_NEW)
-        self.Bind(wx.EVT_MENU, self._on_add_tracks, id=self._add_tracks_id)
-        self.Bind(wx.EVT_MENU, self._on_assign_device, id=self._assign_device_id)
-        self.Bind(wx.EVT_MENU, self._on_import_playlist, id=wx.ID_OPEN)
-        self.Bind(wx.EVT_MENU, self._on_export_playlist, id=wx.ID_SAVE)
-        self.Bind(wx.EVT_MENU, self._on_exit, id=wx.ID_EXIT)
-        self.Bind(wx.EVT_MENU, self._on_remove_playlist, id=self._remove_playlist_id)
-        self.Bind(wx.EVT_MENU, self._on_manage_playlists, id=self._manage_playlists_id)
-        self.Bind(wx.EVT_MENU, self._on_options, id=int(options_id))
-        self.Bind(wx.EVT_MENU, self._on_toggle_loop_playback, id=int(self._loop_playback_toggle_id))
-        self.Bind(wx.EVT_MENU, self._on_loop_info, id=int(self._loop_info_id))
-        self.Bind(wx.EVT_MENU, self._on_track_remaining, id=int(self._track_remaining_id))
-        self.Bind(wx.EVT_MENU, self._on_edit_shortcuts, id=int(self._shortcut_editor_id))
-        self.Bind(wx.EVT_MENU, self._on_jingles, id=int(self._jingles_manage_id))
-        self.Bind(wx.EVT_MENU, self._on_undo, id=int(self._undo_id))
-        self.Bind(wx.EVT_MENU, self._on_redo, id=int(self._redo_id))
-        self.Bind(wx.EVT_MENU, self._on_cut_selection, id=int(self._cut_id))
-        self.Bind(wx.EVT_MENU, self._on_copy_selection, id=int(self._copy_id))
-        self.Bind(wx.EVT_MENU, self._on_paste_selection, id=int(self._paste_id))
-        self.Bind(wx.EVT_MENU, self._on_delete_selection, id=int(self._delete_id))
-        self.Bind(wx.EVT_MENU, self._on_move_selection_up, id=int(self._move_up_id))
-        self.Bind(wx.EVT_MENU, self._on_move_selection_down, id=int(self._move_down_id))
-        self.Bind(wx.EVT_CHAR_HOOK, self._handle_global_char_hook)
+        _create_menu_bar_impl(self)
 
     def _append_shortcut_menu_item(
         self,
@@ -424,74 +336,7 @@ class MainFrame(wx.Frame):
         return created
 
     def _configure_accelerators(self) -> None:
-        accel_entries: list[tuple[int, int, int]] = []
-        self._playlist_hotkey_defaults = self._settings.get_playlist_shortcuts()
-        self._playlist_action_ids.clear()
-        self._action_by_id.clear()
-
-        def add_entry(scope: str, action: str, command_id: int) -> None:
-            shortcut_value = self._settings.get_shortcut(scope, action)
-            modifiers_key = parse_shortcut(shortcut_value)
-            if not modifiers_key:
-                descriptor = get_shortcut(scope, action)
-                if descriptor:
-                    modifiers_key = parse_shortcut(descriptor.default)
-            if not modifiers_key:
-                return
-            modifiers, keycode = modifiers_key
-            accel_entries.append((modifiers, keycode, command_id))
-            if keycode == wx.WXK_RETURN:
-                accel_entries.append((modifiers, wx.WXK_NUMPAD_ENTER, command_id))
-
-        play_next_id = int(self._play_next_id)
-        add_entry("global", "play_next", play_next_id)
-        self.Bind(wx.EVT_MENU, self._on_global_play_next, id=play_next_id)
-
-        auto_mix_id = int(self._auto_mix_toggle_id)
-        add_entry("global", "auto_mix_toggle", auto_mix_id)
-        self.Bind(wx.EVT_MENU, self._on_toggle_auto_mix, id=auto_mix_id)
-
-        add_entry("global", "loop_playback_toggle", int(self._loop_playback_toggle_id))
-        add_entry("global", "loop_info", int(self._loop_info_id))
-        add_entry("global", "track_remaining", int(self._track_remaining_id))
-
-        add_entry("playlist_menu", "new", wx.ID_NEW)
-        add_entry("playlist_menu", "add_tracks", int(self._add_tracks_id))
-        add_entry("playlist_menu", "assign_device", int(self._assign_device_id))
-        add_entry("playlist_menu", "import", wx.ID_OPEN)
-        add_entry("playlist_menu", "remove", int(self._remove_playlist_id))
-        add_entry("playlist_menu", "manage", int(self._manage_playlists_id))
-        add_entry("playlist_menu", "exit", wx.ID_EXIT)
-
-        add_entry("edit", "undo", int(self._undo_id))
-        add_entry("edit", "redo", int(self._redo_id))
-        add_entry("edit", "cut", int(self._cut_id))
-        add_entry("edit", "copy", int(self._copy_id))
-        add_entry("edit", "paste", int(self._paste_id))
-        add_entry("edit", "delete", int(self._delete_id))
-        add_entry("edit", "move_up", int(self._move_up_id))
-        add_entry("edit", "move_down", int(self._move_down_id))
-
-        for action, key in self._playlist_hotkey_defaults.items():
-            parsed_action = parse_shortcut(key)
-            if not parsed_action:
-                descriptor = get_shortcut("playlist", action)
-                if descriptor:
-                    parsed_action = parse_shortcut(descriptor.default)
-            if not parsed_action:
-                continue
-            modifiers, keycode = parsed_action
-            cmd_id_ref = wx.NewIdRef()
-            cmd_id = int(cmd_id_ref)
-            self._playlist_action_ids[action] = cmd_id
-            self._action_by_id[cmd_id] = action
-            accel_entries.append((modifiers, keycode, cmd_id))
-            if keycode == wx.WXK_RETURN:
-                accel_entries.append((modifiers, wx.WXK_NUMPAD_ENTER, cmd_id))
-            self.Bind(wx.EVT_MENU, self._on_playlist_hotkey, id=cmd_id)
-
-        accel_table = wx.AcceleratorTable(accel_entries)
-        self.SetAcceleratorTable(accel_table)
+        _configure_accelerators_impl(self)
 
     def _handle_global_char_hook(self, event: wx.KeyEvent) -> None:
         keycode = event.GetKeyCode()
@@ -511,59 +356,7 @@ class MainFrame(wx.Frame):
         event.Skip()
 
     def _handle_jingles_key(self, event: wx.KeyEvent) -> bool:
-        panel = self._get_current_music_panel()
-        if panel is None:
-            return False
-        focus = wx.Window.FindFocus()
-        if not panel.is_list_control(focus):
-            return False
-        if event.ControlDown() or event.AltDown() or event.MetaDown():
-            return False
-
-        keycode = event.GetKeyCode()
-
-        slot_index: int | None = None
-        if ord("0") <= keycode <= ord("9"):
-            digit = chr(keycode)
-            slot_index = 9 if digit == "0" else int(digit) - 1
-        else:
-            numpad_map = {
-                wx.WXK_NUMPAD1: 0,
-                wx.WXK_NUMPAD2: 1,
-                wx.WXK_NUMPAD3: 2,
-                wx.WXK_NUMPAD4: 3,
-                wx.WXK_NUMPAD5: 4,
-                wx.WXK_NUMPAD6: 5,
-                wx.WXK_NUMPAD7: 6,
-                wx.WXK_NUMPAD8: 7,
-                wx.WXK_NUMPAD9: 8,
-                wx.WXK_NUMPAD0: 9,
-            }
-            slot_index = numpad_map.get(keycode)
-
-        if slot_index is not None:
-            overlay = bool(event.ShiftDown())
-            if not self._jingles.play_slot(slot_index, overlay=overlay):
-                number_label = "0" if slot_index == 9 else str(slot_index + 1)
-                self._announce_event("jingles", _("Empty jingle slot %s") % number_label)
-            event.StopPropagation()
-            event.Skip(False)
-            return True
-
-        prev_keys = {ord("-"), ord("_"), getattr(wx, "WXK_SUBTRACT", -1)}
-        next_keys = {ord("="), ord("+"), getattr(wx, "WXK_ADD", -1)}
-        if keycode in prev_keys:
-            self._jingles.prev_page()
-            event.StopPropagation()
-            event.Skip(False)
-            return True
-        if keycode in next_keys:
-            self._jingles.next_page()
-            event.StopPropagation()
-            event.Skip(False)
-            return True
-
-        return False
+        return _handle_jingles_key_impl(self, event)
 
     def _should_handle_altgr_track_remaining(self, event: wx.KeyEvent, keycode: int) -> bool:
         if keycode not in (ord("T"), ord("t")):
