@@ -1,12 +1,12 @@
 from threading import Event
 
 from sara.audio.engine import AudioDevice, BackendType, SoundDevicePlayer
-import sara.audio.engine as audio_engine
+import sara.audio.sounddevice_backend as sd_backend
 
 
 def test_sounddevice_player_fade_out_reduces_gain(monkeypatch):
-    monkeypatch.setattr(audio_engine, "sd", object())
-    monkeypatch.setattr(audio_engine, "sf", object())
+    monkeypatch.setattr(sd_backend, "sd", object())
+    monkeypatch.setattr(sd_backend, "sf", object())
 
     device = AudioDevice(id="wasapi:1", name="Dummy", backend=BackendType.WASAPI, raw_index=0)
     player = SoundDevicePlayer(device)
