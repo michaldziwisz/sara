@@ -13,6 +13,9 @@ from sara.core.i18n import gettext as _
 from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistModel, PlaylistKind
 from sara.core.hotkeys import HotkeyAction
 
+from . import context_menu
+from . import shortcuts
+
 
 class PlaylistPanel(wx.Panel):
     """Panel displayed in the layout representing one playlist."""
@@ -215,141 +218,28 @@ class PlaylistPanel(wx.Panel):
         self.set_selection([index], focus=focus)
 
     def _show_context_menu(self, event: wx.ContextMenuEvent) -> None:
-        item_index = self._list_ctrl.GetFocusedItem()
-        if item_index == wx.NOT_FOUND and self._list_ctrl.GetItemCount() > 0:
-            item_index = 0
-        if item_index == wx.NOT_FOUND:
-            event.Skip()
-            return
-
-        item = self.model.items[item_index]
-        menu = wx.Menu()
-
-        if self._on_mix_configure:
-            mix_id = wx.NewIdRef()
-            menu.Append(mix_id, _("&Mix points…"))
-
-            def _trigger_mix(_evt: wx.CommandEvent) -> None:
-                self._notify_focus()
-                self._on_mix_configure(self.model.id, item.id)
-
-            self.Bind(wx.EVT_MENU, _trigger_mix, id=int(mix_id))
-
-        if self._on_toggle_selection:
-            toggle_id = wx.NewIdRef()
-            toggle_label = _("&Select for playback") if not item.is_selected else _("Remove &selection")
-            menu.Append(toggle_id, toggle_label)
-
-            def _trigger_selection(_evt: wx.CommandEvent) -> None:
-                self._notify_focus()
-                self.set_selection([item_index], focus=True)
-                self._list_ctrl.Focus(item_index)
-                self._on_toggle_selection(self.model.id, item.id)
-
-            self.Bind(wx.EVT_MENU, _trigger_selection, id=int(toggle_id))
-
-        if not menu.GetMenuItemCount():
-            event.Skip()
-            menu.Destroy()
-            return
-
-        try:
-            self.PopupMenu(menu)
-        finally:
-            menu.Destroy()
+        context_menu.show_context_menu(self, event)
 
     def _handle_key_down(self, event: wx.KeyEvent) -> None:
-        if self._handle_navigation_key(event):
-            return
-        if not self._handle_selection_key_event(event):
-            event.Skip()
+        shortcuts.handle_key_down(self, event)
 
     def _handle_char_hook(self, event: wx.KeyEvent) -> None:
-        if self._handle_navigation_key(event):
-            return
-        if not self._handle_selection_key_event(event):
-            event.Skip()
+        shortcuts.handle_char_hook(self, event)
 
     def _handle_char(self, event: wx.KeyEvent) -> None:
-        if self._handle_navigation_key(event):
-            return
-        if not self._handle_selection_key_event(event):
-            event.Skip()
+        shortcuts.handle_char(self, event)
 
     def _handle_list_key_down(self, event: wx.ListEvent) -> None:
-        key_code = event.GetKeyCode()
-        if key_code in (wx.WXK_UP, wx.WXK_DOWN) and not wx.GetKeyState(wx.WXK_SHIFT) and not wx.GetKeyState(wx.WXK_CONTROL) and not wx.GetKeyState(wx.WXK_ALT):
-            delta = -1 if key_code == wx.WXK_UP else 1
-            if self._move_focus_by_delta(delta):
-                event.Skip(False)
-                return
-        if not self._handle_selection_key_event(event):
-            event.Skip()
+        shortcuts.handle_list_key_down(self, event)
 
     def _handle_selection_key_event(self, event: wx.KeyEvent | wx.ListEvent) -> bool:
-        key_code = event.GetKeyCode()
-        allowed_keys = (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
-        space_requested = (
-            self._swap_play_select
-            and self.model.kind is PlaylistKind.MUSIC
-            and key_code == wx.WXK_SPACE
-        )
-        if not space_requested and key_code not in allowed_keys:
-            return False
-        if isinstance(event, wx.KeyEvent):
-            if event.ControlDown() or event.AltDown() or event.MetaDown():
-                return False
-            if event.ShiftDown():
-                return False
-
-        index = self._list_ctrl.GetFocusedItem()
-        if index == wx.NOT_FOUND:
-            index = self._list_ctrl.GetFirstSelected()
-        if index == wx.NOT_FOUND and self._list_ctrl.GetItemCount() > 0:
-            index = 0
-
-        if index == wx.NOT_FOUND or index >= len(self.model.items):
-            return False
-
-        item = self.model.items[index]
-
-        if space_requested:
-            if self._on_toggle_selection:
-                # wymuś jednoznaczną selekcję na wskazanym elemencie
-                self.set_selection([index], focus=True)
-                self._trigger_selection_toggle(index)
-                return True
-            return False
-
-        if self._swap_play_select and self.model.kind is PlaylistKind.MUSIC and self._on_play_request:
-            self._notify_focus()
-            self._list_ctrl.Focus(index)
-            self._on_play_request(self.model.id, item.id)
-            return True
-
-        if not self._on_toggle_selection:
-            return False
-
-        self._trigger_selection_toggle(index)
-        return True
+        return shortcuts.handle_selection_key_event(self, event)
 
     def _handle_item_activated(self, event: wx.ListEvent) -> None:
-        if self._on_toggle_selection:
-            self._trigger_selection_toggle(event.GetIndex())
-        event.Skip()
+        shortcuts.handle_item_activated(self, event)
 
     def _handle_navigation_key(self, event: wx.KeyEvent) -> bool:
-        key_code = event.GetKeyCode()
-        if key_code not in (wx.WXK_UP, wx.WXK_DOWN):
-            return False
-        if event.ControlDown() or event.AltDown() or event.MetaDown() or event.ShiftDown():
-            return False
-        delta = -1 if key_code == wx.WXK_UP else 1
-        handled = self._move_focus_by_delta(delta)
-        if handled:
-            event.StopPropagation()
-            event.Skip(False)
-        return handled
+        return shortcuts.handle_navigation_key(self, event)
 
     def _move_focus_by_delta(self, delta: int) -> bool:
         count = self._list_ctrl.GetItemCount()
