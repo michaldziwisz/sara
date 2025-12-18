@@ -8,7 +8,7 @@ Ten dokument opisuje bezpieczny, iteracyjny plan uporządkowania kodu SARA. Cele
 - Logika miksowania jest wydzielona do `src/sara/core/mix_planner.py` oraz `src/sara/ui/mix_runtime.py` (testy miksu nie wymagają już importowania `MainFrame`).
 - Większość „UI glue” została przeniesiona do `src/sara/ui/controllers/…` (playback flow, automix, skróty, schowek/undo, import/export playlist, folder playlists, news audio).
 - `sara/audio` zostało rozbite na mniejsze moduły (utrzymując publiczne API przez fasady):
-  - `src/sara/audio/bass.py` i `src/sara/audio/bass_player.py` są fasadami nad `bass_native.py`, `bass_manager.py`, `bass_backends.py`, `bass_player_base.py`, `bass_asio_player.py`.
+  - `src/sara/audio/bass/…` zawiera implementację BASS (native/manager/backends/player), a kompatybilne fasady importów są utrzymane w `src/sara/audio/bass_player.py` oraz `src/sara/audio/bass_*.py`.
   - `src/sara/audio/mixer/__init__.py` eksportuje API mixera, a implementacja jest poukładana w `src/sara/audio/mixer/…` (device/stream, DSP, render, lifecycle, wątek, manager, player).
     - Kompatybilne importy: `src/sara/audio/device_mixer.py` i `src/sara/audio/mixer_player.py` są fasadami wskazującymi na `sara.audio.mixer`.
   - `src/sara/audio/sounddevice/…` zawiera implementację sounddevice, a `src/sara/audio/sounddevice_player.py`, `src/sara/audio/sounddevice_provider.py`, `src/sara/audio/sounddevice_player_base.py` i `src/sara/audio/sounddevice_profiles.py` są fasadami kompatybilności.

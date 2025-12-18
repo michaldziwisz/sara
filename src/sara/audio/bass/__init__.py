@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from sara.audio.bass_backends import BassAsioBackend, BassBackend
-from sara.audio.bass_manager import BassManager
-from sara.audio.bass_native import BassNotAvailable
-from sara.audio.bass_player import BassAsioPlayer, BassPlayer
+from .asio_player import BassAsioPlayer
+from .backends import BassAsioBackend, BassBackend
+from .manager import BassManager
+from .native import BassNotAvailable
+from .player_base import BassPlayer
 
 __all__ = [
     "BassAsioBackend",
@@ -15,4 +16,3 @@ __all__ = [
     "BassNotAvailable",
     "BassPlayer",
 ]
-
