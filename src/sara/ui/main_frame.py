@@ -24,7 +24,6 @@ from sara.core.media_metadata import (
     extract_metadata,
     is_supported_audio_file,
     save_loop_metadata,
-    save_mix_metadata,
     save_replay_gain_metadata,
 )
 from sara.core.m3u import parse_m3u_lines, serialize_m3u
@@ -51,11 +50,9 @@ from sara.ui.news_playlist_panel import NewsPlaylistPanel
 from sara.ui.playlist_layout import PlaylistLayoutManager, PlaylistLayoutState
 from sara.ui.announcement_service import AnnouncementService
 from sara.ui.playlist_devices_dialog import PlaylistDevicesDialog
-from sara.ui.mix_point_dialog import MixPointEditorDialog
 from sara.ui.options_dialog import OptionsDialog
 from sara.ui.shortcut_editor_dialog import ShortcutEditorDialog
 from sara.ui.shortcut_utils import format_shortcut_display, parse_shortcut
-from sara.ui.nvda_sleep import notify_nvda_play_next
 from sara.ui.file_selection_dialog import FileSelectionDialog
 from sara.ui.playback_controller import PlaybackContext, PlaybackController
 from sara.ui.auto_mix_tracker import AutoMixTracker
@@ -68,6 +65,8 @@ from sara.ui.controllers.playback_flow import (
     start_next_from_playlist as _start_next_from_playlist_impl,
     start_playback as _start_playback_impl,
 )
+from sara.ui.controllers.mix_points_controller import on_mix_points_configure as _on_mix_points_configure_impl
+from sara.ui.controllers.playlist_hotkeys import handle_playlist_hotkey as _handle_playlist_hotkey_impl
 from sara.ui.mix_preview import (
     measure_effective_duration as _measure_effective_duration_impl,
     preview_mix_with_next as _preview_mix_with_next_impl,
@@ -1770,116 +1769,7 @@ class MainFrame(wx.Frame):
             self._auto_mix_busy[playlist.id] = False
 
     def _on_mix_points_configure(self, playlist_id: str, item_id: str) -> None:
-        panel = self._playlists.get(playlist_id)
-        if panel is None:
-            return
-        item = next((track for track in panel.model.items if track.id == item_id), None)
-        if item is None:
-            return
-
-        dialog = MixPointEditorDialog(
-            self,
-            title=_("Mix points – %s") % item.title,
-            duration_seconds=item.duration_seconds,
-            cue_in_seconds=item.cue_in_seconds,
-            intro_seconds=item.intro_seconds,
-            outro_seconds=item.outro_seconds,
-            segue_seconds=item.segue_seconds,
-            segue_fade_seconds=item.segue_fade_seconds,
-            overlap_seconds=item.overlap_seconds,
-            on_preview=lambda position, loop_range=None: self._playback.start_preview(
-                item,
-                max(0.0, position),
-                loop_range=loop_range,
-            ),
-            on_mix_preview=lambda values: self._preview_mix_with_next(panel.model, item, overrides=values),
-            on_stop_preview=self._stop_preview,
-            track_path=item.path,
-            initial_replay_gain=item.replay_gain_db,
-            on_replay_gain_update=lambda gain, item=item: self._apply_replay_gain(item, gain),
-            loop_start_seconds=item.loop_start_seconds,
-            loop_end_seconds=item.loop_end_seconds,
-            loop_enabled=item.loop_enabled,
-            loop_auto_enabled=item.loop_auto_enabled,
-            default_fade_seconds=self._fade_duration,
-        )
-
-        try:
-            if dialog.ShowModal() != wx.ID_OK:
-                return
-            result = dialog.get_result()
-        finally:
-            dialog.Destroy()
-            self._stop_preview()
-
-        mix_values = {
-            "cue_in": result.get("cue"),
-            "intro": result.get("intro"),
-            "outro": result.get("outro"),
-            "segue": result.get("segue"),
-            "segue_fade": result.get("segue_fade"),
-            "overlap": result.get("overlap"),
-        }
-
-        item.cue_in_seconds = mix_values["cue_in"]
-        item.intro_seconds = mix_values["intro"]
-        item.outro_seconds = mix_values["outro"]
-        item.segue_seconds = mix_values["segue"]
-        item.segue_fade_seconds = mix_values["segue_fade"]
-        item.overlap_seconds = mix_values["overlap"]
-
-        if not save_mix_metadata(
-            item.path,
-            cue_in=item.cue_in_seconds,
-            intro=item.intro_seconds,
-            outro=item.outro_seconds,
-            segue=item.segue_seconds,
-            segue_fade=item.segue_fade_seconds,
-            overlap=item.overlap_seconds,
-        ):
-            self._announce_event("pfl", _("Failed to update mix metadata"))
-        else:
-            self._announce_event("pfl", _("Updated mix points for %s") % item.title)
-            self._propagate_mix_points_for_path(
-                path=item.path,
-                mix_values=mix_values,
-                source_playlist_id=playlist_id,
-                source_item_id=item.id,
-            )
-
-        panel.refresh()
-        self._apply_mix_trigger_to_playback(playlist_id=playlist_id, item=item, panel=panel)
-
-        loop_info = result.get("loop") or {}
-        loop_defined = bool(loop_info.get("enabled"))
-        loop_start = loop_info.get("start")
-        loop_end = loop_info.get("end")
-        loop_auto_enabled = bool(result.get("loop_auto_enabled"))
-        if loop_defined and loop_start is not None and loop_end is not None and loop_end > loop_start:
-            try:
-                item.set_loop(loop_start, loop_end)
-            except ValueError as exc:
-                self._announce_event("loop", str(exc))
-            else:
-                item.loop_auto_enabled = loop_auto_enabled
-                item.loop_enabled = loop_auto_enabled or item.loop_enabled
-                if not save_loop_metadata(
-                    item.path,
-                    loop_start,
-                    loop_end,
-                    item.loop_enabled,
-                    item.loop_auto_enabled,
-                ):
-                    self._announce_event("loop", _("Failed to update loop metadata"))
-                self._apply_loop_setting_to_playback(playlist_id=playlist_id, item_id=item.id)
-                panel.refresh()
-        else:
-            if item.has_loop() or item.loop_enabled:
-                item.clear_loop()
-                item.loop_auto_enabled = False
-                save_loop_metadata(item.path, None, None, auto_enabled=False)
-                self._apply_loop_setting_to_playback(playlist_id=playlist_id, item_id=item.id)
-                panel.refresh()
+        _on_mix_points_configure_impl(self, playlist_id, item_id)
 
     def _propagate_mix_points_for_path(
         self,
@@ -2162,134 +2052,7 @@ class MainFrame(wx.Frame):
         return fade_seconds
 
     def _on_playlist_hotkey(self, event: wx.CommandEvent) -> None:
-        action = self._action_by_id.get(event.GetId())
-        if not action:
-            return
-
-        if action == "mix_points":
-            context = self._get_selected_context(kinds=(PlaylistKind.MUSIC, PlaylistKind.FOLDER))
-            if context is None:
-                return
-            _panel, model, indices = context
-            index = indices[0]
-            if not (0 <= index < len(model.items)):
-                self._announce_event("playlist", _("No track selected"))
-                return
-            item = model.items[index]
-            self._on_mix_points_configure(model.id, item.id)
-            return
-
-        panel = self._get_current_music_panel()
-        if panel is None:
-            self._announce_event("playlist", _("Select a playlist first"))
-            return
-
-        playlist = panel.model
-        if action == "play":
-            if self._auto_mix_enabled and playlist.kind is PlaylistKind.MUSIC:
-                if not self._auto_mix_play_next(panel):
-                    self._announce_event("playback_events", _("No scheduled tracks available"))
-            else:
-                self._start_next_from_playlist(panel)
-            return
-        if action == "break_toggle":
-            if playlist.kind is not PlaylistKind.MUSIC:
-                self._announce_event("playlist", _("Breaks are only available on music playlists"))
-                return
-            indices = panel.get_selected_indices()
-            if not indices:
-                focus_idx = panel.get_focused_index()
-                if focus_idx != wx.NOT_FOUND:
-                    indices = [focus_idx]
-            if not indices:
-                self._announce_event("playlist", _("Select a track to toggle break"))
-                return
-            last_state = None
-            toggled_ids: list[str] = []
-            for idx in indices:
-                if 0 <= idx < len(playlist.items):
-                    track = playlist.items[idx]
-                    track.break_after = not track.break_after
-                    last_state = track.break_after
-                    toggled_ids.append(track.id)
-                    if track.break_after:
-                        self._playback.auto_mix_state[(playlist.id, track.id)] = "break_halt"
-                    else:
-                        self._playback.auto_mix_state.pop((playlist.id, track.id), None)
-            panel.refresh(indices, focus=True)
-            if last_state is not None:
-                message = _("Break enabled after track") if last_state else _("Break cleared")
-                self._announce_event("playlist", message)
-            # zapisz aktywny break dla automix (playlist_id -> item_id); jeśli wyłączamy, usuń wpis
-            if last_state and indices:
-                self._active_break_item[playlist.id] = playlist.items[indices[0]].id
-            elif not last_state:
-                self._active_break_item.pop(playlist.id, None)
-
-            context_entry = self._get_playback_context(playlist.id)
-            if context_entry:
-                key, ctx = context_entry
-                if key[1] in toggled_ids:
-                    current_item = playlist.get_item(key[1])
-                    if current_item:
-                        if last_state:
-                            self._clear_mix_plan(playlist.id, current_item.id)
-                            self._playback.update_mix_trigger(
-                                playlist.id,
-                                current_item.id,
-                                mix_trigger_seconds=None,
-                                on_mix_trigger=None,
-                            )
-                        else:
-                            self._apply_mix_trigger_to_playback(
-                                playlist_id=playlist.id,
-                                item=current_item,
-                                panel=panel,
-                            )
-            return
-
-        context_entry = self._get_playback_context(playlist.id)
-        if context_entry is None:
-            self._announce_event("playback_events", _("No active playback for this playlist"))
-            return
-
-        key, context = context_entry
-        logger.debug("UI: hotkey action=%s playlist=%s current_item=%s", action, playlist.id, key[1])
-        item = next((track for track in playlist.items if track.id == key[1]), None)
-
-        if action == "pause":
-            try:
-                context.player.pause()
-            except Exception as exc:  # pylint: disable=broad-except
-                self._announce_event("playback_errors", _("Pause error: %s") % exc)
-                return
-            if item:
-                item.status = PlaylistItemStatus.PAUSED
-                panel.mark_item_status(item.id, item.status)
-                panel.refresh()
-            self._playback.contexts[key] = context
-            self._announce_event("playback_events", f"Playlista {playlist.name} wstrzymana")
-        elif action == "stop":
-            self._stop_playlist_playback(playlist.id, mark_played=False, fade_duration=0.0)
-            self._announce_event("playback_events", f"Playlista {playlist.name} zatrzymana")
-            self._set_auto_mix_enabled(False, reason=_("Auto mix disabled (manual stop)"))
-        elif action == "fade":
-            fade_seconds = self._manual_fade_duration(playlist, item)
-            logger.debug(
-                "UI: manual fade resolved duration=%.3f playlist=%s item=%s",
-                fade_seconds,
-                playlist.id,
-                getattr(item, "id", None),
-            )
-            self._stop_playlist_playback(playlist.id, mark_played=True, fade_duration=fade_seconds)
-            if item:
-                panel.mark_item_status(item.id, item.status)
-                panel.refresh()
-            self._announce_event(
-                "playback_events",
-                _("Playlist %s finished track with fade out") % playlist.name,
-            )
-            self._set_auto_mix_enabled(False, reason=_("Auto mix disabled (manual stop)"))
+        _handle_playlist_hotkey_impl(self, event)
     def _get_current_playlist_panel(self):
         current_id = self._layout.state.current_id
         if current_id and current_id in self._playlists:
