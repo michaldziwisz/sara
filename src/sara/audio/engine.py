@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass
-from enum import Enum
 import math
 import shutil
 import subprocess
@@ -13,10 +11,12 @@ import tempfile
 import time
 from pathlib import Path
 from threading import Event, Lock, Thread, Timer, current_thread
-from typing import Callable, Dict, List, Optional, Protocol
+from typing import Callable, Dict, List, Optional
 import warnings
 
 from sara.core.env import is_e2e_mode
+from sara.audio.resampling import _resample_to_length
+from sara.audio.types import AudioDevice, BackendProvider, BackendType, Player
 
 logger = logging.getLogger(__name__)
 
@@ -59,66 +59,6 @@ except Exception:  # pragma: no cover - BASS opcjonalny
     BassAsioBackend = None
 
 
-class BackendType(Enum):
-    WASAPI = "wasapi"
-    ASIO = "asio"
-    BASS = "bass"
-    BASS_ASIO = "bass-asio"
-
-
-@dataclass
-class AudioDevice:
-    id: str
-    name: str
-    backend: BackendType
-    raw_index: Optional[int] = None
-    is_default: bool = False
-
-
-class Player(Protocol):
-    def play(
-        self,
-        playlist_item_id: str,
-        source_path: str,
-        *,
-        start_seconds: float = 0.0,
-        allow_loop: bool = True,
-        mix_trigger_seconds: Optional[float] = None,
-        on_mix_trigger: Optional[Callable[[], None]] = None,
-    ) -> Optional[Event]: ...
-    def is_active(self) -> bool: ...
-
-    def pause(self) -> None: ...
-
-    def stop(self) -> None: ...
-
-    def fade_out(self, duration: float) -> None: ...
-
-    def set_finished_callback(self, callback: Optional[Callable[[str], None]]) -> None: ...
-
-    def set_progress_callback(self, callback: Optional[Callable[[str, float], None]]) -> None: ...
-
-    def set_mix_trigger(
-        self,
-        mix_trigger_seconds: Optional[float],
-        on_mix_trigger: Optional[Callable[[], None]],
-    ) -> None: ...
-
-    def set_gain_db(self, gain_db: Optional[float]) -> None: ...
-
-    def set_loop(self, start_seconds: Optional[float], end_seconds: Optional[float]) -> None: ...
-
-    def supports_mix_trigger(self) -> bool: ...
-
-
-class BackendProvider(Protocol):
-    backend: BackendType
-
-    def list_devices(self) -> List[AudioDevice]: ...
-
-    def create_player(self, device: AudioDevice) -> Player: ...
-
-
 def _match_sounddevice_device(target_name: str, host_keywords: tuple[str, ...]) -> Optional[int]:
     if sd is None:
         return None
@@ -157,22 +97,6 @@ def _match_sounddevice_device(target_name: str, host_keywords: tuple[str, ...]) 
         _, chosen = min(partial_matches, key=lambda pair: (pair[0], pair[1]))
         return chosen
     return None
-
-
-def _resample_to_length(block, target_frames: int):
-    if np is None or target_frames <= 0:
-        return block
-    src_frames = block.shape[0]
-    if src_frames == 0 or src_frames == target_frames:
-        return block
-    if src_frames == 1:
-        return np.repeat(block, target_frames, axis=0).astype(block.dtype, copy=False)
-    src_idx = np.arange(src_frames, dtype=np.float64)
-    target_idx = np.linspace(0.0, src_frames - 1, target_frames, dtype=np.float64)
-    resampled = np.empty((target_frames, block.shape[1]), dtype=np.float32)
-    for channel in range(block.shape[1]):
-        resampled[:, channel] = np.interp(target_idx, src_idx, block[:, channel])
-    return resampled.astype(block.dtype, copy=False)
 
 
 class MockPlayer:
