@@ -110,7 +110,6 @@ from sara.ui.controllers.folder_playlists import (
     select_folder_for_playlist as _select_folder_for_playlist_impl,
     send_folder_items_to_music as _send_folder_items_to_music_impl,
     stop_preview as _stop_preview_impl,
-    target_music_playlist as _target_music_playlist_impl,
 )
 from sara.ui.controllers.item_loading import (
     build_playlist_item as _build_playlist_item_impl,
@@ -414,9 +413,6 @@ class MainFrame(wx.Frame):
 
     def _send_folder_items_to_music(self, playlist_id: str, item_ids: Sequence[str]) -> None:
         _send_folder_items_to_music_impl(self, playlist_id, item_ids)
-
-    def _target_music_playlist(self) -> tuple[PlaylistPanel, PlaylistModel] | None:
-        return _target_music_playlist_impl(self)
 
     def _refresh_news_panels(self) -> None:
         _refresh_news_panels_impl(self)
