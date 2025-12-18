@@ -16,6 +16,8 @@ from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistKind
 from sara.ui.nvda_sleep import notify_nvda_play_next
 from sara.ui.playlist_panel import PlaylistPanel
 
+from sara.ui.controllers.playback_next_item import decide_next_item
+
 
 logger = logging.getLogger(__name__)
 
@@ -391,87 +393,29 @@ def start_next_from_playlist(
         )
 
     consumed_model_selection = False
-    preferred_item_id = playlist.next_selected_item_id()
-    play_index: int | None = None
-
-    used_ui_selection = False
-    break_target_index: int | None = None
     if playlist.kind is PlaylistKind.MUSIC and playlist.break_resume_index is not None:
-        break_target_index = playlist.break_resume_index
+        break_target_index: int | None = playlist.break_resume_index
         playlist.break_resume_index = None
-
-    if preferred_item_id:
-        consumed_model_selection = True
-        play_index = frame._index_of_item(playlist, preferred_item_id)
     else:
-        if break_target_index is not None:
-            play_index = next(
-                (
-                    idx
-                    for idx in range(break_target_index, len(playlist.items))
-                    if playlist.items[idx].status is PlaylistItemStatus.PENDING
-                ),
-                None,
-            )
-        if play_index is None and playlist.kind is PlaylistKind.MUSIC:
-            last_id = frame._last_started_item_id.get(playlist.id)
-            if last_id:
-                last_idx = frame._index_of_item(playlist, last_id)
-                last_item = playlist.get_item(last_id)
-                if last_idx is not None and last_item and last_item.status is PlaylistItemStatus.PLAYED:
-                    play_index = next(
-                        (
-                            idx
-                            for idx in range(last_idx + 1, len(playlist.items))
-                            if playlist.items[idx].status is PlaylistItemStatus.PENDING
-                        ),
-                        None,
-                    )
-        if play_index is None:
-            if not ignore_ui_selection:
-                selected_indices = [
-                    idx
-                    for idx in panel.get_selected_indices()
-                    if 0 <= idx < len(playlist.items)
-                    and playlist.items[idx].status in (PlaylistItemStatus.PENDING, PlaylistItemStatus.PAUSED)
-                ]
-            else:
-                selected_indices = []
-            if selected_indices:
-                play_index = selected_indices[0]
-                used_ui_selection = True
-            elif not ignore_ui_selection:
-                focus_index = panel.get_focused_index()
-                if focus_index != wx.NOT_FOUND and 0 <= focus_index < len(playlist.items):
-                    focus_item = playlist.items[focus_index]
-                    if focus_item.status in (PlaylistItemStatus.PENDING, PlaylistItemStatus.PAUSED):
-                        play_index = focus_index
-                        used_ui_selection = True
-                    else:
-                        play_index = frame._derive_next_play_index(playlist)
-                else:
-                    play_index = frame._derive_next_play_index(playlist)
-            else:
-                play_index = frame._derive_next_play_index(playlist)
-        if play_index is not None and 0 <= play_index < len(playlist.items):
-            preferred_item_id = playlist.items[play_index].id
-        else:
-            preferred_item_id = None
+        break_target_index = None
 
-    if play_index is not None:
+    current_ctx = frame._playback.get_context(playlist.id) if restart_playing else None
+    current_playing_item_id = current_ctx[0][1] if current_ctx else None
 
-        def _next_pending(start_idx: int) -> int | None:
-            for idx in range(start_idx, len(playlist.items)):
-                if playlist.items[idx].status in (PlaylistItemStatus.PENDING, PlaylistItemStatus.PAUSED):
-                    return idx
-            return None
-
-        if not (
-            0 <= play_index < len(playlist.items)
-            and playlist.items[play_index].status in (PlaylistItemStatus.PENDING, PlaylistItemStatus.PAUSED)
-        ):
-            play_index = _next_pending((play_index + 1) if play_index is not None else 0)
-            preferred_item_id = playlist.items[play_index].id if play_index is not None else None
+    decision = decide_next_item(
+        playlist,
+        panel_selected_indices=panel.get_selected_indices(),
+        panel_focus_index=panel.get_focused_index(),
+        ignore_ui_selection=ignore_ui_selection,
+        last_started_item_id=frame._last_started_item_id.get(playlist.id),
+        break_target_index=break_target_index,
+        restart_playing=restart_playing,
+        current_playing_item_id=current_playing_item_id,
+    )
+    preferred_item_id = decision.preferred_item_id
+    play_index = decision.play_index
+    used_ui_selection = decision.used_ui_selection
+    consumed_model_selection = decision.consumed_model_selection
     logger.debug(
         "UI: start_next playlist=%s preferred=%s play_index=%s used_ui=%s consumed_selection=%s ignore_ui=%s",
         playlist.id,
@@ -483,7 +427,6 @@ def start_next_from_playlist(
     )
 
     if restart_playing:
-        current_ctx = frame._playback.get_context(playlist.id)
         if current_ctx and preferred_item_id == current_ctx[0][1]:
             logger.debug(
                 "UI: auto-mix avoiding restart of current item=%s, picking next pending",
