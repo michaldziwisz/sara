@@ -13,11 +13,9 @@ from sara.core.playlist import PlaylistModel
 from sara.news.clipboard import clipboard_audio_paths
 from sara.news.service_manager import NewsServiceManager
 from sara.news_service import NewsService
-from sara.ui.file_selection_dialog import FileSelectionDialog
 from sara.ui.news_mode_controller import NewsEditController, NewsReadController
 
-
-_SERVICE_WILDCARD = _("News services (*.saranews)|*.saranews|All files|*.*")
+from .service_io import NewsServiceIO
 
 
 class NewsPlaylistPanel(wx.Panel):
@@ -61,6 +59,12 @@ class NewsPlaylistPanel(wx.Panel):
         self._line_length_apply: wx.Button | None = None
         self._caret_position: int = 0
         self._service_manager = service_manager or NewsServiceManager(error_handler=self._show_error)
+        self._service_io = NewsServiceIO(
+            self,
+            self._service_manager,
+            apply_service=self._apply_service,
+            build_service=self._build_service,
+        )
         self._read_controller = NewsReadController(get_line_length)
 
         self._title = model.name
@@ -315,64 +319,30 @@ class NewsPlaylistPanel(wx.Panel):
             self._on_stop_preview_audio()
 
     def prompt_load_service(self) -> Path | None:
-        dialog = FileSelectionDialog(
-            self,
-            title=_("Load news service"),
-            wildcard=_SERVICE_WILDCARD,
-            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
-            start_path=self._service_manager.last_path,
-        )
-        if dialog.ShowModal() != wx.ID_OK:
-            dialog.Destroy()
-            return None
-        paths = dialog.get_paths()
-        dialog.Destroy()
-        if not paths:
-            return None
-        path = Path(paths[0])
-        return path if self._load_service_from_path(path) else None
+        return self._service_io.prompt_load_service()
 
     def _load_service_from_path(self, path: Path) -> bool:
-        service = self._service_manager.load_from_path(path)
-        if service is None:
-            return False
-        self._apply_service(service)
-        return True
+        return self._service_io.load_service_from_path(path)
 
     def _on_load_service(self, _event: wx.Event | None) -> None:
         self.prompt_load_service()
 
     def prompt_save_service(self) -> Path | None:
-        dialog = FileSelectionDialog(
-            self,
-            title=_("Save news service"),
-            wildcard=_SERVICE_WILDCARD,
-            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
-            start_path=self._service_manager.last_path,
-        )
-        if dialog.ShowModal() != wx.ID_OK:
-            dialog.Destroy()
-            return None
-        paths = dialog.get_paths()
-        dialog.Destroy()
-        if not paths:
-            return None
-        raw_path = Path(paths[0])
-        self._service_manager.remember_path(raw_path)
-        target_path = self._service_manager.ensure_save_path(raw_path)
-        return target_path if self._save_service_to_path(target_path) else None
+        return self._service_io.prompt_save_service()
 
     def _save_service_to_path(self, target_path: Path) -> bool:
-        service = NewsService(
+        return self._service_io.save_service_to_path(target_path)
+
+    def _on_save_service(self, _event: wx.Event | None) -> None:
+        self.prompt_save_service()
+
+    def _build_service(self) -> NewsService:
+        return NewsService(
             title=self.model.name,
             markdown=self.model.news_markdown or self._edit_ctrl.GetValue(),
             output_device=self.model.output_device,
             line_length=self._get_line_length(),
         )
-        return self._service_manager.save_to_path(target_path, service)
-
-    def _on_save_service(self, _event: wx.Event | None) -> None:
-        self.prompt_save_service()
 
     def _apply_service(self, service: NewsService) -> None:
         markdown = service.markdown or ""
