@@ -119,6 +119,28 @@ def on_playlist_selection_change(frame, playlist_id: str, indices: list[int]) ->
     # komunikat o pętli obsługuje teraz sam wiersz (prefiks „Loop” w tytule/statusie)
 
 
+def on_toggle_selection(frame, playlist_id: str, item_id: str) -> None:
+    if frame._auto_mix_enabled:
+        frame._announce_event("selection", _("Disable auto mix to queue specific tracks"))
+        return
+    playlist = frame._get_playlist_model(playlist_id)
+    if not playlist:
+        return
+    selected = playlist.toggle_selection(item_id)
+    panel = frame._playlists.get(playlist_id)
+    if isinstance(panel, PlaylistPanel):
+        try:
+            index = next(idx for idx, track in enumerate(panel.model.items) if track.id == item_id)
+        except StopIteration:
+            indices = None
+        else:
+            indices = [index]
+        panel.refresh(indices, focus=bool(indices))
+    item = playlist.get_item(item_id)
+    if not selected and item is not None:
+        frame._announce_event("selection", _("Selection removed from %s") % item.title)
+
+
 def get_current_playlist_panel(frame):
     current_id = frame._layout.state.current_id
     if current_id and current_id in frame._playlists:
@@ -209,4 +231,3 @@ def maybe_focus_playing_item(frame, panel: PlaylistPanel, item_id: str) -> None:
             panel.select_index(index)
             frame._focus_lock[playlist_id] = False
             break
-

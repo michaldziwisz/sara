@@ -139,6 +139,7 @@ from sara.ui.controllers.playlist_focus import (
     maybe_focus_playing_item as _maybe_focus_playing_item_impl,
     on_playlist_focus as _on_playlist_focus_impl,
     on_playlist_selection_change as _on_playlist_selection_change_impl,
+    on_toggle_selection as _on_toggle_selection_impl,
     refresh_news_panels as _refresh_news_panels_impl,
     update_active_playlist_styles as _update_active_playlist_styles_impl,
 )
@@ -663,28 +664,7 @@ class MainFrame(wx.Frame):
         )
 
     def _on_toggle_selection(self, playlist_id: str, item_id: str) -> None:
-        if self._auto_mix_enabled:
-            self._announce_event("selection", _("Disable auto mix to queue specific tracks"))
-            return
-        playlist = self._get_playlist_model(playlist_id)
-        if not playlist:
-            return
-        selected = playlist.toggle_selection(item_id)
-        panel = self._playlists.get(playlist_id)
-        if panel is not None:
-            try:
-                index = next(idx for idx, track in enumerate(panel.model.items) if track.id == item_id)
-            except StopIteration:
-                indices = None
-            else:
-                indices = [index]
-            panel.refresh(indices, focus=bool(indices))
-        item = playlist.get_item(item_id)
-        if selected:
-            # selekcja nie wypowiada dodatkowych informacji (loop jest ogłaszany przy ruchu fokusu)
-            pass
-        else:
-            self._announce_event("selection", _("Selection removed from %s") % item.title)
+        _on_toggle_selection_impl(self, playlist_id, item_id)
 
     def _auto_mix_play_next(self, panel: PlaylistPanel) -> bool:
         return _auto_mix_play_next_impl(self, panel)
