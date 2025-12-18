@@ -1,29 +1,14 @@
-"""Playlist panel refresh helpers for playback flow."""
+"""Compatibility wrapper for playback panel refresh helpers.
+
+Implementation lives in `sara.ui.controllers.playback.panel_refresh`.
+"""
 
 from __future__ import annotations
 
-import wx
+from sara.ui.controllers.playback.panel_refresh import capture_panel_selection, refresh_preserving_selection
 
-from sara.ui.playlist_panel import PlaylistPanel
-
-
-def capture_panel_selection(panel: PlaylistPanel) -> tuple[list[int], int]:
-    return panel.get_selected_indices(), panel.get_focused_index()
-
-
-def refresh_preserving_selection(
-    panel: PlaylistPanel,
-    *,
-    previous_selection: list[int],
-    previous_focus: int,
-    item_count: int,
-) -> None:
-    if previous_selection:
-        panel.refresh(selected_indices=previous_selection, focus=True)
-        return
-    if previous_focus != wx.NOT_FOUND and 0 <= previous_focus < item_count:
-        panel.refresh(focus=False)
-        panel.select_index(previous_focus, focus=True)
-        return
-    panel.refresh(focus=False)
+__all__ = [
+    "capture_panel_selection",
+    "refresh_preserving_selection",
+]
 
