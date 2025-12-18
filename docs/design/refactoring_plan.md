@@ -2,10 +2,16 @@
 
 Ten dokument opisuje bezpieczny, iteracyjny plan uporządkowania kodu SARA. Celem jest zmniejszenie rozmiaru największych plików, rozdzielenie odpowiedzialności oraz poprawa testowalności – bez zmiany zachowania aplikacji.
 
+## Status (gałąź refaktorowa)
+
+- `src/sara/ui/main_frame.py` został odchudzony do ~900 linii i stał się głównie „fasadą” delegującą do mniejszych modułów.
+- Logika miksowania jest wydzielona do `src/sara/core/mix_planner.py` oraz `src/sara/ui/mix_runtime.py` (testy miksu nie wymagają już importowania `MainFrame`).
+- Większość „UI glue” została przeniesiona do `src/sara/ui/controllers/…` (playback flow, automix, skróty, schowek/undo, import/export playlist, folder playlists, news audio).
+
 ## Diagnoza (największe punkty bólu)
 
-- `src/sara/ui/main_frame.py` (~4.6k linii) łączy wiele odpowiedzialności: UI, skróty, I/O playlist, logikę automix, planowanie miksu, schowek, undo, alerty, zarządzanie playlistami.
-- Część testów zależy od `MainFrame` (i przez to od `wx`) tylko po to, aby przetestować logikę miksowania (np. `tests/test_mix_triggers.py` tworzy `MainFrame.__new__` i wywołuje prywatne metody).
+- `src/sara/ui/main_frame.py` historycznie (~4.6k linii) łączył wiele odpowiedzialności: UI, skróty, I/O playlist, logikę automix, planowanie miksu, schowek, undo, alerty, zarządzanie playlistami.
+- Historycznie część testów miksu zależała od `MainFrame` (i przez to od `wx`), ale ten kierunek refaktoru zakłada przepięcie testów na moduły `core/ui` (np. `tests/test_mix_triggers.py` nie importuje już `sara.ui.main_frame`).
 - W repozytorium występują drobne „techniczne” duplikaty (np. podwójne definicje metod), które utrudniają refaktor i czytanie kodu.
 
 ## Zasady bezpieczeństwa (żeby nie „rozwalić” kodu)
@@ -106,4 +112,3 @@ Propozycja:
 1. Preferujesz nazewnictwo nowych modułów po angielsku czy po polsku (np. `mix_planner` vs. `planer_miksu`)?
 2. Czy dopuszczamy stworzenie podpakietu `sara/ui/dialogs/…`, czy trzymamy wszystko płasko w `sara/ui/`?
 3. Czy w dłuższej perspektywie dopuszczasz, aby `sara.ui.main_frame` stał się cienką fasadą importującą właściwą implementację z innego modułu (bez zmiany ścieżki importu)?
-
