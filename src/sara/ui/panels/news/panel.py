@@ -16,6 +16,7 @@ from sara.news_service import NewsService
 from sara.ui.news_mode_controller import NewsEditController, NewsReadController
 
 from .service_io import NewsServiceIO
+from . import toolbar_navigation
 
 
 class NewsPlaylistPanel(wx.Panel):
@@ -383,35 +384,10 @@ class NewsPlaylistPanel(wx.Panel):
             self._on_line_length_apply()
 
     def activate_toolbar_control(self, window: wx.Window | None) -> bool:
-        if window is None:
-            return False
-        buttons: list[wx.Button] = [
-            self._mode_button,
-            self._insert_button,
-            self._load_button,
-            self._save_button,
-        ]
-        if self._line_length_apply:
-            buttons.append(self._line_length_apply)
-        for button in buttons:
-            if window is button:
-                event = wx.CommandEvent(wx.EVT_BUTTON.typeId, button.GetId())
-                event.SetEventObject(button)
-                button.GetEventHandler().ProcessEvent(event)
-                return True
-        return False
+        return toolbar_navigation.activate_toolbar_control(self, window)
 
     def _handle_toolbar_char_hook(self, event: wx.KeyEvent) -> None:
-        keycode = event.GetKeyCode()
-        if keycode == wx.WXK_SPACE and not event.ControlDown() and not event.AltDown():
-            self._suppress_play_shortcut = True
-            event.Skip()
-            return
-        if keycode == wx.WXK_TAB and not event.ControlDown() and not event.AltDown():
-            if self._move_within_toolbar(event.GetEventObject(), backwards=event.ShiftDown()):
-                event.StopPropagation()
-                return
-        event.Skip()
+        toolbar_navigation.handle_toolbar_char_hook(self, event)
 
     def get_selected_device_id(self) -> str | None:
         selection = self._device_choice.GetSelection()
@@ -439,62 +415,16 @@ class NewsPlaylistPanel(wx.Panel):
             self._caret_position = self._read_text_ctrl.GetInsertionPoint()
 
     def _toolbar_focusables(self) -> list[wx.Window]:
-        controls: list[wx.Window] = [
-            self._mode_button,
-            self._insert_button,
-            self._load_button,
-            self._save_button,
-        ]
-        if self._line_length_spin:
-            controls.append(self._line_length_spin)
-        if self._line_length_apply:
-            controls.append(self._line_length_apply)
-        controls.append(self._device_choice)
-        return [ctrl for ctrl in controls if ctrl and ctrl.IsShown() and ctrl.IsEnabled()]
+        return toolbar_navigation.toolbar_focusables(self)
 
     def _focus_toolbar_from_text(self, *, backwards: bool) -> bool:
-        controls = self._toolbar_focusables()
-        if not controls:
-            return False
-        self._update_caret_from_read()
-        target = controls[-1] if backwards else controls[0]
-        target.SetFocus()
-        return True
+        return toolbar_navigation.focus_toolbar_from_text(self, backwards=backwards)
 
     def _move_within_toolbar(self, current: wx.Window, *, backwards: bool) -> bool:
-        controls = self._toolbar_focusables()
-        if not controls:
-            return False
-        try:
-            index = controls.index(current)
-        except ValueError:
-            return False
-        if backwards:
-            if index > 0:
-                controls[index - 1].SetFocus()
-                return True
-            if self._focus_content_area():
-                return True
-            self.Navigate(wx.NavigationKeyEvent.IsBackward)
-            return True
-        if index < len(controls) - 1:
-            controls[index + 1].SetFocus()
-            return True
-        flags = wx.NavigationKeyEvent.IsForward
-        self.Navigate(flags)
-        return True
+        return toolbar_navigation.move_within_toolbar(self, current, backwards=backwards)
 
     def _focus_content_area(self) -> bool:
-        if self._mode == "edit":
-            self._edit_ctrl.SetFocus()
-            return True
-        if self._mode == "read":
-            if self._read_text_ctrl:
-                self._read_text_ctrl.SetFocus()
-                return True
-            self._read_panel.SetFocus()
-            return True
-        return False
+        return toolbar_navigation.focus_content_area(self)
 
     def focus_default(self) -> None:
         """Set focus to the active control depending on mode."""
