@@ -29,7 +29,7 @@
 - Brak ogranicznika: mieszamy liniowo; w przyszłości opcjonalny soft clip/gain normalizer.
 
 ## Kroki implementacyjne
-1) Wydzielić `DeviceMixer` (oddzielny moduł, np. `sara/audio/mixer.py`), testy unit na sztucznym `DummyOutputStream` + waveforms.
+1) Wydzielić `DeviceMixer` (oddzielny moduł, np. `sara/audio/mixer/device_mixer.py`), testy unit na sztucznym `DummyOutputStream` + waveforms.
 2) Rozszerzyć PlaybackController o ścieżkę „single-slot -> mixer”: start/stop, fade, progress/finish.
 3) Dodać zero-crossing + mini fade do mixeru; użyć istniejącego resamplingu do device rate.
 4) Integracja z PFL/news preview? (opcjonalnie: osobny mixer dla PFL device).

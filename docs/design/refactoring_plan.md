@@ -7,6 +7,12 @@ Ten dokument opisuje bezpieczny, iteracyjny plan uporządkowania kodu SARA. Cele
 - `src/sara/ui/main_frame.py` został odchudzony do ~900 linii i stał się głównie „fasadą” delegującą do mniejszych modułów.
 - Logika miksowania jest wydzielona do `src/sara/core/mix_planner.py` oraz `src/sara/ui/mix_runtime.py` (testy miksu nie wymagają już importowania `MainFrame`).
 - Większość „UI glue” została przeniesiona do `src/sara/ui/controllers/…` (playback flow, automix, skróty, schowek/undo, import/export playlist, folder playlists, news audio).
+- `sara/audio` zostało rozbite na mniejsze moduły (utrzymując publiczne API przez fasady):
+  - `src/sara/audio/bass.py` i `src/sara/audio/bass_player.py` są fasadami nad `bass_native.py`, `bass_manager.py`, `bass_backends.py`, `bass_player_base.py`, `bass_asio_player.py`.
+  - `src/sara/audio/mixer/__init__.py` eksportuje API mixera, a implementacja jest poukładana w `src/sara/audio/mixer/…` (device/stream, DSP, render, lifecycle, wątek, manager, player).
+    - Kompatybilne importy: `src/sara/audio/device_mixer.py` i `src/sara/audio/mixer_player.py` są fasadami wskazującymi na `sara.audio.mixer`.
+  - `src/sara/audio/sounddevice_player.py` jest fasadą, a implementacja żyje w `src/sara/audio/sounddevice_player_base.py` i `src/sara/audio/sounddevice_profiles.py`.
+  - Wspólne elementy audio są wydzielone do `src/sara/audio/types.py`, `src/sara/audio/resampling.py` i `src/sara/audio/transcoding.py`.
 
 ## Diagnoza (największe punkty bólu)
 
@@ -94,6 +100,17 @@ Propozycja:
 - dopiero na końcu rozważenie opakowania `main_frame.py` jako „fasady” (opcjonalnie).
 
 **Akceptacja:** `pytest` zielone, brak zmian API importów.
+
+### Etap 6 — Porządek w `sara/audio`: backendy i mixer
+
+Cel: utrzymać małe, czytelne moduły audio, bez mieszania z UI oraz bez rozbijania publicznego API.
+
+Propozycja:
+- utrzymywać „fasady” jako stabilne punkty importów (`sara.audio.bass`, `sara.audio.bass_player`, `sara.audio.mixer`, `sara.audio.sounddevice_backend`, `sara.audio.sounddevice_player`),
+- dalej rozbijać duże implementacje wewnętrzne (np. `sounddevice_player_base.py`, `device_mixer.py`) przez wyciąganie typów i helperów,
+- dążyć do tego, żeby moduły audio nie importowały `sara.audio.engine` (używać `sara.audio.types` + `sara.audio.resampling`).
+
+**Akceptacja:** `pytest` zielone, brak zmian zachowania audio.
 
 ## Strategia pracy na Gicie
 
