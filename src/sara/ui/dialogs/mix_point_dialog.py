@@ -15,7 +15,8 @@ import wx
 logger = logging.getLogger(__name__)
 
 from sara.core.i18n import gettext as _
-from sara.core.loudness import LoudnessStandard, analyze_loudness, find_bs1770gain
+from sara.core.loudness import LoudnessStandard, find_bs1770gain
+from sara.ui.dialogs.mix_point_loudness import compute_normalization_gain
 from sara.ui.speech import speak_text
 
 
@@ -729,13 +730,11 @@ class MixPointEditorDialog(wx.Dialog):
     def _normalization_worker(self) -> None:
         try:
             standard = self._selected_standard()
-            measurement = analyze_loudness(self._track_path, standard=standard)
-            target = -23.0 if standard is LoudnessStandard.EBU else -24.0
-            gain = target - measurement.integrated_lufs
+            gain, measured_lufs = compute_normalization_gain(self._track_path, standard=standard)
         except Exception as exc:  # pylint: disable=broad-except
             wx.CallAfter(self._on_normalize_error, str(exc))
         else:
-            wx.CallAfter(self._on_normalize_success, gain, measurement.integrated_lufs)
+            wx.CallAfter(self._on_normalize_success, gain, measured_lufs)
 
     def _on_normalize_success(self, gain_db: float, measured_lufs: float) -> None:
         self._normalizing = False
