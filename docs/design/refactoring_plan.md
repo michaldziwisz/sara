@@ -7,6 +7,7 @@ Ten dokument opisuje bezpieczny, iteracyjny plan uporządkowania kodu SARA. Cele
 - `src/sara/ui/main_frame.py` został odchudzony do ~900 linii i stał się głównie „fasadą” delegującą do mniejszych modułów.
 - Logika miksowania jest wydzielona do `src/sara/core/mix_planner.py` oraz `src/sara/ui/mix_runtime.py` (testy miksu nie wymagają już importowania `MainFrame`).
 - Większość „UI glue” została przeniesiona do `src/sara/ui/controllers/…` (playback flow, automix, skróty, schowek/undo, import/export playlist, folder playlists, news audio).
+- Panele UI zostały pogrupowane w `src/sara/ui/panels/…` (kompatybilne fasady importów pozostają w `src/sara/ui/*_playlist_panel.py` i `src/sara/ui/playlist_panel.py`).
 - `sara/audio` zostało rozbite na mniejsze moduły (utrzymując publiczne API przez fasady):
   - `src/sara/audio/bass/…` zawiera implementację BASS (native/manager/backends/player), a kompatybilne fasady importów są utrzymane w `src/sara/audio/bass_player.py` oraz `src/sara/audio/bass_*.py`.
   - `src/sara/audio/mixer/__init__.py` eksportuje API mixera, a implementacja jest poukładana w `src/sara/audio/mixer/…` (device/stream, DSP, render, lifecycle, wątek, manager, player).
