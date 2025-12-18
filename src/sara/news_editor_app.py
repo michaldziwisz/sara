@@ -12,10 +12,11 @@ if __package__ is None or __package__ == "":
 
 from sara.core.config import SettingsManager
 from sara.core.i18n import gettext as _, set_language
-from sara.core.playlist import PlaylistItem, PlaylistKind, PlaylistModel
+from sara.core.playlist import PlaylistKind, PlaylistModel
 from sara.audio.engine import AudioEngine
 from sara.ui.news_playlist_panel import NewsPlaylistPanel
 from sara.ui.playback_controller import PlaybackController
+from sara.ui.controllers.news_audio import news_device_entries, preview_news_clip
 from sara.news_editor_settings import NewsEditorSettings
 
 
@@ -55,10 +56,7 @@ class NewsEditorFrame(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self._on_close)
 
     def _news_device_entries(self) -> list[tuple[str | None, str]]:
-        devices = self._audio_engine.get_devices()
-        entries: list[tuple[str | None, str]] = [(None, _("(Select playback device)"))]
-        entries.extend((device.id, device.name) for device in devices)
-        return entries
+        return news_device_entries(self, placeholder_label=_("(Select playback device)"))
 
     def _resolve_device(self, requested: str | None) -> str | None:
         if requested:
@@ -121,16 +119,17 @@ class NewsEditorFrame(wx.Frame):
         wx.MessageBox(message, _("Preview"), parent=self)
 
     def _preview_news_clip(self, path: Path) -> bool:
-        if not path.exists():
-            wx.MessageBox(_("Audio file %s does not exist") % path, _("Error"), parent=self)
-            return False
-        temp_item = PlaylistItem(
-            id=f"news-editor-preview-{path.stem}",
-            path=path,
-            title=path.name,
-            duration_seconds=0.0,
+        return preview_news_clip(
+            self,
+            path,
+            start_preview=self._preview_controller.start_preview,
+            on_missing=lambda missing: wx.MessageBox(
+                _("Audio file %s does not exist") % missing,
+                _("Error"),
+                parent=self,
+            ),
+            item_id_prefix="news-editor-preview",
         )
-        return self._preview_controller.start_preview(temp_item, 0.0)
 
 
 def run() -> None:
