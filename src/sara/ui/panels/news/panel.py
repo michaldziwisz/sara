@@ -18,6 +18,7 @@ from sara.ui.news_mode_controller import NewsEditController, NewsReadController
 from .service_io import NewsServiceIO
 from . import toolbar_navigation
 from . import read_mode
+from . import device_selection
 
 
 class NewsPlaylistPanel(wx.Panel):
@@ -178,30 +179,10 @@ class NewsPlaylistPanel(wx.Panel):
             event.Skip()
 
     def _populate_devices(self) -> None:
-        devices = list(self._get_audio_devices())
-        selection = 0
-        self._device_choice.Clear()
-        for idx, (device_id, label) in enumerate(devices):
-            self._device_choice.Append(label, clientData=device_id)
-            if device_id == (self.model.output_device or (self.model.output_slots[0] if self.model.output_slots else None)):
-                selection = idx
-        if devices:
-            self._device_choice.SetSelection(selection)
-            self._device_choice.Enable(True)
-        else:
-            self._device_choice.Enable(False)
+        device_selection.populate_devices(self)
+
     def _on_device_selected(self, event: wx.CommandEvent) -> None:
-        index = event.GetSelection()
-        if index == wx.NOT_FOUND:
-            return
-        device_id = self._device_choice.GetClientData(index)
-        device_value = str(device_id) if device_id else None
-        self.model.output_device = device_value
-        if device_value:
-            self.model.set_output_slots([device_value])
-        else:
-            self.model.set_output_slots([])
-        self._on_device_change(self.model)
+        device_selection.on_device_selected(self, event)
 
     def _handle_char_hook(self, event: wx.KeyEvent) -> None:
         keycode = event.GetKeyCode()
@@ -391,11 +372,7 @@ class NewsPlaylistPanel(wx.Panel):
         toolbar_navigation.handle_toolbar_char_hook(self, event)
 
     def get_selected_device_id(self) -> str | None:
-        selection = self._device_choice.GetSelection()
-        if selection == wx.NOT_FOUND:
-            return None
-        data = self._device_choice.GetClientData(selection)
-        return str(data) if data else None
+        return device_selection.get_selected_device_id(self)
 
     def _remember_caret_position(self) -> None:
         if self._mode == "edit":
