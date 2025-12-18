@@ -39,13 +39,11 @@ from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistKind, P
 from sara.core.shortcuts import get_shortcut
 from sara.ui.undo import InsertOperation, MoveOperation, RemoveOperation, UndoAction
 from sara.ui.undo_manager import UndoManager
-from sara.ui.new_playlist_dialog import NewPlaylistDialog
 from sara.ui.playlist_panel import PlaylistPanel
 from sara.ui.folder_playlist_panel import FolderPlaylistPanel
 from sara.ui.news_playlist_panel import NewsPlaylistPanel
 from sara.ui.playlist_layout import PlaylistLayoutManager, PlaylistLayoutState
 from sara.ui.announcement_service import AnnouncementService
-from sara.ui.playlist_devices_dialog import PlaylistDevicesDialog
 from sara.ui.options_dialog import OptionsDialog
 from sara.ui.shortcut_editor_dialog import ShortcutEditorDialog
 from sara.ui.shortcut_utils import format_shortcut_display, parse_shortcut
@@ -55,7 +53,6 @@ from sara.ui.auto_mix_tracker import AutoMixTracker
 from sara.ui.clipboard_service import PlaylistClipboard
 from sara.ui.jingle_controller import JingleController
 from sara.ui.jingles_dialog import JinglesDialog
-from sara.ui.dialogs.manage_playlists_dialog import ManagePlaylistsDialog
 from sara.ui.controllers.playback_flow import (
     handle_playback_finished as _handle_playback_finished_impl,
     start_next_from_playlist as _start_next_from_playlist_impl,
@@ -87,6 +84,15 @@ from sara.ui.controllers.playlists_ui import (
     add_playlist as _add_playlist_impl,
     apply_playlist_order as _apply_playlist_order_impl,
     remove_playlist_by_id as _remove_playlist_by_id_impl,
+)
+from sara.ui.controllers.playlists_management import (
+    configure_playlist_devices as _configure_playlist_devices_impl,
+    finalize_add_tracks as _finalize_add_tracks_impl,
+    on_add_tracks as _on_add_tracks_impl,
+    on_assign_device as _on_assign_device_impl,
+    on_manage_playlists as _on_manage_playlists_impl,
+    on_remove_playlist as _on_remove_playlist_impl,
+    prompt_new_playlist as _prompt_new_playlist_impl,
 )
 from sara.ui.controllers.loop_and_remaining import (
     active_playlist_item as _active_playlist_item_impl,
@@ -733,169 +739,25 @@ class MainFrame(wx.Frame):
         self._prompt_new_playlist()
 
     def _prompt_new_playlist(self) -> PlaylistModel | None:
-        dialog = NewPlaylistDialog(self)
-        try:
-            if dialog.ShowModal() != wx.ID_OK:
-                return None
-            model = self._playlist_factory.create_playlist(
-                dialog.playlist_name,
-                kind=dialog.playlist_kind,
-                folder_path=dialog.folder_path if dialog.playlist_kind is PlaylistKind.FOLDER else None,
-            )
-            self.add_playlist(model)
-            if dialog.playlist_kind is not PlaylistKind.FOLDER:
-                self._configure_playlist_devices(model.id)
-            return model
-        finally:
-            dialog.Destroy()
+        return _prompt_new_playlist_impl(self)
 
     def _on_add_tracks(self, event: wx.CommandEvent) -> None:
-        panel = self._get_current_music_panel()
-        if panel is None:
-            self._announce_event("playlist", _("Select a playlist first"))
-            return
-
-        style = wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE
-        wildcard = _("Audio files (*.mp3;*.mp2;*.wav;*.flac;*.ogg)|*.mp3;*.mp2;*.wav;*.flac;*.ogg|All files|*.*")
-        dialog = FileSelectionDialog(
-            self,
-            title=_("Select audio files"),
-            wildcard=wildcard,
-            style=style,
-        )
-        result = dialog.ShowModal()
-        paths = [Path(path) for path in dialog.get_paths()] if result == wx.ID_OK else []
-        dialog.Destroy()
-        if result != wx.ID_OK:
-            return
-
-        if not paths:
-            self._announce_event("playlist", _("No tracks were added"))
-            return
-
-        description = _("Loading %d selected tracks…") % len(paths)
-        self._run_item_loader(
-            description=description,
-            worker=lambda paths=paths: self._create_items_from_paths(paths),
-            on_complete=lambda items, panel=panel: self._finalize_add_tracks(panel, items),
-        )
+        _on_add_tracks_impl(self, event)
 
     def _finalize_add_tracks(self, panel: PlaylistPanel, new_items: list[PlaylistItem]) -> None:
-        playlist_id = panel.model.id
-        if playlist_id not in self._playlists or self._playlists.get(playlist_id) is not panel:
-            return
-        if not new_items:
-            self._announce_event("playlist", _("No tracks were added"))
-            return
-        panel.append_items(new_items)
-        self._announce_event(
-            "playlist",
-            _("Added %d tracks to playlist %s") % (len(new_items), panel.model.name),
-        )
+        _finalize_add_tracks_impl(self, panel, new_items)
 
     def _on_remove_playlist(self, _event: wx.CommandEvent) -> None:
-        playlist_id = self._layout.state.current_id
-        if not playlist_id:
-            self._announce_event("playlist", _("No playlist selected"))
-            return
-        title = self._playlist_titles.get(playlist_id, _("playlist"))
-        response = wx.MessageBox(
-            _("Remove playlist %s?") % title,
-            _("Confirm removal"),
-            style=wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING,
-            parent=self,
-        )
-        if response != wx.YES:
-            return
-        if not self._remove_playlist_by_id(playlist_id):
-            self._announce_event("playlist", _("Unable to remove playlist"))
+        _on_remove_playlist_impl(self, _event)
 
     def _on_manage_playlists(self, _event: wx.CommandEvent) -> None:
-        entries: list[dict[str, Any]] = []
-        for playlist_id in self._layout.state.order:
-            panel = self._playlists.get(playlist_id)
-            if not panel:
-                continue
-            name = self._playlist_titles.get(playlist_id, panel.model.name)
-            entries.append(
-                {
-                    "id": playlist_id,
-                    "name": name,
-                    "kind": panel.model.kind,
-                    "slots": list(panel.model.get_configured_slots()),
-                }
-            )
-        if not entries:
-            self._announce_event("playlist", _("No playlists available"))
-            return
-        dialog = ManagePlaylistsDialog(
-            self,
-            entries,
-            create_callback=self._prompt_new_playlist,
-            configure_callback=self._configure_playlist_devices,
-        )
-        try:
-            if dialog.ShowModal() != wx.ID_OK:
-                return
-            result = dialog.get_result()
-        finally:
-            dialog.Destroy()
-        if not result:
-            return
-        removed = result["removed"]
-        for playlist_id in removed:
-            self._remove_playlist_by_id(playlist_id, announce=False)
-        self._apply_playlist_order(result["order"])
-        if removed:
-            self._announce_event("playlist", _("Removed %d playlists") % len(removed))
+        _on_manage_playlists_impl(self, _event)
 
     def _on_assign_device(self, _event: wx.CommandEvent) -> None:
-        panel = self._get_current_playlist_panel()
-        if panel is None:
-            self._announce_event("playlist", _("Select a playlist first"))
-            return
-        if isinstance(panel, PlaylistPanel) and panel.model.kind is PlaylistKind.FOLDER:
-            self._announce_event("playlist", _("Music folders use the configured PFL device"))
-            return
-        self._configure_playlist_devices(panel.model.id)
+        _on_assign_device_impl(self, _event)
 
     def _configure_playlist_devices(self, playlist_id: str) -> list[str | None] | None:
-        panel = self._playlists.get(playlist_id)
-        if panel is None:
-            return None
-        devices = self._audio_engine.get_devices()
-        if not devices:
-            self._announce_event("device", _("No audio devices available"))
-            return None
-        model = panel.model
-        dialog = PlaylistDevicesDialog(self, devices=devices, slots=model.get_configured_slots())
-        try:
-            if dialog.ShowModal() != wx.ID_OK:
-                return None
-            slots = dialog.get_slots()
-        finally:
-            dialog.Destroy()
-
-        model.set_output_slots(slots)
-        self._persist_playlist_outputs(model)
-
-        device_map = {device.id: device for device in devices}
-        assigned_names = [
-            device_map[device_id].name
-            for device_id in slots
-            if device_id and device_id in device_map
-        ]
-        if assigned_names:
-            self._announce_event(
-                "playlist",
-                _("Playlist %s assigned to players: %s") % (model.name, ", ".join(assigned_names)),
-            )
-        else:
-            self._announce_event(
-                "playlist",
-                _("Removed device assignments for playlist %s") % model.name,
-            )
-        return slots
+        return _configure_playlist_devices_impl(self, playlist_id)
 
     def _on_import_playlist(self, event: wx.CommandEvent) -> None:
         _on_import_playlist_impl(self, event)
