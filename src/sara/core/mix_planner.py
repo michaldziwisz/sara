@@ -15,6 +15,8 @@ MIX_NATIVE_EARLY_GUARD = 0.25
 MIX_NATIVE_LATE_GUARD = 0.35
 MIX_EXPLICIT_PROGRESS_GUARD = 0.05
 
+MixKey = tuple[str, str]
+
 
 @dataclass
 class MixPlan:
@@ -24,6 +26,50 @@ class MixPlan:
     effective_duration: float
     native_trigger: bool
     triggered: bool = False
+
+
+def register_mix_plan(
+    mix_plans: dict[MixKey, MixPlan],
+    mix_trigger_points: dict[MixKey, float],
+    playlist_id: str,
+    item_id: str,
+    *,
+    mix_at: float | None,
+    fade_seconds: float,
+    base_cue: float,
+    effective_duration: float,
+    native_trigger: bool,
+) -> None:
+    key = (playlist_id, item_id)
+    if mix_at is None:
+        clear_mix_plan(mix_plans, mix_trigger_points, playlist_id, item_id)
+        return
+    mix_plans[key] = MixPlan(
+        mix_at=mix_at,
+        fade_seconds=fade_seconds,
+        base_cue=base_cue,
+        effective_duration=effective_duration,
+        native_trigger=native_trigger,
+        triggered=False,
+    )
+    mix_trigger_points[key] = mix_at
+
+
+def clear_mix_plan(
+    mix_plans: dict[MixKey, MixPlan],
+    mix_trigger_points: dict[MixKey, float],
+    playlist_id: str,
+    item_id: str,
+) -> None:
+    key = (playlist_id, item_id)
+    mix_plans.pop(key, None)
+    mix_trigger_points.pop(key, None)
+
+
+def mark_mix_triggered(mix_plans: dict[MixKey, MixPlan], playlist_id: str, item_id: str) -> None:
+    plan = mix_plans.get((playlist_id, item_id))
+    if plan:
+        plan.triggered = True
 
 
 def resolve_mix_timing(
@@ -83,4 +129,3 @@ def compute_mix_trigger_seconds(item: PlaylistItem, fade_duration: float) -> flo
     """Calculate absolute time (seconds) to trigger automix/crossfade."""
     mix_at, _, _, _ = resolve_mix_timing(item, fade_duration)
     return mix_at
-

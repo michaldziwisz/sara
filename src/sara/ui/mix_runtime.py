@@ -7,32 +7,32 @@ behaviour so it can be iterated on more safely.
 from __future__ import annotations
 
 import logging
-
-import wx
+from typing import Any, Callable
 
 from sara.core.mix_planner import (
     MIX_EXPLICIT_PROGRESS_GUARD,
     MIX_NATIVE_EARLY_GUARD,
     MIX_NATIVE_LATE_GUARD,
-    MixPlan,
 )
 from sara.core.playlist import PlaylistItem, PlaylistKind, PlaylistModel
 
-from sara.ui.playback_controller import PlaybackContext
-from sara.ui.playlist_panel import PlaylistPanel
-
 
 logger = logging.getLogger(__name__)
+
+def _direct_call(callback: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    return callback(*args, **kwargs)
 
 
 def sync_loop_mix_trigger(
     frame,
     *,
-    panel: PlaylistPanel | None,
+    panel: Any | None,
     playlist: PlaylistModel,
     item: PlaylistItem,
-    context: PlaybackContext,
+    context: Any,
+    call_after: Callable[..., Any] | None = None,
 ) -> None:
+    call_after = call_after or _direct_call
     key = (playlist.id, item.id)
     if item.loop_enabled and item.has_loop():
         frame._playback.auto_mix_state[key] = "loop_hold"
@@ -91,9 +91,7 @@ def sync_loop_mix_trigger(
             playlist.id,
             item.id,
             mix_trigger_seconds=mix_at,
-            on_mix_trigger=lambda pl_id=playlist.id, it_id=item.id: wx.CallAfter(
-                frame._auto_mix_now_from_callback, pl_id, it_id
-            ),
+            on_mix_trigger=lambda pl_id=playlist.id, it_id=item.id: call_after(frame._auto_mix_now_from_callback, pl_id, it_id),
         )
     logger.debug(
         "UI: loop disabled -> rescheduled mix trigger playlist=%s item=%s mix_at=%.3f fade=%.3f current=%.3f native=%s",
@@ -106,7 +104,15 @@ def sync_loop_mix_trigger(
     )
 
 
-def apply_mix_trigger_to_playback(frame, *, playlist_id: str, item: PlaylistItem, panel: PlaylistPanel) -> None:
+def apply_mix_trigger_to_playback(
+    frame,
+    *,
+    playlist_id: str,
+    item: PlaylistItem,
+    panel: Any,
+    call_after: Callable[..., Any] | None = None,
+) -> None:
+    call_after = call_after or _direct_call
     if item.break_after:
         cleared = frame._playback.update_mix_trigger(
             playlist_id,
@@ -150,9 +156,7 @@ def apply_mix_trigger_to_playback(frame, *, playlist_id: str, item: PlaylistItem
             playlist_id,
             item.id,
             mix_trigger_seconds=mix_trigger_seconds,
-            on_mix_trigger=lambda pl_id=playlist_id, it_id=item.id: wx.CallAfter(
-                frame._auto_mix_now_from_callback, pl_id, it_id
-            ),
+            on_mix_trigger=lambda pl_id=playlist_id, it_id=item.id: call_after(frame._auto_mix_now_from_callback, pl_id, it_id),
         )
     logger.debug(
         "UI: rescheduled mix trigger playlist=%s item=%s mix_at=%s fade=%.3f native=%s applied=%s",
@@ -167,9 +171,9 @@ def apply_mix_trigger_to_playback(frame, *, playlist_id: str, item: PlaylistItem
 
 def auto_mix_state_process(
     frame,
-    panel: PlaylistPanel,
+    panel: Any,
     item: PlaylistItem,
-    context_entry: PlaybackContext,
+    context_entry: Any,
     seconds: float,
     queued_selection: bool,
 ) -> None:
@@ -304,7 +308,7 @@ def auto_mix_state_process(
         frame._playback.auto_mix_state.pop(key, None)
 
 
-def auto_mix_now(frame, playlist: PlaylistModel, item: PlaylistItem, panel: PlaylistPanel) -> None:
+def auto_mix_now(frame, playlist: PlaylistModel, item: PlaylistItem, panel: Any) -> None:
     """Wyzwól miks natychmiast z precyzyjnego punktu (segue/overlap/fade sync z BASS)."""
     key = (playlist.id, item.id)
     plan = frame._mix_plans.get(key)
@@ -468,4 +472,3 @@ def auto_mix_now(frame, playlist: PlaylistModel, item: PlaylistItem, panel: Play
         if plan_obj:
             plan_obj.triggered = False
         frame._playback.auto_mix_state.pop(key, None)
-

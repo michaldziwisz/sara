@@ -33,7 +33,10 @@ from sara.core.mix_planner import (
     MIX_NATIVE_EARLY_GUARD,
     MIX_NATIVE_LATE_GUARD,
     MixPlan,
+    clear_mix_plan as _clear_mix_plan_impl,
     compute_mix_trigger_seconds as _compute_mix_trigger_seconds_impl,
+    mark_mix_triggered as _mark_mix_triggered_impl,
+    register_mix_plan as _register_mix_plan_impl,
     resolve_mix_timing as _resolve_mix_timing_impl,
 )
 from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistKind, PlaylistModel
@@ -1617,10 +1620,17 @@ class MainFrame(wx.Frame):
             playlist=playlist,
             item=item,
             context=context,
+            call_after=wx.CallAfter,
         )
 
     def _apply_mix_trigger_to_playback(self, *, playlist_id: str, item: PlaylistItem, panel: PlaylistPanel) -> None:
-        _apply_mix_trigger_to_playback_impl(self, playlist_id=playlist_id, item=item, panel=panel)
+        _apply_mix_trigger_to_playback_impl(
+            self,
+            playlist_id=playlist_id,
+            item=item,
+            panel=panel,
+            call_after=wx.CallAfter,
+        )
 
     def _on_toggle_selection(self, playlist_id: str, item_id: str) -> None:
         if self._auto_mix_enabled:
@@ -3817,29 +3827,23 @@ class MainFrame(wx.Frame):
         effective_duration: float,
         native_trigger: bool,
     ) -> None:
-        key = (playlist_id, item_id)
-        if mix_at is None:
-            self._clear_mix_plan(playlist_id, item_id)
-            return
-        self._mix_plans[key] = MixPlan(
+        _register_mix_plan_impl(
+            self._mix_plans,
+            self._mix_trigger_points,
+            playlist_id,
+            item_id,
             mix_at=mix_at,
             fade_seconds=fade_seconds,
             base_cue=base_cue,
             effective_duration=effective_duration,
             native_trigger=native_trigger,
-            triggered=False,
         )
-        self._mix_trigger_points[key] = mix_at
 
     def _clear_mix_plan(self, playlist_id: str, item_id: str) -> None:
-        key = (playlist_id, item_id)
-        self._mix_plans.pop(key, None)
-        self._mix_trigger_points.pop(key, None)
+        _clear_mix_plan_impl(self._mix_plans, self._mix_trigger_points, playlist_id, item_id)
 
     def _mark_mix_triggered(self, playlist_id: str, item_id: str) -> None:
-        plan = self._mix_plans.get((playlist_id, item_id))
-        if plan:
-            plan.triggered = True
+        _mark_mix_triggered_impl(self._mix_plans, playlist_id, item_id)
 
     def _resolve_mix_timing(
         self,
