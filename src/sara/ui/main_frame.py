@@ -8,10 +8,10 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import wx
 
-from sara.audio.engine import AudioEngine, Player
-from sara.core.app_state import AppState, PlaylistFactory
+from sara.audio.engine import Player
+from sara.core.app_state import AppState
 from sara.core.config import SettingsManager
-from sara.core.i18n import gettext as _, set_language
+from sara.core.i18n import gettext as _
 from sara.core.hotkeys import HotkeyAction
 from sara.core.media_metadata import (
     save_replay_gain_metadata,
@@ -26,14 +26,16 @@ from sara.core.mix_planner import (
 from sara.core.playlist import PlaylistItem, PlaylistKind, PlaylistModel
 from sara.core.shortcuts import get_shortcut
 from sara.ui.undo import UndoAction
-from sara.ui.undo_manager import UndoManager
 from sara.ui.playlist_panel import PlaylistPanel
-from sara.ui.playlist_layout import PlaylistLayoutManager
-from sara.ui.announcement_service import AnnouncementService
-from sara.ui.playback_controller import PlaybackContext, PlaybackController
-from sara.ui.auto_mix_tracker import AutoMixTracker
-from sara.ui.clipboard_service import PlaylistClipboard
-from sara.ui.jingle_controller import JingleController
+from sara.ui.playback_controller import PlaybackContext
+from sara.ui.controllers.frame_bootstrap import (
+    init_audio_controllers as _init_audio_controllers_impl,
+    init_command_ids as _init_command_ids_impl,
+    init_playlist_state as _init_playlist_state_impl,
+    init_runtime_state as _init_runtime_state_impl,
+    init_settings as _init_settings_impl,
+    init_ui as _init_ui_impl,
+)
 from sara.ui.controllers.playback_flow import (
     handle_playback_finished as _handle_playback_finished_impl,
     play_item_direct as _play_item_direct_impl,
@@ -215,95 +217,22 @@ class MainFrame(wx.Frame):
         self._init_ui()
 
     def _init_settings(self, settings: SettingsManager | None) -> None:
-        self._settings = settings or SettingsManager()
-        set_language(self._settings.get_language())
-        if not self._settings.config_path.exists():
-            self._settings.save()
+        _init_settings_impl(self, settings)
 
     def _init_playlist_state(self, state: AppState | None) -> None:
-        self._playlists: Dict[str, PlaylistPanel] = {}
-        self._playlist_wrappers: Dict[str, wx.Window] = {}
-        self._playlist_headers: Dict[str, wx.StaticText] = {}
-        self._playlist_titles: Dict[str, str] = {}
-        self._layout = PlaylistLayoutManager()
-        self._current_index: int = 0
-        self._state = state or AppState()
-        self._playlist_factory = PlaylistFactory()
+        _init_playlist_state_impl(self, state)
 
     def _init_audio_controllers(self) -> None:
-        self._audio_engine = AudioEngine()
-        self._playback = PlaybackController(self._audio_engine, self._settings, self._announce_event)
-        self._jingles_path = self._settings.config_path.parent / "jingles.sarajingles"
-        self._jingles = JingleController(
-            self._audio_engine,
-            self._settings,
-            self._announce_event,
-            set_path=self._jingles_path,
-        )
+        _init_audio_controllers_impl(self)
 
     def _init_command_ids(self) -> None:
-        self._play_next_id = wx.NewIdRef()
-        self._add_tracks_id = wx.NewIdRef()
-        self._assign_device_id = wx.NewIdRef()
-        self._auto_mix_toggle_id = wx.NewIdRef()
-        self._loop_playback_toggle_id = wx.NewIdRef()
-        self._loop_info_id = wx.NewIdRef()
-        self._track_remaining_id = wx.NewIdRef()
-        self._remove_playlist_id = wx.NewIdRef()
-        self._manage_playlists_id = wx.NewIdRef()
-        self._cut_id = wx.NewIdRef()
-        self._copy_id = wx.NewIdRef()
-        self._paste_id = wx.NewIdRef()
-        self._delete_id = wx.NewIdRef()
-        self._move_up_id = wx.NewIdRef()
-        self._move_down_id = wx.NewIdRef()
-        self._undo_id = wx.NewIdRef()
-        self._redo_id = wx.NewIdRef()
-        self._shortcut_editor_id = wx.NewIdRef()
-        self._jingles_manage_id = wx.NewIdRef()
+        _init_command_ids_impl(self)
 
     def _init_runtime_state(self) -> None:
-        self._playlist_hotkey_defaults = self._settings.get_playlist_shortcuts()
-        self._playlist_action_ids: Dict[str, int] = {}
-        self._action_by_id: Dict[int, str] = {}
-        self._shortcut_menu_items: Dict[tuple[str, str], tuple[wx.MenuItem, str]] = {}
-        self._auto_mix_enabled: bool = False
-        self._alternate_play_next: bool = self._settings.get_alternate_play_next()
-        self._swap_play_select: bool = self._settings.get_swap_play_select()
-        self._auto_remove_played: bool = self._settings.get_auto_remove_played()
-        self._focus_playing_track: bool = self._settings.get_focus_playing_track()
-        self._intro_alert_seconds: float = self._settings.get_intro_alert_seconds()
-        self._track_end_alert_seconds: float = self._settings.get_track_end_alert_seconds()
-        self._clipboard = PlaylistClipboard()
-        self._undo_manager = UndoManager(self._apply_undo_callback)
-        self._focus_lock: Dict[str, bool] = self._layout.state.focus_lock
-        self._intro_alert_players: list[Tuple[Player, Path]] = []
-        self._track_end_alert_players: list[Tuple[Player, Path]] = []
-        self._last_started_item_id: Dict[str, str | None] = {}
-        self._last_music_playlist_id: str | None = None
-        self._active_folder_preview: tuple[str, str] | None = None
-        self._active_break_item: Dict[str, str] = {}  # playlist_id -> item_id z aktywnym breakiem
-        self._mix_trigger_points: Dict[
-            tuple[str, str], float
-        ] = {}  # (playlist_id, item_id) -> absolute mix_at seconds
-        self._mix_plans: Dict[tuple[str, str], MixPlan] = {}
-        self._auto_mix_tracker = AutoMixTracker()  # wirtualny kursor automix niezależny od UI
-        self._auto_mix_busy: Dict[str, bool] = {}  # blokada reentrancji per playlist
-        self._last_focus_index: Dict[str, int] = {}
+        _init_runtime_state_impl(self)
 
     def _init_ui(self) -> None:
-        self.CreateStatusBar()
-        self.SetStatusText(_("Ready"))
-        self._announcer = AnnouncementService(self._settings, status_callback=self.SetStatusText)
-        wx.ToolTip.Enable(False)
-        self.SetToolTip(None)
-        self._fade_duration = max(self._settings.get_playback_fade_seconds(), 0.0)
-        self._create_menu_bar()
-        self._create_ui()
-        self._register_accessibility()
-        self._configure_accelerators()
-        self._global_shortcut_blocked = False
-        self.Bind(wx.EVT_CLOSE, self._on_close)
+        _init_ui_impl(self)
 
     def _ensure_legacy_hooks(self) -> None:
         if not hasattr(self, "_on_new_playlist"):
