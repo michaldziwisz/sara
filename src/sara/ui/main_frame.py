@@ -176,7 +176,6 @@ from sara.ui.controllers.loop_and_remaining import (
     sync_loop_mix_trigger as _sync_loop_mix_trigger_impl,
 )
 from sara.ui.controllers.menu_and_shortcuts import (
-    apply_shortcut_to_menu_item as _apply_shortcut_to_menu_item_impl,
     configure_accelerators as _configure_accelerators_impl,
     create_menu_bar as _create_menu_bar_impl,
     handle_global_char_hook as _handle_global_char_hook_impl,
@@ -339,9 +338,6 @@ class MainFrame(wx.Frame):
 
     def _create_menu_bar(self) -> None:
         _create_menu_bar_impl(self)
-
-    def _apply_shortcut_to_menu_item(self, scope: str, action: str) -> None:
-        _apply_shortcut_to_menu_item_impl(self, scope, action)
 
     def _update_shortcut_menu_labels(self) -> None:
         _update_shortcut_menu_labels_impl(self)
