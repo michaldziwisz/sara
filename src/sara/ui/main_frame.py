@@ -83,6 +83,11 @@ from sara.ui.controllers.playlist_io import (
     on_import_playlist as _on_import_playlist_impl,
     parse_m3u as _parse_m3u_impl,
 )
+from sara.ui.controllers.playlists_ui import (
+    add_playlist as _add_playlist_impl,
+    apply_playlist_order as _apply_playlist_order_impl,
+    remove_playlist_by_id as _remove_playlist_by_id_impl,
+)
 from sara.ui.controllers.loop_and_remaining import (
     active_playlist_item as _active_playlist_item_impl,
     apply_loop_setting_to_playback as _apply_loop_setting_to_playback_impl,
@@ -381,89 +386,7 @@ class MainFrame(wx.Frame):
         return False
 
     def add_playlist(self, model: PlaylistModel) -> None:
-        for action, key in self._playlist_hotkey_defaults.items():
-            model.hotkeys.setdefault(action, HotkeyAction(key=key, description=action.title()))
-
-        saved_slots = self._settings.get_playlist_outputs(model.name)
-        if saved_slots:
-            model.set_output_slots(saved_slots)
-
-        container = wx.Panel(self._playlist_container, style=wx.TAB_TRAVERSAL)
-        container.SetName(model.name)
-
-        header = wx.StaticText(container, label=model.name)
-        header_font = header.GetFont()
-        header_font.MakeBold()
-        header.SetFont(header_font)
-        header.SetName(model.name)
-        header.Bind(wx.EVT_LEFT_DOWN, lambda event, playlist_id=model.id: self._handle_focus_click(event, playlist_id))
-
-        if model.kind is PlaylistKind.NEWS:
-            panel = NewsPlaylistPanel(
-                container,
-                model=model,
-                get_line_length=self._settings.get_news_line_length,
-                get_audio_devices=self._news_device_entries,
-                on_focus=self._on_playlist_focus,
-                on_play_audio=lambda path, device: self._play_news_audio_clip(model, path, device),
-                on_device_change=lambda _model=model: self._persist_playlist_outputs(model),
-                on_preview_audio=self._preview_news_clip,
-                on_stop_preview_audio=self._stop_preview,
-            )
-        elif model.kind is PlaylistKind.FOLDER:
-            panel = FolderPlaylistPanel(
-                container,
-                model=model,
-                on_focus=self._on_playlist_focus,
-                on_selection_change=self._on_playlist_selection_change,
-                on_mix_configure=self._on_mix_points_configure,
-                on_preview_request=lambda playlist_id, item_id: self._handle_folder_preview(
-                    playlist_id, item_id
-                ),
-                on_send_to_music=lambda playlist_id, item_ids: self._send_folder_items_to_music(
-                    playlist_id, item_ids
-                ),
-                on_select_folder=lambda playlist_id: self._select_folder_for_playlist(playlist_id),
-                on_reload_folder=lambda playlist_id: self._reload_folder_playlist(playlist_id),
-            )
-        else:
-            panel = PlaylistPanel(
-                container,
-                model=model,
-                on_focus=self._on_playlist_focus,
-                on_mix_configure=self._on_mix_points_configure,
-                on_toggle_selection=self._on_toggle_selection,
-                on_selection_change=self._on_playlist_selection_change,
-                on_play_request=self._on_playlist_play_request,
-                swap_play_select=self._swap_play_select,
-            )
-        panel.SetMinSize((360, 300))
-
-        column_sizer = wx.BoxSizer(wx.VERTICAL)
-        column_sizer.Add(header, 0, wx.ALL | wx.EXPAND, 5)
-        column_sizer.Add(wx.StaticLine(container), 0, wx.LEFT | wx.RIGHT, 5)
-        column_sizer.Add(panel, 1, wx.EXPAND | wx.ALL, 5)
-        container.SetSizer(column_sizer)
-        container.SetMinSize((380, 320))
-
-        container.Bind(wx.EVT_LEFT_DOWN, lambda event, playlist_id=model.id: self._handle_focus_click(event, playlist_id))
-
-        self._playlist_sizer.Add(container, 0, wx.EXPAND | wx.ALL, 8)
-        self._playlist_container.Layout()
-        self._playlist_container.FitInside()
-
-        self._playlists[model.id] = panel
-        self._playlist_wrappers[model.id] = container
-        self._playlist_headers[model.id] = header
-        self._playlist_titles[model.id] = model.name
-        self._last_started_item_id.setdefault(model.id, None)
-        if model.kind is PlaylistKind.FOLDER and model.folder_path:
-            self._load_folder_playlist(model, announce=False)
-        self._layout.add_playlist(model.id)
-        if model.id not in self._state.playlists:
-            self._state.add_playlist(model)
-        self._update_active_playlist_styles()
-        self._announce_event("playlist", _("Playlist %s added") % model.name)
+        _add_playlist_impl(self, model)
 
     def _get_playlist_model(self, playlist_id: str) -> PlaylistModel | None:
         return self._state.playlists.get(playlist_id)
@@ -475,46 +398,10 @@ class MainFrame(wx.Frame):
         return any(item.is_selected for item in model.items)
 
     def _apply_playlist_order(self, order: list[str]) -> None:
-        applied = self._layout.apply_order(order)
-        self._playlist_sizer.Clear(delete_windows=False)
-        for playlist_id in self._layout.state.order:
-            wrapper = self._playlist_wrappers.get(playlist_id)
-            if wrapper is not None:
-                self._playlist_sizer.Add(wrapper, 0, wx.EXPAND | wx.ALL, 8)
-        self._playlist_container.Layout()
-        self._playlist_container.FitInside()
-        self._current_index = self._layout.current_index()
-        self._update_active_playlist_styles()
+        _apply_playlist_order_impl(self, order)
 
     def _remove_playlist_by_id(self, playlist_id: str, *, announce: bool = True) -> bool:
-        panel = self._playlists.get(playlist_id)
-        if panel is None:
-            return False
-        self._stop_playlist_playback(playlist_id, mark_played=False, fade_duration=0.0)
-        self._playlists.pop(playlist_id, None)
-        title = self._playlist_titles.pop(playlist_id, playlist_id)
-        wrapper = self._playlist_wrappers.pop(playlist_id, None)
-        if wrapper is not None:
-            wrapper.Destroy()
-        header = self._playlist_headers.pop(playlist_id, None)
-        if header is not None:
-            header.Destroy()
-        self._state.remove_playlist(playlist_id)
-        self._focus_lock.pop(playlist_id, None)
-        self._layout.remove_playlist(playlist_id)
-        self._playlist_titles.pop(playlist_id, None)
-        self._playlist_container.Layout()
-        self._playlist_container.FitInside()
-        self._playback.clear_playlist_entries(playlist_id)
-        self._last_started_item_id.pop(playlist_id, None)
-        if self._active_folder_preview and self._active_folder_preview[0] == playlist_id:
-            self._stop_preview()
-        if self._last_music_playlist_id == playlist_id:
-            self._last_music_playlist_id = None
-        self._apply_playlist_order(self._layout.state.order)
-        if announce:
-            self._announce_event("playlist", _("Removed playlist %s") % title)
-        return True
+        return _remove_playlist_by_id_impl(self, playlist_id, announce=announce)
     @staticmethod
     def _format_track_name(item: PlaylistItem) -> str:
         return f"{item.artist} - {item.title}" if item.artist else item.title
