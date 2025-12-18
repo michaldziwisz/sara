@@ -74,7 +74,6 @@ from sara.ui.controllers.automix_flow import (
 from sara.ui.controllers.playlist_io import (
     on_export_playlist as _on_export_playlist_impl,
     on_import_playlist as _on_import_playlist_impl,
-    parse_m3u as _parse_m3u_impl,
 )
 from sara.ui.controllers.playlists_ui import (
     add_playlist as _add_playlist_impl,
@@ -467,9 +466,6 @@ class MainFrame(wx.Frame):
 
     def _on_import_playlist(self, event: wx.CommandEvent) -> None:
         _on_import_playlist_impl(self, event)
-
-    def _parse_m3u(self, path: Path) -> list[dict[str, Any]]:
-        return _parse_m3u_impl(path)
 
     def _on_export_playlist(self, _event: wx.CommandEvent) -> None:
         _on_export_playlist_impl(self, _event)
