@@ -301,6 +301,7 @@ class MainFrame(wx.Frame):
 
     def _remove_playlist_by_id(self, playlist_id: str, *, announce: bool = True) -> bool:
         return _remove_playlist_by_id_impl(self, playlist_id, announce=announce)
+
     @staticmethod
     def _format_track_name(item: PlaylistItem) -> str:
         return f"{item.artist} - {item.title}" if item.artist else item.title
@@ -574,6 +575,7 @@ class MainFrame(wx.Frame):
 
     def _on_playlist_hotkey(self, event: wx.CommandEvent) -> None:
         _handle_playlist_hotkey_impl(self, event)
+
     def _get_current_playlist_panel(self):
         return _get_current_playlist_panel_impl(self)
 
