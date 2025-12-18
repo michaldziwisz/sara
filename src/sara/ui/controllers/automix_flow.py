@@ -4,11 +4,45 @@ from __future__ import annotations
 
 import logging
 
+from sara.core.i18n import gettext as _
 from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistKind
 from sara.ui.playlist_panel import PlaylistPanel
 
 
 logger = logging.getLogger(__name__)
+
+ANNOUNCEMENT_PREFIX = "\uf8ff"
+
+
+def set_auto_mix_enabled(frame, enabled: bool, *, reason: str | None = None) -> None:
+    if frame._auto_mix_enabled == enabled:
+        return
+    frame._auto_mix_enabled = enabled
+    if not enabled:
+        frame._playback.clear_auto_mix()
+    if reason:
+        frame._announce_event("auto_mix", f"{ANNOUNCEMENT_PREFIX}{reason}")
+    else:
+        status = _("enabled") if enabled else _("disabled")
+        frame._announce_event("auto_mix", f"{ANNOUNCEMENT_PREFIX}{_('Auto mix %s') % status}")
+    if enabled:
+        # jeśli automix włączamy podczas odtwarzania, ustaw tracker na bieżące utwory
+        for (pl_id, item_id) in list(getattr(frame._playback, "contexts", {}).keys()):
+            try:
+                frame._auto_mix_tracker.set_last_started(pl_id, item_id)
+            except Exception:
+                pass
+        panel = frame._get_current_music_panel()
+        if panel is not None:
+            playlist = getattr(panel, "model", None)
+            if playlist and frame._get_playback_context(playlist.id) is None:
+                items = getattr(playlist, "items", [])
+                if items:
+                    target_idx = frame._preferred_auto_mix_index(panel, len(items))
+                    if not frame._auto_mix_start_index(panel, target_idx, restart_playing=False):
+                        frame._announce_event("playback_events", _("No scheduled tracks available"))
+                else:
+                    frame._announce_event("playback_events", _("No scheduled tracks available"))
 
 
 def auto_mix_start_index(
@@ -165,4 +199,3 @@ def auto_mix_play_next(frame, panel: PlaylistPanel) -> bool:
         return result
     finally:
         frame._auto_mix_busy[playlist.id] = False
-

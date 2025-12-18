@@ -46,6 +46,7 @@ from sara.ui.controllers.playback_flow import (
     start_playback as _start_playback_impl,
 )
 from sara.ui.controllers.playback_navigation import (
+    adjust_duration_and_mix_trigger as _adjust_duration_and_mix_trigger_impl,
     derive_next_play_index as _derive_next_play_index_impl,
     handle_playback_progress as _handle_playback_progress_impl,
     index_of_item as _index_of_item_impl,
@@ -72,6 +73,7 @@ from sara.ui.controllers.alerts import (
 from sara.ui.controllers.automix_flow import (
     auto_mix_play_next as _auto_mix_play_next_impl,
     auto_mix_start_index as _auto_mix_start_index_impl,
+    set_auto_mix_enabled as _set_auto_mix_enabled_impl,
 )
 from sara.ui.controllers.playlist_io import (
     on_export_playlist as _on_export_playlist_impl,
@@ -179,9 +181,6 @@ from sara.ui.mix_runtime import (
 
 
 logger = logging.getLogger(__name__)
-
-
-ANNOUNCEMENT_PREFIX = "\uf8ff"
 
 
 class MainFrame(wx.Frame):
@@ -602,34 +601,7 @@ class MainFrame(wx.Frame):
         self._set_auto_mix_enabled(not self._auto_mix_enabled)
 
     def _set_auto_mix_enabled(self, enabled: bool, *, reason: str | None = None) -> None:
-        if self._auto_mix_enabled == enabled:
-            return
-        self._auto_mix_enabled = enabled
-        if not enabled:
-            self._playback.clear_auto_mix()
-        if reason:
-            self._announce_event("auto_mix", f"{ANNOUNCEMENT_PREFIX}{reason}")
-        else:
-            status = _("enabled") if enabled else _("disabled")
-            self._announce_event("auto_mix", f"{ANNOUNCEMENT_PREFIX}{_('Auto mix %s') % status}")
-        if enabled:
-            # jeśli automix włączamy podczas odtwarzania, ustaw tracker na bieżące utwory
-            for (pl_id, item_id) in list(getattr(self._playback, "contexts", {}).keys()):
-                try:
-                    self._auto_mix_tracker.set_last_started(pl_id, item_id)
-                except Exception:
-                    pass
-            panel = self._get_current_music_panel()
-            if panel is not None:
-                playlist = getattr(panel, "model", None)
-                if playlist and self._get_playback_context(playlist.id) is None:
-                    items = getattr(playlist, "items", [])
-                    if items:
-                        target_idx = self._preferred_auto_mix_index(panel, len(items))
-                        if not self._auto_mix_start_index(panel, target_idx, restart_playing=False):
-                            self._announce_event("playback_events", _("No scheduled tracks available"))
-                    else:
-                        self._announce_event("playback_events", _("No scheduled tracks available"))
+        _set_auto_mix_enabled_impl(self, enabled, reason=reason)
 
     def _preferred_auto_mix_index(self, panel: PlaylistPanel, item_count: int) -> int:
         try:
@@ -755,33 +727,7 @@ class MainFrame(wx.Frame):
         item: PlaylistItem,
         context: PlaybackContext,
     ) -> None:
-        getter = getattr(context.player, "get_length_seconds", None)
-        if not getter:
-            return
-        try:
-            length_seconds = float(getter())
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.debug("UI: failed to read track length from player: %s", exc)
-            return
-        if length_seconds <= 0:
-            return
-        cue = item.cue_in_seconds or 0.0
-        effective_actual = max(0.0, length_seconds - cue)
-        effective_meta = item.effective_duration_seconds
-        if abs(effective_actual - effective_meta) <= 0.5:
-            return
-        item.duration_seconds = cue + effective_actual
-        item.current_position = min(item.current_position, effective_actual)
-        logger.debug(
-            "UI: adjusted duration from player playlist=%s item=%s effective_meta=%.3f effective_real=%.3f cue=%.3f",
-            playlist.id,
-            item.id,
-            effective_meta,
-            effective_actual,
-            cue,
-        )
-        if not item.break_after and not (item.loop_enabled and item.has_loop()):
-            self._apply_mix_trigger_to_playback(playlist_id=playlist.id, item=item, panel=panel)
+        _adjust_duration_and_mix_trigger_impl(self, panel, playlist, item, context)
 
     def _start_next_from_playlist(
         self,

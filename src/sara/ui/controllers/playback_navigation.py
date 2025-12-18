@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+
 import wx
 
 from sara.core.i18n import gettext as _
 from sara.core.playlist import PlaylistItem, PlaylistKind, PlaylistModel
+
+
+logger = logging.getLogger(__name__)
 
 
 def derive_next_play_index(frame, playlist: PlaylistModel) -> int | None:
@@ -141,3 +146,39 @@ def manual_fade_duration(frame, playlist: PlaylistModel, item: PlaylistItem | No
         remaining = max(0.0, effective_duration - current_pos)
         fade_seconds = min(fade_seconds, remaining)
     return fade_seconds
+
+
+def adjust_duration_and_mix_trigger(
+    frame,
+    panel,
+    playlist: PlaylistModel,
+    item: PlaylistItem,
+    context,
+) -> None:
+    getter = getattr(context.player, "get_length_seconds", None)
+    if not getter:
+        return
+    try:
+        length_seconds = float(getter())
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.debug("UI: failed to read track length from player: %s", exc)
+        return
+    if length_seconds <= 0:
+        return
+    cue = item.cue_in_seconds or 0.0
+    effective_actual = max(0.0, length_seconds - cue)
+    effective_meta = item.effective_duration_seconds
+    if abs(effective_actual - effective_meta) <= 0.5:
+        return
+    item.duration_seconds = cue + effective_actual
+    item.current_position = min(item.current_position, effective_actual)
+    logger.debug(
+        "UI: adjusted duration from player playlist=%s item=%s effective_meta=%.3f effective_real=%.3f cue=%.3f",
+        playlist.id,
+        item.id,
+        effective_meta,
+        effective_actual,
+        cue,
+    )
+    if not item.break_after and not (item.loop_enabled and item.has_loop()):
+        frame._apply_mix_trigger_to_playback(playlist_id=playlist.id, item=item, panel=panel)
