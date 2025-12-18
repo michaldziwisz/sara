@@ -106,7 +106,6 @@ from sara.ui.controllers.edit_actions import (
 from sara.ui.controllers.folder_playlists import (
     finalize_folder_load as _finalize_folder_load_impl,
     handle_folder_preview as _handle_folder_preview_impl,
-    load_folder_items as _load_folder_items_impl,
     load_folder_playlist as _load_folder_playlist_impl,
     reload_folder_playlist as _reload_folder_playlist_impl,
     select_folder_for_playlist as _select_folder_for_playlist_impl,
@@ -407,9 +406,6 @@ class MainFrame(wx.Frame):
 
     def _load_folder_playlist(self, playlist: PlaylistModel, *, announce: bool = True) -> None:
         _load_folder_playlist_impl(self, playlist, announce=announce)
-
-    def _load_folder_items(self, folder_path: Path) -> tuple[list[PlaylistItem], int]:
-        return _load_folder_items_impl(self, folder_path)
 
     def _finalize_folder_load(
         self,
