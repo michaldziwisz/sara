@@ -161,6 +161,10 @@ from sara.ui.controllers.playlist_mutations import (
     remove_item_from_playlist as _remove_item_from_playlist_impl,
     remove_items as _remove_items_impl,
 )
+from sara.ui.controllers.playlist_selection import (
+    get_selected_context as _get_selected_context_impl,
+    get_selected_items as _get_selected_items_impl,
+)
 from sara.ui.controllers.clipboard_helpers import (
     create_item_from_serialized as _create_item_from_serialized_impl,
     get_system_clipboard_paths as _get_system_clipboard_paths_impl,
@@ -751,37 +755,14 @@ class MainFrame(wx.Frame):
         *,
         kinds: tuple[PlaylistKind, ...] = (PlaylistKind.MUSIC,),
     ) -> tuple[PlaylistPanel, PlaylistModel, list[int]] | None:
-        panel = self._get_audio_panel(kinds)
-        if panel is None:
-            self._announce_event("playlist", _("Select a playlist first"))
-            return None
-        indices = panel.get_selected_indices()
-        if not indices:
-            if panel.model.items:
-                indices = [0]
-                panel.set_selection(indices)
-            else:
-                self._announce_event("playlist", _("Playlist is empty"))
-                return None
-        return panel, panel.model, sorted(indices)
+        return _get_selected_context_impl(self, kinds=kinds)
 
     def _get_selected_items(
         self,
         *,
         kinds: tuple[PlaylistKind, ...] = (PlaylistKind.MUSIC,),
     ) -> tuple[PlaylistPanel, PlaylistModel, list[tuple[int, PlaylistItem]]] | None:
-        context = self._get_selected_context(kinds=kinds)
-        if context is None:
-            return None
-        panel, model, indices = context
-        selected: list[tuple[int, PlaylistItem]] = []
-        for index in indices:
-            if 0 <= index < len(model.items):
-                selected.append((index, model.items[index]))
-        if not selected:
-            self._announce_event("playlist", _("No tracks selected"))
-            return None
-        return panel, model, selected
+        return _get_selected_items_impl(self, kinds=kinds)
 
     def _serialize_items(self, items: List[PlaylistItem]) -> List[Dict[str, Any]]:
         return _serialize_items_impl(items)
