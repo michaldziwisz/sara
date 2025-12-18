@@ -9,10 +9,13 @@ import wx
 
 from sara.audio.engine import AudioEngine
 from sara.core.config import SettingsManager
-from sara.core.announcement_registry import ANNOUNCEMENT_CATEGORIES
 from sara.core.i18n import gettext as _
 from sara.core.playlist import PlaylistKind
+from sara.ui.dialogs.options.accessibility_tab import build_accessibility_tab
+from sara.ui.dialogs.options.diagnostics_tab import build_diagnostics_tab
+from sara.ui.dialogs.options.general_tab import build_general_tab
 from sara.ui.dialogs.options.startup_playlist_dialog import StartupPlaylistDialog
+
 
 class OptionsDialog(wx.Dialog):
     """Main application settings window."""
@@ -34,212 +37,13 @@ class OptionsDialog(wx.Dialog):
         notebook = wx.Notebook(self)
         main_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 10)
 
-        general_panel = wx.Panel(notebook)
-        general_sizer = wx.BoxSizer(wx.VERTICAL)
-
-        playback_box = wx.StaticBoxSizer(wx.StaticBox(general_panel, label=_("Playback")), wx.VERTICAL)
-        fade_label = wx.StaticText(general_panel, label=_("Default fade out (s):"))
-        self._fade_ctrl = wx.SpinCtrlDouble(general_panel, min=0.0, max=30.0, inc=0.1)
-        self._fade_ctrl.SetDigits(2)
-        self._fade_ctrl.SetValue(self._settings.get_playback_fade_seconds())
-        self._fade_ctrl.SetName("options_fade_seconds")
-        playback_row = wx.BoxSizer(wx.HORIZONTAL)
-        playback_row.Add(fade_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
-        playback_row.Add(self._fade_ctrl, 0, wx.ALIGN_CENTER_VERTICAL)
-        playback_box.Add(playback_row, 0, wx.ALL, 5)
-
-        self._alternate_checkbox = wx.CheckBox(
-            general_panel,
-            label=_("Alternate playlists with Space key"),
-        )
-        self._alternate_checkbox.SetValue(self._settings.get_alternate_play_next())
-        self._alternate_checkbox.SetName("options_alternate_play")
-        playback_box.Add(self._alternate_checkbox, 0, wx.ALL, 5)
-
-        self._swap_play_select_checkbox = wx.CheckBox(
-            general_panel,
-            label=_("Swap play/select on music playlists (Space selects, Enter plays)"),
-        )
-        self._swap_play_select_checkbox.SetValue(self._settings.get_swap_play_select())
-        self._swap_play_select_checkbox.SetName("options_swap_play_select")
-        playback_box.Add(self._swap_play_select_checkbox, 0, wx.ALL, 5)
-
-        self._auto_remove_checkbox = wx.CheckBox(
-            general_panel,
-            label=_("Automatically remove played tracks"),
-        )
-        self._auto_remove_checkbox.SetValue(self._settings.get_auto_remove_played())
-        self._auto_remove_checkbox.SetName("options_auto_remove")
-        playback_box.Add(self._auto_remove_checkbox, 0, wx.ALL, 5)
-
-        intro_row = wx.BoxSizer(wx.HORIZONTAL)
-        intro_label = wx.StaticText(general_panel, label=_("Intro alert (s):"))
-        self._intro_alert_ctrl = wx.SpinCtrlDouble(general_panel, min=0.0, max=60.0, inc=0.5)
-        self._intro_alert_ctrl.SetDigits(1)
-        self._intro_alert_ctrl.SetValue(self._settings.get_intro_alert_seconds())
-        self._intro_alert_ctrl.SetName("options_intro_alert_seconds")
-        intro_row.Add(intro_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
-        intro_row.Add(self._intro_alert_ctrl, 0, wx.ALIGN_CENTER_VERTICAL)
-        playback_box.Add(intro_row, 0, wx.ALL, 5)
-
-        end_row = wx.BoxSizer(wx.HORIZONTAL)
-        end_label = wx.StaticText(general_panel, label=_("Track end alert (s):"))
-        self._track_end_alert_ctrl = wx.SpinCtrlDouble(general_panel, min=0.0, max=120.0, inc=0.5)
-        self._track_end_alert_ctrl.SetDigits(1)
-        self._track_end_alert_ctrl.SetValue(self._settings.get_track_end_alert_seconds())
-        self._track_end_alert_ctrl.SetName("options_track_end_alert_seconds")
-        end_row.Add(end_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
-        end_row.Add(self._track_end_alert_ctrl, 0, wx.ALIGN_CENTER_VERTICAL)
-        playback_box.Add(end_row, 0, wx.ALL, 5)
-
-        language_row = wx.BoxSizer(wx.HORIZONTAL)
-        language_label = wx.StaticText(general_panel, label=_("Interface language:"))
-        self._language_codes = ["en", "pl"]
-        language_names = [_("English"), _("Polish")]
-        self._language_choice = wx.Choice(general_panel, choices=language_names)
-        current_language = self._settings.get_language()
-        self._language_choice.SetName("options_language_choice")
-        try:
-            selection = self._language_codes.index(current_language)
-        except ValueError:
-            selection = 0
-        self._language_choice.SetSelection(selection)
-        language_row.Add(language_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
-        language_row.Add(self._language_choice, 0, wx.ALIGN_CENTER_VERTICAL)
-        playback_box.Add(language_row, 0, wx.ALL, 5)
-        general_sizer.Add(playback_box, 0, wx.EXPAND | wx.BOTTOM, 10)
-
-        pfl_box = wx.StaticBoxSizer(wx.StaticBox(general_panel, label=_("Pre-fader listen (PFL)")), wx.VERTICAL)
-        pfl_row = wx.BoxSizer(wx.HORIZONTAL)
-        pfl_label = wx.StaticText(general_panel, label=_("PFL device:"))
-        self._pfl_choice = wx.Choice(general_panel)
-        self._pfl_choice.SetName("options_pfl_choice")
-        pfl_row.Add(pfl_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
-        pfl_row.Add(self._pfl_choice, 1, wx.ALIGN_CENTER_VERTICAL)
-        pfl_box.Add(pfl_row, 0, wx.EXPAND | wx.ALL, 5)
-        general_sizer.Add(pfl_box, 0, wx.EXPAND | wx.BOTTOM, 10)
-
-        startup_box = wx.StaticBoxSizer(wx.StaticBox(general_panel, label=_("Startup playlists")), wx.VERTICAL)
-        self._playlists_list = wx.ListCtrl(general_panel, style=wx.LC_REPORT | wx.LC_SINGLE_SEL)
-        self._playlists_list.SetName("options_startup_list")
-        self._playlists_list.InsertColumn(0, _("Name"))
-        self._playlists_list.InsertColumn(1, _("Type"))
-        self._playlists_list.InsertColumn(2, _("Players"))
-        startup_box.Add(self._playlists_list, 1, wx.EXPAND | wx.ALL, 5)
-
-        buttons_row = wx.BoxSizer(wx.HORIZONTAL)
-        add_btn = wx.Button(general_panel, label=_("Add…"))
-        edit_btn = wx.Button(general_panel, label=_("Edit…"))
-        remove_btn = wx.Button(general_panel, label=_("Remove"))
-        add_btn.SetName("options_startup_add")
-        edit_btn.SetName("options_startup_edit")
-        remove_btn.SetName("options_startup_remove")
-        buttons_row.Add(add_btn, 0, wx.RIGHT, 5)
-        buttons_row.Add(edit_btn, 0, wx.RIGHT, 5)
-        buttons_row.Add(remove_btn, 0)
-        startup_box.Add(buttons_row, 0, wx.ALL | wx.ALIGN_RIGHT, 5)
-        general_sizer.Add(startup_box, 1, wx.EXPAND | wx.BOTTOM, 10)
-
-        news_box = wx.StaticBoxSizer(wx.StaticBox(general_panel, label=_("News playlists")), wx.VERTICAL)
-        news_row = wx.BoxSizer(wx.HORIZONTAL)
-        news_label = wx.StaticText(
-            general_panel,
-            label=_("Read-mode line length (characters, 0 = unlimited):"),
-        )
-        self._news_line_ctrl = wx.SpinCtrl(general_panel, min=0, max=400)
-        self._news_line_ctrl.SetName("options_news_line_length")
-        self._news_line_ctrl.SetValue(self._settings.get_news_line_length())
-        news_row.Add(news_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
-        news_row.Add(self._news_line_ctrl, 0, wx.ALIGN_CENTER_VERTICAL)
-        news_box.Add(news_row, 0, wx.ALL, 5)
-        general_sizer.Add(news_box, 0, wx.EXPAND | wx.BOTTOM, 10)
-
-        general_panel.SetSizer(general_sizer)
+        general_panel, add_btn, edit_btn, remove_btn = build_general_tab(self, notebook)
         notebook.AddPage(general_panel, _("General"))
 
-        accessibility_panel = wx.Panel(notebook)
-        accessibility_sizer = wx.BoxSizer(wx.VERTICAL)
-
-        accessibility_box = wx.StaticBoxSizer(wx.StaticBox(accessibility_panel, label=_("Announcements")), wx.VERTICAL)
-        announcements = self._settings.get_all_announcement_settings()
-        info_label = wx.StaticText(
-            accessibility_panel,
-            label=_("Choose which announcements should be spoken by the screen reader."),
-        )
-        info_label.Wrap(440)
-        accessibility_box.Add(info_label, 0, wx.ALL, 5)
-
-        for category in ANNOUNCEMENT_CATEGORIES:
-            checkbox = wx.CheckBox(accessibility_panel, label=_(category.label))
-            checkbox.SetValue(announcements.get(category.id, category.default_enabled))
-            checkbox.SetName(f"options_announce_{category.id}")
-            accessibility_box.Add(checkbox, 0, wx.ALL, 4)
-            self._announcement_checkboxes[category.id] = checkbox
-
-        self._focus_playing_checkbox = wx.CheckBox(
-            accessibility_panel,
-            label=_("Keep selection on currently playing track"),
-        )
-        self._focus_playing_checkbox.SetValue(self._settings.get_focus_playing_track())
-        self._focus_playing_checkbox.SetName("options_focus_playing_selection")
-        accessibility_box.Add(self._focus_playing_checkbox, 0, wx.ALL, 4)
-
-        accessibility_sizer.Add(accessibility_box, 0, wx.EXPAND | wx.ALL, 10)
-        accessibility_panel.SetSizer(accessibility_sizer)
+        accessibility_panel = build_accessibility_tab(self, notebook)
         notebook.AddPage(accessibility_panel, _("Accessibility"))
 
-        diag_panel = wx.Panel(notebook)
-        diag_sizer = wx.BoxSizer(wx.VERTICAL)
-        diag_box = wx.StaticBoxSizer(wx.StaticBox(diag_panel, label=_("Diagnostics")), wx.VERTICAL)
-        self._diag_faulthandler_checkbox = wx.CheckBox(
-            diag_panel,
-            label=_("Periodic stack traces (faulthandler)"),
-        )
-        self._diag_faulthandler_checkbox.SetValue(self._settings.get_diagnostics_faulthandler())
-        self._diag_faulthandler_checkbox.SetName("options_diag_faulthandler")
-        diag_box.Add(self._diag_faulthandler_checkbox, 0, wx.ALL, 5)
-
-        interval_row = wx.BoxSizer(wx.HORIZONTAL)
-        interval_label = wx.StaticText(diag_panel, label=_("Stack trace interval (s, 0 = disable):"))
-        self._diag_interval_ctrl = wx.SpinCtrlDouble(diag_panel, min=0.0, max=600.0, inc=1.0)
-        self._diag_interval_ctrl.SetDigits(1)
-        self._diag_interval_ctrl.SetValue(self._settings.get_diagnostics_faulthandler_interval())
-        self._diag_interval_ctrl.SetName("options_diag_interval_seconds")
-        interval_row.Add(interval_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
-        interval_row.Add(self._diag_interval_ctrl, 0, wx.ALIGN_CENTER_VERTICAL)
-        diag_box.Add(interval_row, 0, wx.ALL, 5)
-
-        self._diag_loop_checkbox = wx.CheckBox(
-            diag_panel,
-            label=_("Detailed loop debug logging"),
-        )
-        self._diag_loop_checkbox.SetValue(self._settings.get_diagnostics_loop_debug())
-        self._diag_loop_checkbox.SetName("options_diag_loop_debug")
-        diag_box.Add(self._diag_loop_checkbox, 0, wx.ALL, 5)
-
-        level_row = wx.BoxSizer(wx.HORIZONTAL)
-        level_label = wx.StaticText(diag_panel, label=_("Log level:"))
-        levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-        self._diag_log_level_choice = wx.Choice(diag_panel, choices=levels)
-        self._diag_log_level_choice.SetName("options_diag_log_level")
-        try:
-            sel = levels.index(self._settings.get_diagnostics_log_level())
-        except ValueError:
-            sel = levels.index("WARNING")
-        self._diag_log_level_choice.SetSelection(sel)
-        level_row.Add(level_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
-        level_row.Add(self._diag_log_level_choice, 0, wx.ALIGN_CENTER_VERTICAL)
-        diag_box.Add(level_row, 0, wx.ALL, 5)
-
-        help_text = wx.StaticText(
-            diag_panel,
-            label=_("Diagnostics options may increase log size and CPU usage. Use only when troubleshooting."),
-        )
-        help_text.Wrap(440)
-        diag_box.Add(help_text, 0, wx.ALL, 5)
-
-        diag_sizer.Add(diag_box, 0, wx.EXPAND | wx.ALL, 10)
-        diag_panel.SetSizer(diag_sizer)
+        diag_panel = build_diagnostics_tab(self, notebook)
         notebook.AddPage(diag_panel, _("Diagnostics"))
 
         button_sizer = self.CreateSeparatedButtonSizer(wx.OK | wx.CANCEL)
