@@ -24,7 +24,6 @@ from sara.core.media_metadata import (
     save_loop_metadata,
     save_replay_gain_metadata,
 )
-from sara.core.m3u import parse_m3u_lines, serialize_m3u
 from sara.core.mix_planner import (
     MIX_EXPLICIT_PROGRESS_GUARD,
     MIX_NATIVE_EARLY_GUARD,
@@ -79,6 +78,11 @@ from sara.ui.controllers.alerts import (
 from sara.ui.controllers.automix_flow import (
     auto_mix_play_next as _auto_mix_play_next_impl,
     auto_mix_start_index as _auto_mix_start_index_impl,
+)
+from sara.ui.controllers.playlist_io import (
+    on_export_playlist as _on_export_playlist_impl,
+    on_import_playlist as _on_import_playlist_impl,
+    parse_m3u as _parse_m3u_impl,
 )
 from sara.ui.controllers.menu_and_shortcuts import (
     configure_accelerators as _configure_accelerators_impl,
@@ -1000,106 +1004,13 @@ class MainFrame(wx.Frame):
         return slots
 
     def _on_import_playlist(self, event: wx.CommandEvent) -> None:
-        panel = self._get_current_playlist_panel()
-        if panel is None:
-            self._announce_event("playlist", _("Select a playlist first"))
-            return
-        if isinstance(panel, NewsPlaylistPanel):
-            result = panel.prompt_load_service()
-            if result:
-                self._announce_event(
-                    "import_export",
-                    _("Imported news service from %s") % result.name,
-                )
-            return
-        if not isinstance(panel, PlaylistPanel):
-            self._announce_event("playlist", _("Active playlist does not support import"))
-            return
-        if panel.model.kind is PlaylistKind.FOLDER:
-            self._announce_event("playlist", _("Music folder playlists do not support import"))
-            return
-
-        dialog = FileSelectionDialog(
-            self,
-            title=_("Import playlist"),
-            message=_("Select playlist"),
-            wildcard=_("M3U playlists (*.m3u)|*.m3u|All files|*.*"),
-            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
-        )
-        result = dialog.ShowModal()
-        selected_paths = dialog.get_paths() if result == wx.ID_OK else []
-        dialog.Destroy()
-        if result != wx.ID_OK or not selected_paths:
-            return
-
-        path = Path(selected_paths[0])
-
-        try:
-            entries = self._parse_m3u(path)
-        except Exception as exc:  # pylint: disable=broad-except
-            self._announce_event("import_export", _("Failed to import playlist: %s") % exc)
-            return
-
-        if not entries:
-            self._announce_event("import_export", _("Playlist file is empty"))
-            return
-
-        description = _("Importing tracks from %s…") % path.name
-        self._run_item_loader(
-            description=description,
-            worker=lambda entries=entries: self._create_items_from_m3u_entries(entries),
-            on_complete=lambda items, panel=panel, filename=path.name: self._finalize_import_playlist(panel, items, filename),
-        )
+        _on_import_playlist_impl(self, event)
 
     def _parse_m3u(self, path: Path) -> list[dict[str, Any]]:
-        try:
-            lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
-        except Exception as exc:  # pylint: disable=broad-except
-            raise RuntimeError(_("Failed to read playlist file: %s") % exc) from exc
-        return parse_m3u_lines(lines)
+        return _parse_m3u_impl(path)
 
     def _on_export_playlist(self, _event: wx.CommandEvent) -> None:
-        panel = self._get_current_playlist_panel()
-        if panel is None:
-            self._announce_event("playlist", _("Select a playlist first"))
-            return
-        if isinstance(panel, NewsPlaylistPanel):
-            result = panel.prompt_save_service()
-            if result:
-                self._announce_event(
-                    "import_export",
-                    _("Saved news service to %s") % result.name,
-                )
-            return
-        if not isinstance(panel, PlaylistPanel):
-            self._announce_event("playlist", _("Active playlist does not support export"))
-            return
-        if panel.model.kind is PlaylistKind.FOLDER:
-            self._announce_event("playlist", _("Music folder playlists do not support export"))
-            return
-
-        dialog = FileSelectionDialog(
-            self,
-            title=_("Save playlist"),
-            message=_("Save playlist"),
-            wildcard=_("M3U playlists (*.m3u)|*.m3u|All files|*.*"),
-            style=wx.FD_SAVE,
-        )
-        result = dialog.ShowModal()
-        selected_paths = dialog.get_paths() if result == wx.ID_OK else []
-        dialog.Destroy()
-        if result != wx.ID_OK or not selected_paths:
-            return
-
-        path = Path(selected_paths[0])
-
-        try:
-            path.write_text(serialize_m3u(panel.model.items), encoding="utf-8")
-        except Exception as exc:  # pylint: disable=broad-except
-            self._announce_event("import_export", _("Failed to save playlist: %s") % exc)
-            return
-
-        self._announce_event("import_export", _("Playlist saved to %s") % path.name)
+        _on_export_playlist_impl(self, _event)
 
     def _on_exit(self, event: wx.CommandEvent) -> None:
         try:
