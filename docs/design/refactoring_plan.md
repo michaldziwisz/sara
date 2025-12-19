@@ -36,6 +36,10 @@ Ten dokument opisuje bezpieczny, iteracyjny plan uporządkowania kodu SARA. Cele
 5. **Brak zależności `core` od `ui`**: logika biznesowa/testowalna w `sara/core` nie importuje `wx`.
 6. **Refaktor z adapterami**: nowe klasy/funkcje wprowadzaj w sposób, który pozwala na stopniowe przepinanie wywołań.
 
+## Zasady dalszego rozwoju (żeby porządek się utrzymał)
+
+Wskazówki „gdzie dodawać nowy kod” + progi, kiedy ma sens kolejny refaktor, są opisane w `docs/development/code_organization.md`.
+
 ## Cel docelowy (wysoki poziom)
 
 - `sara/core`: czysta logika i modele (bez `wx`).
