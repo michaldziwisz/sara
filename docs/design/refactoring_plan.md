@@ -10,6 +10,10 @@ Ten dokument opisuje bezpieczny, iteracyjny plan uporządkowania kodu SARA. Cele
 - Panele UI zostały pogrupowane w `src/sara/ui/panels/…` (kompatybilne fasady importów pozostają w `src/sara/ui/*_playlist_panel.py` i `src/sara/ui/playlist_panel.py`).
   - `NewsPlaylistPanel` ma wewnętrzny podział na moduły w `src/sara/ui/panels/news/…` (service I/O, skróty, read-mode, nawigacja toolbara).
 - Dialogi UI zostały pogrupowane w `src/sara/ui/dialogs/…` (np. `file_selection/…`, `jingles/…`, `options/…`, `playlists/…`, `shortcuts/…`) z zachowaniem kompatybilnych wrapperów w starych ścieżkach importu.
+- Serwisy/logika UI pogrupowane w `src/sara/ui/services/…` (m.in. `announcement_service`, `clipboard_service`, `undo`, `undo_manager`, `auto_mix_tracker`, `nvda_sleep`) z wrapperami w `src/sara/ui/*.py`.
+- Skróty pogrupowane w `src/sara/ui/shortcuts/…` (wrapper: `src/sara/ui/shortcut_utils.py`).
+- Helpery plików i layoutu pogrupowane w `src/sara/ui/files/…` i `src/sara/ui/layout/…` (wrappery: `src/sara/ui/file_browser.py`, `src/sara/ui/playlist_layout.py`).
+- Dodatkowe kontrolery UI pogrupowane w `src/sara/ui/controllers/…` (np. `controllers/news/mode.py`, `controllers/jingles/controller.py`, `controllers/mix/preview.py`).
 - `sara/audio` zostało rozbite na mniejsze moduły (utrzymując publiczne API przez fasady):
   - `src/sara/audio/bass/…` zawiera implementację BASS (native/manager/backends/player), a kompatybilne fasady importów są utrzymane w `src/sara/audio/bass_player.py` oraz `src/sara/audio/bass_*.py`.
   - `src/sara/audio/mixer/__init__.py` eksportuje API mixera, a implementacja jest poukładana w `src/sara/audio/mixer/…` (device/stream, DSP, render, lifecycle, wątek, manager, player).
