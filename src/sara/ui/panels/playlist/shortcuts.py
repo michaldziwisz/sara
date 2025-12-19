@@ -13,23 +13,23 @@ if TYPE_CHECKING:
 
 
 def handle_key_down(panel: "PlaylistPanel", event: wx.KeyEvent) -> None:
-    if handle_navigation_key(panel, event):
+    if panel._handle_navigation_key(event):
         return
-    if not handle_selection_key_event(panel, event):
+    if not panel._handle_selection_key_event(event):
         event.Skip()
 
 
 def handle_char_hook(panel: "PlaylistPanel", event: wx.KeyEvent) -> None:
-    if handle_navigation_key(panel, event):
+    if panel._handle_navigation_key(event):
         return
-    if not handle_selection_key_event(panel, event):
+    if not panel._handle_selection_key_event(event):
         event.Skip()
 
 
 def handle_char(panel: "PlaylistPanel", event: wx.KeyEvent) -> None:
-    if handle_navigation_key(panel, event):
+    if panel._handle_navigation_key(event):
         return
-    if not handle_selection_key_event(panel, event):
+    if not panel._handle_selection_key_event(event):
         event.Skip()
 
 
@@ -40,7 +40,7 @@ def handle_list_key_down(panel: "PlaylistPanel", event: wx.ListEvent) -> None:
         if panel._move_focus_by_delta(delta):
             event.Skip(False)
             return
-    if not handle_selection_key_event(panel, event):
+    if not panel._handle_selection_key_event(event):
         event.Skip()
 
 
@@ -110,4 +110,3 @@ def handle_navigation_key(panel: "PlaylistPanel", event: wx.KeyEvent) -> bool:
         event.StopPropagation()
         event.Skip(False)
     return handled
-
