@@ -42,6 +42,7 @@ from sara.ui.controllers import playlist_selection as _playlist_selection
 from sara.ui.controllers import playlists_management as _playlists_management
 from sara.ui.controllers import playlists_ui as _playlists_ui
 from sara.ui.controllers import tools_dialogs as _tools_dialogs
+from sara.ui.controllers.playlists import item_types as _item_types
 
 
 class MainFrame(wx.Frame):
@@ -171,6 +172,8 @@ class MainFrame(wx.Frame):
     _on_paste_selection = _edit_actions.on_paste_selection
     _finalize_clipboard_paste = _edit_actions.finalize_clipboard_paste
     _on_delete_selection = _edit_actions.on_delete_selection
+    _on_mark_as_song = _item_types.on_mark_as_song
+    _on_mark_as_spot = _item_types.on_mark_as_spot
     _move_selection = _edit_actions.move_selection
     _on_undo = _edit_actions.on_undo
     _on_redo = _edit_actions.on_redo

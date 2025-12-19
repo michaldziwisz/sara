@@ -30,9 +30,14 @@ def stop_playlist_playback(
     mark_played: bool,
     fade_duration: float = 0.0,
 ) -> None:
+    played_tracks_logger = getattr(frame, "_played_tracks_logger", None)
+    now_playing_writer = getattr(frame, "_now_playing_writer", None)
     removed_contexts = frame._playback.stop_playlist(playlist_id, fade_duration=fade_duration)
     panel = frame._playlists.get(playlist_id)
     if not panel:
+        if now_playing_writer:
+            for key, _context in removed_contexts:
+                now_playing_writer.on_stopped(key[0], key[1])
         return
     model = panel.model
     for key, _context in removed_contexts:
@@ -40,7 +45,13 @@ def stop_playlist_playback(
         item_index = next((idx for idx, track in enumerate(model.items) if track.id == key[1]), None)
         item = model.items[item_index] if item_index is not None else None
         if not item:
+            if now_playing_writer:
+                now_playing_writer.on_stopped(key[0], key[1])
             continue
+        if played_tracks_logger:
+            played_tracks_logger.on_stopped(model, item, mark_played=mark_played)
+        if now_playing_writer:
+            now_playing_writer.on_stopped(key[0], key[1])
         if mark_played:
             if item.break_after and model.kind is PlaylistKind.MUSIC:
                 target_index = (item_index + 1) if item_index is not None else None

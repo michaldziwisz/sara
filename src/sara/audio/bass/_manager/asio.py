@@ -10,6 +10,7 @@ from sara.audio.bass.asio_native import _BASS_ASIO_DEVICEINFO
 from sara.audio.bass.native import BassNotAvailable
 
 from .contexts import _AsioDeviceContext
+from .text import decode_bass_text
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ def list_asio_devices(manager: "BassManager") -> List["AudioDevice"]:
     idx = 0
     info = _BASS_ASIO_DEVICEINFO()
     while manager._asio._lib.BASS_ASIO_GetDeviceInfo(idx, ctypes.byref(info)):
-        name = info.name.decode("utf-8", errors="ignore") if info.name else f"ASIO {idx}"
+        name = decode_bass_text(info.name) if info.name else f"ASIO {idx}"
         # tworzymy standardowe pary kanałów stereo (0/1, 2/3, 4/5, 6/7)
         for ch in (0, 2, 4, 6):
             devices.append(

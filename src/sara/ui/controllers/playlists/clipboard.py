@@ -5,20 +5,20 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import wx
-
-from sara.core.playlist import PlaylistItem
+from sara.core.playlist import PlaylistItem, PlaylistItemType
 
 
 def serialize_items(items: list[PlaylistItem]) -> list[dict[str, Any]]:
     serialized: list[dict[str, Any]] = []
     for item in items:
+        item_type_value = item.item_type.value if isinstance(item.item_type, PlaylistItemType) else str(item.item_type)
         serialized.append(
             {
                 "path": str(item.path),
                 "title": item.title,
                 "artist": item.artist,
                 "duration": item.duration_seconds,
+                "item_type": item_type_value,
                 "replay_gain_db": item.replay_gain_db,
                 "cue_in": item.cue_in_seconds,
                 "segue": item.segue_seconds,
@@ -56,10 +56,18 @@ def create_item_from_serialized(frame, data: dict[str, Any]) -> PlaylistItem:
         loop_auto_enabled=loop_auto_enabled,
         loop_enabled=loop_enabled,
     )
+    item_type_value = data.get("item_type") or data.get("track_type") or data.get("type")
+    if item_type_value:
+        try:
+            item.item_type = PlaylistItemType(str(item_type_value))
+        except ValueError:
+            item.item_type = PlaylistItemType.SONG
     return item
 
 
 def get_system_clipboard_paths() -> list[Path]:
+    import wx
+
     paths: list[Path] = []
     clipboard = wx.TheClipboard
     if not clipboard.Open():
@@ -74,6 +82,8 @@ def get_system_clipboard_paths() -> list[Path]:
 
 
 def set_system_clipboard_paths(paths: list[Path]) -> None:
+    import wx
+
     clipboard = wx.TheClipboard
     if not clipboard.Open():
         return

@@ -54,6 +54,8 @@ def configure_accelerators(frame) -> None:
     add_entry("edit", "copy", int(frame._copy_id))
     add_entry("edit", "paste", int(frame._paste_id))
     add_entry("edit", "delete", int(frame._delete_id))
+    add_entry("edit", "mark_as_song", int(frame._mark_as_song_id))
+    add_entry("edit", "mark_as_spot", int(frame._mark_as_spot_id))
     add_entry("edit", "move_up", int(frame._move_up_id))
     add_entry("edit", "move_down", int(frame._move_down_id))
 
@@ -77,4 +79,3 @@ def configure_accelerators(frame) -> None:
 
     accel_table = wx.AcceleratorTable(accel_entries)
     frame.SetAcceleratorTable(accel_table)
-

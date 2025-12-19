@@ -24,6 +24,9 @@ def on_options(frame, _event: wx.CommandEvent) -> None:
         frame._focus_playing_track = frame._settings.get_focus_playing_track()
         frame._intro_alert_seconds = frame._settings.get_intro_alert_seconds()
         frame._track_end_alert_seconds = frame._settings.get_track_end_alert_seconds()
+        now_playing_writer = getattr(frame, "_now_playing_writer", None)
+        if now_playing_writer:
+            now_playing_writer.refresh()
         frame._refresh_news_panels()
         frame._apply_swap_play_select_option()
         new_language = frame._settings.get_language()

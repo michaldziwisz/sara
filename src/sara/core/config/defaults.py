@@ -77,6 +77,21 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "loop_debug": False,
         "log_level": "WARNING",
     },
+    "logging": {
+        "enabled": False,
+        "songs": True,
+        "spots": True,
+        "folder": "",
+    },
+    "now_playing": {
+        "enabled": False,
+        "path": "",
+        "update_on_track_change": True,
+        "update_interval_seconds": 0,
+        "template": "%artist - %title",
+        "songs": True,
+        "spots": True,
+    },
 }
 
 DEFAULT_ANNOUNCEMENTS = {
@@ -84,4 +99,3 @@ DEFAULT_ANNOUNCEMENTS = {
 }
 
 ensure_defaults(DEFAULT_CONFIG["shortcuts"])
-

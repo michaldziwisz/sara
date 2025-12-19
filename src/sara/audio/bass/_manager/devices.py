@@ -8,6 +8,7 @@ from typing import List, TYPE_CHECKING
 from sara.audio.bass.native import BassNotAvailable, _BassConstants, _BASS_DEVICEINFO
 
 from .contexts import _DeviceContext
+from .text import decode_bass_text
 
 if TYPE_CHECKING:  # pragma: no cover
     from sara.audio.engine import AudioDevice
@@ -50,7 +51,7 @@ def list_devices(manager: "BassManager") -> List["AudioDevice"]:
     index = 0
     info = _BASS_DEVICEINFO()
     while manager._lib.BASS_GetDeviceInfo(index, ctypes.byref(info)):
-        name = info.name.decode("utf-8", errors="ignore") if info.name else f"Device {index}"
+        name = decode_bass_text(info.name) if info.name else f"Device {index}"
         flags = int(info.flags or 0)
         is_default = bool(flags & _BassConstants.DEVICE_DEFAULT)
         enabled = bool(flags & _BassConstants.DEVICE_ENABLED)
@@ -66,4 +67,3 @@ def list_devices(manager: "BassManager") -> List["AudioDevice"]:
             )
         index += 1
     return devices
-

@@ -218,6 +218,12 @@ def start_playback(
         panel.mark_item_status(item.id, item.status)
         panel.refresh()
         return False
+    played_tracks_logger = getattr(frame, "_played_tracks_logger", None)
+    if played_tracks_logger:
+        played_tracks_logger.on_started(playlist, item)
+    now_playing_writer = getattr(frame, "_now_playing_writer", None)
+    if now_playing_writer:
+        now_playing_writer.on_started(playlist, item)
     logger.debug(
         "UI: playback started playlist=%s item=%s device=%s slot=%s",
         playlist.id,

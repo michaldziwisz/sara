@@ -9,11 +9,13 @@ import wx
 
 from sara.audio.engine import AudioEngine
 from sara.core.config import SettingsManager
+from sara.core.env import resolve_output_dir
 from sara.core.i18n import gettext as _
 from sara.core.playlist import PlaylistKind
 from sara.ui.dialogs.options.accessibility_tab import build_accessibility_tab
 from sara.ui.dialogs.options.diagnostics_tab import build_diagnostics_tab
 from sara.ui.dialogs.options.general_tab import build_general_tab
+from sara.ui.dialogs.options.logging_tab import build_logging_tab
 from sara.ui.dialogs.options.startup_playlist_dialog import StartupPlaylistDialog
 
 
@@ -33,6 +35,20 @@ class OptionsDialog(wx.Dialog):
         self._diag_interval_ctrl: Optional[wx.SpinCtrlDouble] = None
         self._diag_loop_checkbox: Optional[wx.CheckBox] = None
         self._diag_log_level_choice: Optional[wx.Choice] = None
+        self._played_tracks_logging_checkbox: Optional[wx.CheckBox] = None
+        self._played_tracks_logging_folder_ctrl: Optional[wx.TextCtrl] = None
+        self._played_tracks_logging_folder_button: Optional[wx.Button] = None
+        self._played_tracks_logging_songs_checkbox: Optional[wx.CheckBox] = None
+        self._played_tracks_logging_spots_checkbox: Optional[wx.CheckBox] = None
+        self._now_playing_checkbox: Optional[wx.CheckBox] = None
+        self._now_playing_path_ctrl: Optional[wx.TextCtrl] = None
+        self._now_playing_path_button: Optional[wx.Button] = None
+        self._now_playing_songs_checkbox: Optional[wx.CheckBox] = None
+        self._now_playing_spots_checkbox: Optional[wx.CheckBox] = None
+        self._now_playing_on_change_checkbox: Optional[wx.CheckBox] = None
+        self._now_playing_periodic_checkbox: Optional[wx.CheckBox] = None
+        self._now_playing_interval_ctrl: Optional[wx.SpinCtrl] = None
+        self._now_playing_template_ctrl: Optional[wx.TextCtrl] = None
 
         notebook = wx.Notebook(self)
         main_sizer.Add(notebook, 1, wx.EXPAND | wx.ALL, 10)
@@ -45,6 +61,9 @@ class OptionsDialog(wx.Dialog):
 
         diag_panel = build_diagnostics_tab(self, notebook)
         notebook.AddPage(diag_panel, _("Diagnostics"))
+
+        logging_panel = build_logging_tab(self, notebook)
+        notebook.AddPage(logging_panel, _("Logging"))
 
         button_sizer = self.CreateSeparatedButtonSizer(wx.OK | wx.CANCEL)
         if button_sizer:
@@ -161,6 +180,61 @@ class OptionsDialog(wx.Dialog):
             if sel != wx.NOT_FOUND:
                 levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
                 self._settings.set_diagnostics_log_level(levels[sel])
+        if (
+            self._played_tracks_logging_checkbox
+            and self._played_tracks_logging_folder_ctrl
+            and self._played_tracks_logging_songs_checkbox
+            and self._played_tracks_logging_spots_checkbox
+        ):
+            self._settings.set_played_tracks_logging_enabled(self._played_tracks_logging_checkbox.GetValue())
+            self._settings.set_played_tracks_logging_songs_enabled(self._played_tracks_logging_songs_checkbox.GetValue())
+            self._settings.set_played_tracks_logging_spots_enabled(self._played_tracks_logging_spots_checkbox.GetValue())
+
+            output_dir = resolve_output_dir()
+            default_folder = output_dir / "logs"
+            folder_text = self._played_tracks_logging_folder_ctrl.GetValue().strip()
+            folder_value = Path(folder_text).expanduser() if folder_text else default_folder
+            if folder_value == default_folder:
+                self._settings.set_played_tracks_logging_folder(None)
+            else:
+                try:
+                    rel = folder_value.relative_to(output_dir)
+                    self._settings.set_played_tracks_logging_folder(rel)
+                except ValueError:
+                    self._settings.set_played_tracks_logging_folder(folder_value)
+
+        if (
+            self._now_playing_checkbox
+            and self._now_playing_path_ctrl
+            and self._now_playing_songs_checkbox
+            and self._now_playing_spots_checkbox
+            and self._now_playing_on_change_checkbox
+            and self._now_playing_periodic_checkbox
+            and self._now_playing_interval_ctrl
+            and self._now_playing_template_ctrl
+        ):
+            self._settings.set_now_playing_enabled(self._now_playing_checkbox.GetValue())
+            self._settings.set_now_playing_songs_enabled(self._now_playing_songs_checkbox.GetValue())
+            self._settings.set_now_playing_spots_enabled(self._now_playing_spots_checkbox.GetValue())
+            self._settings.set_now_playing_update_on_track_change(self._now_playing_on_change_checkbox.GetValue())
+            if self._now_playing_periodic_checkbox.GetValue():
+                self._settings.set_now_playing_update_interval_seconds(float(self._now_playing_interval_ctrl.GetValue()))
+            else:
+                self._settings.set_now_playing_update_interval_seconds(0.0)
+            self._settings.set_now_playing_template(self._now_playing_template_ctrl.GetValue())
+
+            output_dir = resolve_output_dir()
+            default_path = output_dir / "nowplaying.txt"
+            path_text = self._now_playing_path_ctrl.GetValue().strip()
+            raw_path = Path(path_text).expanduser() if path_text else default_path
+            if raw_path == default_path:
+                self._settings.set_now_playing_path(None)
+            else:
+                try:
+                    rel = raw_path.relative_to(output_dir)
+                    self._settings.set_now_playing_path(rel)
+                except ValueError:
+                    self._settings.set_now_playing_path(raw_path)
         self.EndModal(wx.ID_OK)
 
     def _populate_pfl_choice(self) -> None:

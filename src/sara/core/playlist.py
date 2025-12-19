@@ -21,6 +21,11 @@ class PlaylistKind(Enum):
     FOLDER = "folder"
 
 
+class PlaylistItemType(Enum):
+    SONG = "song"
+    SPOT = "spot"
+
+
 @dataclass
 class PlaylistItem:
     id: str
@@ -28,6 +33,7 @@ class PlaylistItem:
     title: str
     duration_seconds: float
     artist: Optional[str] = None
+    item_type: PlaylistItemType = PlaylistItemType.SONG
     status: PlaylistItemStatus = PlaylistItemStatus.PENDING
     current_position: float = 0.0
     replay_gain_db: Optional[float] = None

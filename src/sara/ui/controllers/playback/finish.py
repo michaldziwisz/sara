@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 def handle_playback_finished(frame, playlist_id: str, item_id: str) -> None:
     logger.debug("UI: playback finished callback playlist=%s item=%s", playlist_id, item_id)
+    now_playing_writer = getattr(frame, "_now_playing_writer", None)
     frame._playback.auto_mix_state.pop((playlist_id, item_id), None)
     frame._clear_mix_plan(playlist_id, item_id)
     context = frame._playback.contexts.pop((playlist_id, item_id), None)
@@ -25,12 +26,19 @@ def handle_playback_finished(frame, playlist_id: str, item_id: str) -> None:
             pass
     panel = frame._playlists.get(playlist_id)
     if not panel:
+        if now_playing_writer:
+            now_playing_writer.on_finished(playlist_id, item_id)
         return
     model = panel.model
     item_index = next((idx for idx, track in enumerate(model.items) if track.id == item_id), None)
     if item_index is None:
+        if now_playing_writer:
+            now_playing_writer.on_finished(playlist_id, item_id)
         return
     item = model.items[item_index]
+    played_tracks_logger = getattr(frame, "_played_tracks_logger", None)
+    if played_tracks_logger:
+        played_tracks_logger.on_finished(model, item)
 
     removed = False
     previous_selection, previous_focus = capture_panel_selection(panel)
@@ -85,6 +93,8 @@ def handle_playback_finished(frame, playlist_id: str, item_id: str) -> None:
         frame._playback.auto_mix_state.pop((playlist_id, item_id), None)
         frame._active_break_item.pop(playlist_id, None)
         frame._auto_mix_tracker.set_last_started(playlist_id, item_id)
+        if now_playing_writer:
+            now_playing_writer.on_finished(playlist_id, item_id)
         return
     if frame._auto_mix_enabled and model.kind is PlaylistKind.MUSIC and model.items:
         frame._auto_mix_tracker.set_last_started(playlist_id, item_id)
@@ -103,3 +113,5 @@ def handle_playback_finished(frame, playlist_id: str, item_id: str) -> None:
             frame._start_next_from_playlist(panel, ignore_ui_selection=True, advance_focus=False)
         except Exception:
             logger.exception("UI: manual queued fallback after finish failed playlist=%s", playlist_id)
+    if now_playing_writer:
+        now_playing_writer.on_finished(playlist_id, item_id)

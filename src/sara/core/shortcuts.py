@@ -128,6 +128,8 @@ def _register_defaults() -> None:
     register_shortcut("edit", "copy", label="Copy", default="CTRL+C")
     register_shortcut("edit", "paste", label="Paste", default="CTRL+V")
     register_shortcut("edit", "delete", label="Delete", default="DELETE")
+    register_shortcut("edit", "mark_as_song", label="Mark as song", default="CTRL+SHIFT+G")
+    register_shortcut("edit", "mark_as_spot", label="Mark as spot", default="CTRL+SHIFT+S")
     register_shortcut("edit", "move_up", label="Move up", default="ALT+UP")
     register_shortcut("edit", "move_down", label="Move down", default="ALT+DOWN")
 

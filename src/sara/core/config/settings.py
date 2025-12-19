@@ -238,6 +238,117 @@ class SettingsManager:
             for category in ANNOUNCEMENT_CATEGORIES
         }
 
+    # --- playback logging ---
+    def get_played_tracks_logging_enabled(self) -> bool:
+        logging_cfg = self._data.get("logging", {})
+        return bool(logging_cfg.get("enabled", DEFAULT_CONFIG["logging"]["enabled"]))
+
+    def set_played_tracks_logging_enabled(self, enabled: bool) -> None:
+        logging_cfg = self._data.setdefault("logging", {})
+        logging_cfg["enabled"] = bool(enabled)
+
+    def get_played_tracks_logging_songs_enabled(self) -> bool:
+        logging_cfg = self._data.get("logging", {})
+        return bool(logging_cfg.get("songs", DEFAULT_CONFIG["logging"]["songs"]))
+
+    def set_played_tracks_logging_songs_enabled(self, enabled: bool) -> None:
+        logging_cfg = self._data.setdefault("logging", {})
+        logging_cfg["songs"] = bool(enabled)
+
+    def get_played_tracks_logging_spots_enabled(self) -> bool:
+        logging_cfg = self._data.get("logging", {})
+        return bool(logging_cfg.get("spots", DEFAULT_CONFIG["logging"]["spots"]))
+
+    def set_played_tracks_logging_spots_enabled(self, enabled: bool) -> None:
+        logging_cfg = self._data.setdefault("logging", {})
+        logging_cfg["spots"] = bool(enabled)
+
+    def get_played_tracks_logging_folder(self) -> Path | None:
+        logging_cfg = self._data.get("logging", {})
+        raw = logging_cfg.get("folder", DEFAULT_CONFIG["logging"]["folder"])
+        if raw in (None, "", False):
+            return None
+        return Path(str(raw)).expanduser()
+
+    def set_played_tracks_logging_folder(self, folder: Path | str | None) -> None:
+        logging_cfg = self._data.setdefault("logging", {})
+        if not folder:
+            logging_cfg["folder"] = ""
+        else:
+            logging_cfg["folder"] = str(folder)
+
+    # --- now playing ---
+    def get_now_playing_enabled(self) -> bool:
+        cfg = self._data.get("now_playing", {})
+        return bool(cfg.get("enabled", DEFAULT_CONFIG["now_playing"]["enabled"]))
+
+    def set_now_playing_enabled(self, enabled: bool) -> None:
+        cfg = self._data.setdefault("now_playing", {})
+        cfg["enabled"] = bool(enabled)
+
+    def get_now_playing_path(self) -> Path | None:
+        cfg = self._data.get("now_playing", {})
+        raw = cfg.get("path", DEFAULT_CONFIG["now_playing"]["path"])
+        if raw in (None, "", False):
+            return None
+        return Path(str(raw)).expanduser()
+
+    def set_now_playing_path(self, path: Path | str | None) -> None:
+        cfg = self._data.setdefault("now_playing", {})
+        if not path:
+            cfg["path"] = ""
+        else:
+            cfg["path"] = str(path)
+
+    def get_now_playing_update_on_track_change(self) -> bool:
+        cfg = self._data.get("now_playing", {})
+        return bool(cfg.get("update_on_track_change", DEFAULT_CONFIG["now_playing"]["update_on_track_change"]))
+
+    def set_now_playing_update_on_track_change(self, enabled: bool) -> None:
+        cfg = self._data.setdefault("now_playing", {})
+        cfg["update_on_track_change"] = bool(enabled)
+
+    def get_now_playing_update_interval_seconds(self) -> float:
+        cfg = self._data.get("now_playing", {})
+        raw = cfg.get("update_interval_seconds", DEFAULT_CONFIG["now_playing"]["update_interval_seconds"])
+        try:
+            return max(0.0, float(raw))
+        except (TypeError, ValueError):
+            return float(DEFAULT_CONFIG["now_playing"]["update_interval_seconds"])
+
+    def set_now_playing_update_interval_seconds(self, seconds: float) -> None:
+        cfg = self._data.setdefault("now_playing", {})
+        try:
+            cfg["update_interval_seconds"] = max(0.0, float(seconds))
+        except (TypeError, ValueError):
+            cfg["update_interval_seconds"] = float(DEFAULT_CONFIG["now_playing"]["update_interval_seconds"])
+
+    def get_now_playing_template(self) -> str:
+        cfg = self._data.get("now_playing", {})
+        raw = cfg.get("template", DEFAULT_CONFIG["now_playing"]["template"])
+        value = str(raw) if raw is not None else ""
+        return value if value.strip() else str(DEFAULT_CONFIG["now_playing"]["template"])
+
+    def set_now_playing_template(self, template: str) -> None:
+        cfg = self._data.setdefault("now_playing", {})
+        cfg["template"] = str(template)
+
+    def get_now_playing_songs_enabled(self) -> bool:
+        cfg = self._data.get("now_playing", {})
+        return bool(cfg.get("songs", DEFAULT_CONFIG["now_playing"]["songs"]))
+
+    def set_now_playing_songs_enabled(self, enabled: bool) -> None:
+        cfg = self._data.setdefault("now_playing", {})
+        cfg["songs"] = bool(enabled)
+
+    def get_now_playing_spots_enabled(self) -> bool:
+        cfg = self._data.get("now_playing", {})
+        return bool(cfg.get("spots", DEFAULT_CONFIG["now_playing"]["spots"]))
+
+    def set_now_playing_spots_enabled(self, enabled: bool) -> None:
+        cfg = self._data.setdefault("now_playing", {})
+        cfg["spots"] = bool(enabled)
+
     def get_language(self) -> str:
         general = self._data.get("general", {})
         return str(general.get("language", DEFAULT_CONFIG["general"]["language"]))

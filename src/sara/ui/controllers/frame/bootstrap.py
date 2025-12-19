@@ -7,6 +7,7 @@ import wx
 from sara.audio.engine import AudioEngine
 from sara.core.app_state import AppState, PlaylistFactory
 from sara.core.config import SettingsManager
+from sara.core.env import resolve_output_dir
 from sara.core.i18n import gettext as _, set_language
 from sara.ui.announcement_service import AnnouncementService
 from sara.ui.auto_mix_tracker import AutoMixTracker
@@ -14,6 +15,8 @@ from sara.ui.clipboard_service import PlaylistClipboard
 from sara.ui.jingle_controller import JingleController
 from sara.ui.playback_controller import PlaybackController
 from sara.ui.playlist_layout import PlaylistLayoutManager
+from sara.ui.services.now_playing import NowPlayingWriter
+from sara.ui.services.playback_logging import PlayedTracksLogger
 from sara.ui.undo_manager import UndoManager
 
 
@@ -61,6 +64,8 @@ def init_command_ids(frame) -> None:
     frame._copy_id = wx.NewIdRef()
     frame._paste_id = wx.NewIdRef()
     frame._delete_id = wx.NewIdRef()
+    frame._mark_as_song_id = wx.NewIdRef()
+    frame._mark_as_spot_id = wx.NewIdRef()
     frame._move_up_id = wx.NewIdRef()
     frame._move_down_id = wx.NewIdRef()
     frame._undo_id = wx.NewIdRef()
@@ -70,6 +75,9 @@ def init_command_ids(frame) -> None:
 
 
 def init_runtime_state(frame) -> None:
+    frame._output_dir = resolve_output_dir()
+    frame._played_tracks_logger = PlayedTracksLogger(frame._settings, output_dir=frame._output_dir)
+    frame._now_playing_writer = NowPlayingWriter(frame._settings, output_dir=frame._output_dir)
     frame._playlist_hotkey_defaults = frame._settings.get_playlist_shortcuts()
     frame._playlist_action_ids = {}
     frame._action_by_id = {}

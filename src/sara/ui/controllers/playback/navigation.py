@@ -101,6 +101,12 @@ def handle_playback_progress(frame, playlist_id: str, item_id: str, seconds: flo
     context_entry = frame._playback.contexts.get((playlist_id, item_id))
     if not context_entry:
         return
+    played_tracks_logger = getattr(frame, "_played_tracks_logger", None)
+    if played_tracks_logger:
+        played_tracks_logger.on_progress(playlist_id, item_id, seconds)
+    now_playing_writer = getattr(frame, "_now_playing_writer", None)
+    if now_playing_writer:
+        now_playing_writer.on_progress(playlist_id, item_id, seconds)
     panel = frame._playlists.get(playlist_id)
     if not panel:
         return

@@ -26,6 +26,9 @@ config/settings.yaml
 # Logs
 logs/
 
+# Runtime output (now playing, played-tracks logs, etc.)
+output/
+
 # OS files
 .DS_Store
 Thumbs.db

@@ -10,7 +10,7 @@ import wx
 from typing import Callable
 
 from sara.core.i18n import gettext as _
-from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistModel, PlaylistKind
+from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistItemType, PlaylistModel, PlaylistKind
 from sara.core.hotkeys import HotkeyAction
 
 from . import context_menu
@@ -152,6 +152,8 @@ class PlaylistPanel(wx.Panel):
         prefixes: list[str] = []
         if item.is_selected:
             prefixes.append(_("[selected]"))
+        if item.item_type is PlaylistItemType.SPOT:
+            prefixes.append(_("Spot"))
         if item.has_loop() and (item.loop_enabled or getattr(item, "loop_auto_enabled", False)):
             prefixes.append(_("Loop"))
         if item.break_after:

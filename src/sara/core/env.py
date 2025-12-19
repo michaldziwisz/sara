@@ -23,3 +23,14 @@ def resolve_config_path(default_path: Path) -> Path:
     if env_dir:
         return Path(env_dir) / "settings.yaml"
     return default_path
+
+
+def resolve_output_dir(default_path: Path | None = None) -> Path:
+    """Return the SARA output directory, honoring environment overrides."""
+
+    env_path = os.environ.get("SARA_OUTPUT_DIR") or os.environ.get("SARA_OUTPUT_PATH")
+    if env_path:
+        return Path(env_path)
+    if default_path is not None:
+        return default_path
+    return Path.cwd() / "output"
