@@ -1,14 +1,19 @@
 import os
+
 import pytest
-import wx
+
+
+pytestmark = pytest.mark.gui
+
+if os.environ.get("WX_RUN_GUI_TESTS") != "1":
+    pytest.skip("wx GUI tests are opt-in (set WX_RUN_GUI_TESTS=1)", allow_module_level=True)
+
+wx = pytest.importorskip("wx")
+
+if not wx.App.IsDisplayAvailable():
+    pytest.skip("wx display required", allow_module_level=True)
 
 from sara.ui.file_selection_dialog import FileSelectionDialog
-
-
-pytestmark = pytest.mark.skipif(
-    os.environ.get("WX_RUN_GUI_TESTS") != "1" or not wx.App.IsDisplayAvailable(),
-    reason="wx display required (set WX_RUN_GUI_TESTS=1)",
-)
 
 
 def setup_module(module):  # noqa: D401  # pylint: disable=unused-argument

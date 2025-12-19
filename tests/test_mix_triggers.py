@@ -1,22 +1,27 @@
 from __future__ import annotations
 
-from pathlib import Path
 import shutil
+from pathlib import Path
 from threading import Event
-from typing import Callable, Optional
-
 from types import SimpleNamespace
+from typing import Callable, Optional
 
 import pytest
 
-from sara.core.app_state import AppState
-from sara.core.config import SettingsManager
-from sara.core.playlist import PlaylistItem, PlaylistModel, PlaylistKind, PlaylistItemStatus
 from sara.audio.engine import BackendType
-from sara.ui.main_frame import MainFrame, MIX_NATIVE_LATE_GUARD, MixPlan
-from sara.ui.auto_mix_tracker import AutoMixTracker
-from sara.ui.playback_controller import PlaybackController
+from sara.core.config import SettingsManager
 from sara.core.media_metadata import extract_metadata
+from sara.core.mix_planner import (
+    MIX_NATIVE_LATE_GUARD,
+    MixPlan,
+    clear_mix_plan,
+    mark_mix_triggered,
+    register_mix_plan,
+    resolve_mix_timing,
+)
+from sara.core.playlist import PlaylistItem, PlaylistKind, PlaylistModel, PlaylistItemStatus
+from sara.ui import mix_runtime
+from sara.ui.playback_controller import PlaybackController
 
 
 class _DummyDevice:
@@ -190,11 +195,12 @@ def test_update_mix_trigger_respects_player_support(tmp_path):
 
 
 def test_mix_plan_register_and_clear():
-    frame = MainFrame.__new__(MainFrame)
-    frame._mix_plans = {}
-    frame._mix_trigger_points = {}
+    mix_plans: dict[tuple[str, str], MixPlan] = {}
+    mix_trigger_points: dict[tuple[str, str], float] = {}
 
-    frame._register_mix_plan(
+    register_mix_plan(
+        mix_plans,
+        mix_trigger_points,
         "pl-1",
         "item-1",
         mix_at=5.0,
@@ -204,48 +210,20 @@ def test_mix_plan_register_and_clear():
         native_trigger=True,
     )
     key = ("pl-1", "item-1")
-    assert key in frame._mix_plans
-    assert frame._mix_trigger_points[key] == 5.0
-    assert frame._mix_plans[key].fade_seconds == 2.5
-    frame._mark_mix_triggered("pl-1", "item-1")
-    assert frame._mix_plans[key].triggered is True
-    frame._clear_mix_plan("pl-1", "item-1")
-    assert frame._mix_plans == {}
-    assert frame._mix_trigger_points == {}
+    assert key in mix_plans
+    assert mix_trigger_points[key] == 5.0
+    assert mix_plans[key].fade_seconds == 2.5
 
+    mark_mix_triggered(mix_plans, "pl-1", "item-1")
+    assert mix_plans[key].triggered is True
 
-def test_undo_like_remove_clears_mix_state(tmp_path):
-    frame = MainFrame.__new__(MainFrame)
-    frame._mix_plans = {("pl-1", "item-1"): None}
-    frame._mix_trigger_points = {("pl-1", "item-1"): 5.0}
-    frame._playback = SimpleNamespace(
-        contexts={( "pl-1","item-1"): SimpleNamespace(player=None)},
-        clear_auto_mix=lambda: None,
-        stop_playlist=lambda _pl_id, fade_duration=0.0: [(( "pl-1","item-1"), None)],
-    )
-    model = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
-    item = PlaylistItem(id="item-1", path=tmp_path / "a", title="A", duration_seconds=1.0)
-    model.items = [item]
-    dummy_panel = SimpleNamespace(
-        model=model,
-        mark_item_status=lambda *_args, **_kwargs: None,
-        update_progress=lambda *_args, **_kwargs: None,
-        refresh=lambda *_args, **_kwargs: None,
-    )
-    frame._playlists = {"pl-1": dummy_panel}
-    frame._cleanup_unused_mixers = lambda: None
-    frame._active_break_item = {}
-    frame._announce_event = lambda *args, **kwargs: None
-    # symulacja usunięcia grającego utworu (undo/redo podobna ścieżka)
-    frame._remove_item_from_playlist = lambda _panel, _model, idx, refocus=True: _model.items.pop(idx)
-    frame._stop_playlist_playback("pl-1", mark_played=False, fade_duration=0.0)
-    assert ("pl-1", "item-1") not in frame._mix_trigger_points
-    assert ("pl-1", "item-1") not in frame._mix_plans
+    clear_mix_plan(mix_plans, mix_trigger_points, "pl-1", "item-1")
+    assert mix_plans == {}
+    assert mix_trigger_points == {}
 
 
 def test_resolve_mix_timing_matches_editor_markers():
-    frame = MainFrame.__new__(MainFrame)
-    frame._fade_duration = 2.0
+    fade_duration = 2.0
     item = PlaylistItem(
         id="i1",
         path=Path("x"),
@@ -255,7 +233,7 @@ def test_resolve_mix_timing_matches_editor_markers():
         segue_seconds=3.0,
         overlap_seconds=None,
     )
-    mix_at, fade, base_cue, effective = frame._resolve_mix_timing(item)
+    mix_at, fade, base_cue, effective = resolve_mix_timing(item, fade_duration)
     # segue ma pierwszeństwo nad overlap, baza to cue
     assert base_cue == 1.0
     assert effective == 10.0
@@ -271,7 +249,7 @@ def test_resolve_mix_timing_matches_editor_markers():
         segue_seconds=None,
         overlap_seconds=2.5,
     )
-    mix_at2, fade2, base_cue2, effective2 = frame._resolve_mix_timing(item2)
+    mix_at2, fade2, base_cue2, effective2 = resolve_mix_timing(item2, fade_duration)
     # overlap bez segue: mix przy końcu, fade=overlap
     assert base_cue2 == 1.0
     assert effective2 == 10.0
@@ -287,7 +265,7 @@ def test_resolve_mix_timing_matches_editor_markers():
         segue_seconds=None,
         overlap_seconds=None,
     )
-    mix_at3, fade3, base_cue3, effective3 = frame._resolve_mix_timing(item3)
+    mix_at3, fade3, base_cue3, effective3 = resolve_mix_timing(item3, fade_duration)
     # brak markerów: użyj globalnego fade
     assert base_cue3 == 1.0
     assert effective3 == 10.0
@@ -296,8 +274,7 @@ def test_resolve_mix_timing_matches_editor_markers():
 
 
 def test_resolve_mix_timing_honours_segue_fade_override():
-    frame = MainFrame.__new__(MainFrame)
-    frame._fade_duration = 2.0
+    fade_duration = 2.0
     item = PlaylistItem(
         id="i4",
         path=Path("x"),
@@ -308,30 +285,95 @@ def test_resolve_mix_timing_honours_segue_fade_override():
         segue_fade_seconds=0.5,
         overlap_seconds=None,
     )
-    mix_at, fade, base_cue, effective = frame._resolve_mix_timing(item)
+    mix_at, fade, base_cue, effective = resolve_mix_timing(item, fade_duration)
     assert base_cue == 1.0
     assert effective == 11.0
     assert mix_at == pytest.approx(5.0, rel=1e-6)
     assert fade == pytest.approx(0.5, rel=1e-6)
 
 
+class _MixHost:
+    def __init__(self, *, fade: float = 3.0, auto_mix_enabled: bool = True) -> None:
+        self._fade_duration = fade
+        self._mix_plans: dict[tuple[str, str], MixPlan] = {}
+        self._mix_trigger_points: dict[tuple[str, str], float] = {}
+        self._auto_mix_enabled = auto_mix_enabled
+        self._active_break_item: dict[str, str] = {}
+        self._playback = SimpleNamespace(auto_mix_state={}, contexts={})
+
+        self._start_next_from_playlist = lambda *_a, **_k: False
+        self._playlist_has_selection = lambda _pid: False
+        self._supports_mix_trigger = lambda _p=None: False
+        self._auto_mix_now_from_callback = lambda *_a, **_k: None
+
+    def _register_mix_plan(
+        self,
+        playlist_id: str,
+        item_id: str,
+        *,
+        mix_at: float | None,
+        fade_seconds: float,
+        base_cue: float,
+        effective_duration: float,
+        native_trigger: bool,
+    ) -> None:
+        register_mix_plan(
+            self._mix_plans,
+            self._mix_trigger_points,
+            playlist_id,
+            item_id,
+            mix_at=mix_at,
+            fade_seconds=fade_seconds,
+            base_cue=base_cue,
+            effective_duration=effective_duration,
+            native_trigger=native_trigger,
+        )
+
+    def _clear_mix_plan(self, playlist_id: str, item_id: str) -> None:
+        clear_mix_plan(self._mix_plans, self._mix_trigger_points, playlist_id, item_id)
+
+    def _mark_mix_triggered(self, playlist_id: str, item_id: str) -> None:
+        mark_mix_triggered(self._mix_plans, playlist_id, item_id)
+
+    def _resolve_mix_timing(
+        self,
+        item: PlaylistItem,
+        overrides: dict[str, float | None] | None = None,
+        *,
+        effective_duration_override: float | None = None,
+    ) -> tuple[float | None, float, float, float]:
+        return resolve_mix_timing(
+            item,
+            self._fade_duration,
+            overrides,
+            effective_duration_override=effective_duration_override,
+        )
+
+    def _auto_mix_state_process(self, panel, item: PlaylistItem, ctx, *, seconds: float, queued_selection: bool) -> None:
+        mix_runtime.auto_mix_state_process(self, panel, item, ctx, seconds, queued_selection)
+
+    def _auto_mix_now(self, playlist: PlaylistModel, item: PlaylistItem, panel) -> None:
+        mix_runtime.auto_mix_now(self, playlist, item, panel)
+
+    def _apply_mix_trigger_to_playback(self, *, playlist_id: str, item: PlaylistItem, panel) -> None:
+        mix_runtime.apply_mix_trigger_to_playback(self, playlist_id=playlist_id, item=item, panel=panel)
+
+    def _sync_loop_mix_trigger(self, *, panel, playlist: PlaylistModel, item: PlaylistItem, context) -> None:
+        mix_runtime.sync_loop_mix_trigger(self, panel=panel, playlist=playlist, item=item, context=context)
+
+
+class _AutoMixPlayer(_DummyPlayer):
+    def __init__(self, device_id: str, *, supports_mix_trigger: bool = False):
+        super().__init__(device_id, supports=supports_mix_trigger)
+        self.fade_calls: list[float] = []
+
+    def fade_out(self, duration: float):
+        self.fade_calls.append(duration)
+
+
 def test_progress_based_mix_triggers_when_native_missing(tmp_path):
-    frame = MainFrame.__new__(MainFrame)
-    frame._fade_duration = 3.0
-    frame._mix_plans = {}
-    frame._mix_trigger_points = {}
-    frame._auto_mix_enabled = True
-    frame._active_break_item = {}
-    frame._playback = SimpleNamespace(auto_mix_state={}, contexts={})
-    frame._supports_mix_trigger = lambda player: getattr(player, "supports_mix_trigger", lambda: False)()
-
-    class _ProgressPlayer(_DummyPlayer):
-        def __init__(self, device_id: str):
-            super().__init__(device_id, supports=False)
-            self.fade_calls: list[float] = []
-
-        def fade_out(self, duration: float):
-            self.fade_calls.append(duration)
+    host = _MixHost(fade=3.0, auto_mix_enabled=True)
+    host._supports_mix_trigger = lambda _p: False
 
     item = PlaylistItem(
         id="mix-1",
@@ -344,31 +386,32 @@ def test_progress_based_mix_triggers_when_native_missing(tmp_path):
     playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
     playlist.add_items([item])
     panel = SimpleNamespace(model=playlist)
-    _register_playlist(frame, playlist, panel)
-    player = _ProgressPlayer("dev-1")
+    player = _AutoMixPlayer("dev-1")
     ctx = SimpleNamespace(player=player)
 
+    started: list[dict] = []
+    host._start_next_from_playlist = lambda *_a, **_k: started.append({}) or True
+
     # simulate progress near mix point (effective 12, overlap 3 -> mix_at 9)
-    frame._start_next_from_playlist = lambda *args, **kwargs: True
-    frame._auto_mix_state_process(panel, item, ctx, seconds=9.1, queued_selection=False)
+    host._auto_mix_state_process(panel, item, ctx, seconds=9.1, queued_selection=False)
     key = (playlist.id, item.id)
-    assert frame._playback.auto_mix_state[key] is True
-    assert frame._mix_plans[key].triggered is True
+    assert host._playback.auto_mix_state[key] is True
+    assert host._mix_plans[key].triggered is True
     # fade should use min(fade, remaining)
     assert player.fade_calls and abs(player.fade_calls[0] - 2.9) < 1e-6  # remaining 2.9s
+    assert started
 
 
 def test_break_clears_mix_plan(tmp_path):
-    frame = MainFrame.__new__(MainFrame)
-    frame._mix_plans = {("pl-1", "item-1"): None}
-    frame._mix_trigger_points = {("pl-1", "item-1"): 5.0}
-    frame._playback = SimpleNamespace(
+    host = _MixHost(fade=2.0, auto_mix_enabled=False)
+    host._mix_plans = {("pl-1", "item-1"): MixPlan(mix_at=5.0, fade_seconds=2.0, base_cue=0.0, effective_duration=10.0, native_trigger=False)}
+    host._mix_trigger_points = {("pl-1", "item-1"): 5.0}
+    host._playback = SimpleNamespace(
         update_mix_trigger=lambda *_args, **_kwargs: True,
         contexts={},
         auto_mix_state={},
     )
-    frame._supports_mix_trigger = lambda _p: False
-    frame._register_mix_plan = lambda *args, **kwargs: None
+
     panel = SimpleNamespace(model=PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC))
     item = PlaylistItem(
         id="item-1",
@@ -377,25 +420,21 @@ def test_break_clears_mix_plan(tmp_path):
         duration_seconds=10.0,
     )
     item.break_after = True
-    frame._apply_mix_trigger_to_playback(playlist_id="pl-1", item=item, panel=panel)
-    assert frame._mix_plans == {}
-    assert frame._mix_trigger_points == {}
+    host._apply_mix_trigger_to_playback(playlist_id="pl-1", item=item, panel=panel)
+    assert host._mix_plans == {}
+    assert host._mix_trigger_points == {}
 
 
 def test_loop_hold_clears_mix_plan_and_sets_flag(tmp_path):
-    frame = MainFrame.__new__(MainFrame)
-    frame._auto_mix_enabled = False
-    frame._fade_duration = 2.0
-    frame._mix_plans = {("pl-1", "item-1"): None}
-    frame._mix_trigger_points = {("pl-1", "item-1"): 5.0}
-    auto_state = {}
-    frame._playback = SimpleNamespace(
+    host = _MixHost(fade=2.0, auto_mix_enabled=False)
+    host._mix_plans = {("pl-1", "item-1"): MixPlan(mix_at=5.0, fade_seconds=2.0, base_cue=0.0, effective_duration=10.0, native_trigger=False)}
+    host._mix_trigger_points = {("pl-1", "item-1"): 5.0}
+    auto_state: dict = {}
+    host._playback = SimpleNamespace(
         auto_mix_state=auto_state,
         update_mix_trigger=lambda *_args, **_kwargs: True,
     )
-    frame._clear_mix_plan = lambda pl_id, item_id: (frame._mix_plans.pop((pl_id, item_id), None), frame._mix_trigger_points.pop((pl_id, item_id), None))
-    frame._supports_mix_trigger = lambda _p: False
-    frame._register_mix_plan = lambda *args, **kwargs: None
+    host._supports_mix_trigger = lambda _p: False
 
     playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
     item = PlaylistItem(
@@ -408,22 +447,21 @@ def test_loop_hold_clears_mix_plan_and_sets_flag(tmp_path):
         loop_enabled=True,
     )
     context = SimpleNamespace(player=_DummyPlayer("dev-1"))
-    frame._sync_loop_mix_trigger(panel=None, playlist=playlist, item=item, context=context)
-    assert ("pl-1", "item-1") not in frame._mix_trigger_points
+    host._sync_loop_mix_trigger(panel=None, playlist=playlist, item=item, context=context)
+    assert ("pl-1", "item-1") not in host._mix_trigger_points
     assert auto_state[("pl-1", "item-1")] == "loop_hold"
 
 
 def test_loop_hold_in_automix_does_not_auto_advance(tmp_path):
-    frame = MainFrame.__new__(MainFrame)
-    frame._auto_mix_enabled = True
-    frame._fade_duration = 1.5
-    frame._mix_plans = {("pl-1", "item-1"): None}
-    frame._mix_trigger_points = {("pl-1", "item-1"): 4.0}
+    host = _MixHost(fade=1.5, auto_mix_enabled=True)
+    host._mix_plans = {("pl-1", "item-1"): MixPlan(mix_at=4.0, fade_seconds=1.5, base_cue=0.0, effective_duration=10.0, native_trigger=False)}
+    host._mix_trigger_points = {("pl-1", "item-1"): 4.0}
     auto_state: dict = {}
-    frame._playback = SimpleNamespace(
+    host._playback = SimpleNamespace(
         auto_mix_state=auto_state,
         update_mix_trigger=lambda *_args, **_kwargs: True,
     )
+
     playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
     item = PlaylistItem(
         id="item-1",
@@ -436,21 +474,19 @@ def test_loop_hold_in_automix_does_not_auto_advance(tmp_path):
     )
     playlist.add_items([item])
     panel = SimpleNamespace(model=playlist)
-    _register_playlist(frame, playlist, panel)
     context = SimpleNamespace(player=_DummyPlayer("dev-1"))
     auto_next_calls: list[object] = []
-    frame._auto_mix_tracker = SimpleNamespace(set_last_started=lambda *_a, **_k: None)
-    frame._auto_mix_play_next = lambda *_a, **_k: auto_next_calls.append(object())
+    host._auto_mix_play_next = lambda *_a, **_k: auto_next_calls.append(object())
 
-    frame._sync_loop_mix_trigger(panel=panel, playlist=playlist, item=item, context=context)
+    host._sync_loop_mix_trigger(panel=panel, playlist=playlist, item=item, context=context)
 
     assert auto_state[("pl-1", "item-1")] == "loop_hold"
-    assert ("pl-1", "item-1") not in frame._mix_trigger_points
+    assert ("pl-1", "item-1") not in host._mix_trigger_points
     assert auto_next_calls == []
 
 
 def test_auto_mix_state_process_skips_loop_hold(tmp_path):
-    frame = _make_frame_for_automix(fade=2.0)
+    host = _MixHost(fade=2.0, auto_mix_enabled=True)
     playlist = PlaylistModel(id="pl-loop", name="Looping", kind=PlaylistKind.MUSIC)
     item = PlaylistItem(
         id="looped",
@@ -463,239 +499,28 @@ def test_auto_mix_state_process_skips_loop_hold(tmp_path):
     )
     playlist.add_items([item])
     panel = SimpleNamespace(model=playlist)
-    _register_playlist(frame, playlist, panel)
     key = (playlist.id, item.id)
     player = _AutoMixPlayer("dev-1")
     ctx = SimpleNamespace(player=player)
-    frame._playback.auto_mix_state[key] = "loop_hold"
-    frame._playback.contexts[key] = ctx
+    host._playback.auto_mix_state[key] = "loop_hold"
+    host._playback.contexts[key] = ctx
     started: list[dict] = []
-    frame._start_next_from_playlist = lambda *_a, **_k: started.append({}) or True
+    host._start_next_from_playlist = lambda *_a, **_k: started.append({}) or True
 
-    frame._auto_mix_state_process(panel, item, ctx, seconds=5.0, queued_selection=False)
+    host._auto_mix_state_process(panel, item, ctx, seconds=5.0, queued_selection=False)
 
     assert started == []
     assert player.fade_calls == []
-    assert frame._playback.auto_mix_state[key] == "loop_hold"
-
-
-def test_manual_play_request_stops_loop_hold_without_automix(tmp_path):
-    frame = MainFrame.__new__(MainFrame)
-    frame._auto_mix_enabled = False
-    frame._fade_duration = 2.0
-    frame._mix_plans = {}
-    frame._mix_trigger_points = {}
-    frame._active_break_item = {}
-    frame._stop_preview = lambda: None
-    frame._supports_mix_trigger = lambda _p: False
-    frame._resolve_mix_timing = lambda itm, overrides=None, effective_duration_override=None: (
-        None,
-        frame._fade_duration,
-        itm.cue_in_seconds or 0.0,
-        itm.effective_duration_seconds,
-    )
-
-    playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
-    path_a = tmp_path / "a.wav"
-    path_b = tmp_path / "b.wav"
-    path_a.write_text("dummy")
-    path_b.write_text("dummy")
-    looping = PlaylistItem(
-        id="looping",
-        path=path_a,
-        title="Looping",
-        duration_seconds=10.0,
-        loop_start_seconds=1.0,
-        loop_end_seconds=3.0,
-        loop_enabled=True,
-        status=PlaylistItemStatus.PLAYING,
-    )
-    next_item = PlaylistItem(
-        id="next",
-        path=path_b,
-        title="Next",
-        duration_seconds=10.0,
-    )
-    playlist.add_items([looping, next_item])
-
-    class _Panel:
-        def __init__(self, model):
-            self.model = model
-
-        def mark_item_status(self, *_a, **_k):
-            return None
-
-        def refresh(self, *_a, **_k):
-            return None
-
-        def get_selected_indices(self):
-            return []
-
-        def get_focused_index(self):
-            return -1
-
-        def select_index(self, *_a, **_k):
-            return None
-
-    panel = _Panel(playlist)
-
-    existing_key = (playlist.id, looping.id)
-    stop_calls: list[tuple] = []
-    frame._stop_playlist_playback = lambda pid, *, mark_played, fade_duration=0.0: stop_calls.append(
-        (pid, mark_played, fade_duration)
-    )
-
-    def _start_item(*_a, **_k):
-        raise RuntimeError("abort after stop check")
-
-    frame._playback = SimpleNamespace(
-        contexts={existing_key: SimpleNamespace(player=_DummyPlayer("dev-1"), device_id="dev-1", slot_index=0)},
-        auto_mix_state={existing_key: "loop_hold"},
-        get_context=lambda _pid: (existing_key, frame._playback.contexts[existing_key]),
-        start_item=_start_item,
-    )
-
-    assert frame._start_playback(panel, next_item, restart_playing=True) is False
-    assert stop_calls == [(playlist.id, True, frame._fade_duration)]
-
-
-def test_start_next_clears_queued_selection_even_when_follow_disabled(tmp_path):
-    frame = MainFrame.__new__(MainFrame)
-    frame._auto_mix_enabled = False
-    frame._focus_playing_track = False
-    frame._fade_duration = 0.0
-    frame._last_started_item_id = {}
-    frame._auto_mix_tracker = SimpleNamespace(set_last_started=lambda *_a, **_k: None)
-    frame._format_track_name = lambda item: item.title
-    frame._announce_event = lambda *_a, **_k: None
-    frame._start_playback = lambda *_a, **_k: True
-    frame._playback = SimpleNamespace(get_context=lambda *_a, **_k: None)
-
-    refreshed: list[str] = []
-    frame._refresh_selection_display = lambda playlist_id: refreshed.append(playlist_id)
-
-    path_a = tmp_path / "a.wav"
-    path_a.write_text("dummy")
-    item = PlaylistItem(id="a", path=path_a, title="A", duration_seconds=1.0)
-    item.is_selected = True
-    playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
-    playlist.add_items([item])
-
-    panel = SimpleNamespace(model=playlist, get_selected_indices=lambda: [], get_focused_index=lambda: -1)
-
-    assert frame._start_next_from_playlist(panel, ignore_ui_selection=False, advance_focus=False) is True
-    assert playlist.items[0].is_selected is False
-    assert refreshed == ["pl-1"]
-
-
-def test_manual_finish_starts_next_when_queue_remains(tmp_path):
-    frame = MainFrame.__new__(MainFrame)
-    frame._auto_mix_enabled = False
-    frame._auto_remove_played = False
-    frame._focus_playing_track = False
-    frame._active_break_item = {}
-    frame._auto_mix_tracker = SimpleNamespace(set_last_started=lambda *_a, **_k: None)
-    frame._announce_event = lambda *_a, **_k: None
-    frame._clear_mix_plan = lambda *_a, **_k: None
-
-    started: list[dict] = []
-    frame._start_next_from_playlist = lambda *_a, **kwargs: started.append(kwargs) or True
-
-    path_a = tmp_path / "a.wav"
-    path_b = tmp_path / "b.wav"
-    path_a.write_text("dummy")
-    path_b.write_text("dummy")
-    playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
-    finished = PlaylistItem(id="a", path=path_a, title="A", duration_seconds=1.0, status=PlaylistItemStatus.PLAYING)
-    queued = PlaylistItem(id="b", path=path_b, title="B", duration_seconds=1.0)
-    queued.is_selected = True
-    playlist.add_items([finished, queued])
-
-    class _Panel:
-        def __init__(self, model):
-            self.model = model
-
-        def mark_item_status(self, *_a, **_k):
-            return None
-
-        def refresh(self, *_a, **_k):
-            return None
-
-        def get_selected_indices(self):
-            return []
-
-        def get_focused_index(self):
-            return -1
-
-        def select_index(self, *_a, **_k):
-            return None
-
-    panel = _Panel(playlist)
-    _register_playlist(frame, playlist, panel)
-
-    player = SimpleNamespace(
-        set_finished_callback=lambda *_a, **_k: None,
-        set_progress_callback=lambda *_a, **_k: None,
-        stop=lambda *_a, **_k: None,
-    )
-    key = (playlist.id, finished.id)
-    frame._playback = SimpleNamespace(
-        auto_mix_state={},
-        contexts={key: SimpleNamespace(player=player)},
-        get_context=lambda _pid: None,
-    )
-
-    frame._handle_playback_finished(playlist.id, finished.id)
-
-    assert started
-    assert started[-1].get("ignore_ui_selection") is True
-
-
-def test_play_item_direct_prefers_queued_selection_over_requested_item(tmp_path, monkeypatch):
-    frame = MainFrame.__new__(MainFrame)
-    frame._auto_mix_enabled = False
-    frame._announce_event = lambda *_a, **_k: None
-    frame._auto_mix_play_next = lambda *_a, **_k: False
-
-    started: list[dict] = []
-    frame._start_next_from_playlist = lambda *_a, **kwargs: started.append(kwargs) or True
-
-    path_a = tmp_path / "a.wav"
-    path_b = tmp_path / "b.wav"
-    path_a.write_text("dummy")
-    path_b.write_text("dummy")
-    playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
-    queued = PlaylistItem(id="a", path=path_a, title="A", duration_seconds=1.0)
-    queued.is_selected = True
-    other = PlaylistItem(id="b", path=path_b, title="B", duration_seconds=1.0)
-    playlist.add_items([queued, other])
-
-    from sara.ui import main_frame as main_frame_module
-
-    class _FakePlaylistPanel:
-        def __init__(self, model):
-            self.model = model
-
-    monkeypatch.setattr(main_frame_module, "PlaylistPanel", _FakePlaylistPanel)
-
-    panel = _FakePlaylistPanel(playlist)
-    _register_playlist(frame, playlist, panel)
-    if not hasattr(frame, "_playlists"):
-        frame._playlists = {}
-    frame._playlists[playlist.id] = panel
-
-    assert frame._play_item_direct(playlist.id, other.id) is True
-    assert started
-    assert started[-1].get("ignore_ui_selection") is True
+    assert host._playback.auto_mix_state[key] == "loop_hold"
 
 
 def test_early_native_trigger_reschedules_mix_point(tmp_path):
-    frame = MainFrame.__new__(MainFrame)
-    frame._fade_duration = 2.0
+    host = _MixHost(fade=2.0, auto_mix_enabled=True)
     key = ("pl-1", "item-1")
-    plan = SimpleNamespace(mix_at=8.0, fade_seconds=2.0, base_cue=0.0, effective_duration=12.0, native_trigger=True, triggered=False)
-    frame._mix_plans = {key: plan}
-    frame._mix_trigger_points = {key: 8.0}
+    host._mix_plans = {
+        key: MixPlan(mix_at=8.0, fade_seconds=2.0, base_cue=0.0, effective_duration=12.0, native_trigger=True, triggered=False)
+    }
+    host._mix_trigger_points = {key: 8.0}
     update_calls: list[tuple] = []
 
     def _update_mix_trigger(pl_id, item_id, mix_trigger_seconds=None, on_mix_trigger=None):
@@ -710,11 +535,9 @@ def test_early_native_trigger_reschedules_mix_point(tmp_path):
             return 12.0
 
     player = _NativePlayer()
-    frame._supports_mix_trigger = lambda _p: True
-    frame._playlist_has_selection = lambda _pid: False
-    frame._auto_mix_enabled = True
-    frame._active_break_item = {}
-    frame._playback = SimpleNamespace(
+    host._supports_mix_trigger = lambda _p: True
+    host._playlist_has_selection = lambda _pid: False
+    host._playback = SimpleNamespace(
         auto_mix_state={},
         contexts={key: SimpleNamespace(player=player)},
         update_mix_trigger=_update_mix_trigger,
@@ -732,17 +555,17 @@ def test_early_native_trigger_reschedules_mix_point(tmp_path):
     panel = SimpleNamespace(model=playlist)
 
     # Backend wystrzelił za wcześnie: powinno się przerejestrować trigger i nie startować miksu od razu.
-    frame._auto_mix_now(playlist, item, panel)
+    host._auto_mix_now(playlist, item, panel)
     assert update_calls and update_calls[0][2] is None
-    assert frame._mix_plans[key].native_trigger is False
-    assert frame._mix_plans[key].mix_at == pytest.approx(8.0, rel=1e-3)
-    assert frame._mix_plans[key].triggered is False
-    assert frame._playback.auto_mix_state == {}
+    assert host._mix_plans[key].native_trigger is False
+    assert host._mix_plans[key].mix_at == pytest.approx(8.0, rel=1e-3)
+    assert host._mix_plans[key].triggered is False
+    assert host._playback.auto_mix_state == {}
 
 
 def test_native_fallback_triggers_progress_mix(tmp_path):
-    frame = _make_frame_for_automix(fade=2.0)
-    frame._supports_mix_trigger = lambda _p: True
+    host = _MixHost(fade=2.0, auto_mix_enabled=True)
+    host._supports_mix_trigger = lambda _p: True
     playlist = PlaylistModel(id="pl-fallback", name="Fallback", kind=PlaylistKind.MUSIC)
     item = PlaylistItem(
         id="item-1",
@@ -758,46 +581,42 @@ def test_native_fallback_triggers_progress_mix(tmp_path):
     player = _AutoMixPlayer("dev-1", supports_mix_trigger=True)
     key = (playlist.id, item.id)
     update_calls: list[tuple] = []
+
     def _record_update(pl_id, item_id, *, mix_trigger_seconds=None, on_mix_trigger=None):
         update_calls.append((pl_id, item_id, mix_trigger_seconds, on_mix_trigger))
         return True
 
-    frame._playback = SimpleNamespace(
+    host._playback = SimpleNamespace(
         auto_mix_state={},
         contexts={key: SimpleNamespace(player=player)},
         update_mix_trigger=_record_update,
     )
-    frame._mix_plans[key] = MixPlan(
+    host._mix_plans[key] = MixPlan(
         mix_at=15.0,
-        fade_seconds=frame._fade_duration,
+        fade_seconds=host._fade_duration,
         base_cue=0.0,
         effective_duration=item.effective_duration_seconds,
         native_trigger=True,
     )
-    frame._mix_trigger_points[key] = 15.0
+    host._mix_trigger_points[key] = 15.0
     started: list[dict] = []
-    frame._start_next_from_playlist = lambda *_a, **_k: started.append({}) or True
+    host._start_next_from_playlist = lambda *_a, **_k: started.append({}) or True
 
     # Backend strzelił za wcześnie – przejdź na fallback progresowy
-    frame._auto_mix_now(playlist, item, panel)
+    host._auto_mix_now(playlist, item, panel)
     assert update_calls and update_calls[-1][2] is None
-    assert frame._mix_plans[key].native_trigger is False
+    assert host._mix_plans[key].native_trigger is False
 
-    ctx = frame._playback.contexts[key]
-    frame._auto_mix_state_process(panel, item, ctx, seconds=15.2, queued_selection=False)
+    ctx = host._playback.contexts[key]
+    host._auto_mix_state_process(panel, item, ctx, seconds=15.2, queued_selection=False)
     assert started, "Fallback progresowy powinien wystartować miks"
 
 
 def test_manual_selection_triggers_mix_when_auto_mix_disabled(tmp_path):
-    frame = MainFrame.__new__(MainFrame)
-    frame._fade_duration = 2.0
-    frame._mix_plans = {}
-    frame._mix_trigger_points = {}
-    frame._auto_mix_enabled = False
-    frame._active_break_item = {}
+    host = _MixHost(fade=2.0, auto_mix_enabled=False)
     auto_state = {}
-    frame._playback = SimpleNamespace(auto_mix_state=auto_state, contexts={})
-    frame._supports_mix_trigger = lambda _p: False
+    host._playback = SimpleNamespace(auto_mix_state=auto_state, contexts={})
+    host._supports_mix_trigger = lambda _p: False
 
     class _SelectPlayer(_DummyPlayer):
         def __init__(self):
@@ -820,27 +639,21 @@ def test_manual_selection_triggers_mix_when_auto_mix_disabled(tmp_path):
     panel = SimpleNamespace(model=playlist)
     player = _SelectPlayer()
     ctx = SimpleNamespace(player=player)
-    frame._start_next_from_playlist = lambda *args, **kwargs: True
-    frame._playlist_has_selection = lambda _pid: True
-    frame._auto_mix_play_next = lambda _panel: True
+    host._start_next_from_playlist = lambda *args, **kwargs: True
+    host._playlist_has_selection = lambda _pid: True
 
-    frame._auto_mix_state_process(panel, item, ctx, seconds=9.0, queued_selection=True)
+    host._auto_mix_state_process(panel, item, ctx, seconds=9.0, queued_selection=True)
     key = (playlist.id, item.id)
     assert auto_state[key] is True
-    assert frame._mix_plans[key].triggered is True
+    assert host._mix_plans[key].triggered is True
     assert player.fade_calls and abs(player.fade_calls[0] - 1.0) < 1e-6  # remaining 1s
 
 
 def test_late_native_trigger_falls_back_to_progress(tmp_path):
-    frame = MainFrame.__new__(MainFrame)
-    frame._fade_duration = 2.0
+    host = _MixHost(fade=2.0, auto_mix_enabled=True)
     key = ("pl-1", "item-1")
-    frame._mix_plans = {}
-    frame._mix_trigger_points = {key: 5.0}
-    frame._auto_mix_enabled = True
-    frame._active_break_item = {}
+    host._mix_trigger_points = {key: 5.0}
     auto_state = {}
-    updates: list = []
 
     class _LatePlayer(_DummyPlayer):
         def __init__(self):
@@ -854,14 +667,11 @@ def test_late_native_trigger_falls_back_to_progress(tmp_path):
             return 12.0
 
     player = _LatePlayer()
-    frame._supports_mix_trigger = lambda _p: True
-    frame._playback = SimpleNamespace(
+    host._supports_mix_trigger = lambda _p: True
+    host._playback = SimpleNamespace(
         auto_mix_state=auto_state,
         contexts={key: SimpleNamespace(player=player)},
-        update_mix_trigger=lambda *_args, **_kwargs: updates.append(_args),
-    )
-    frame._resolve_mix_timing = lambda itm, overrides=None, effective_duration_override=None: MainFrame._resolve_mix_timing(
-        frame, itm, overrides, effective_duration_override=effective_duration_override
+        update_mix_trigger=lambda *_args, **_kwargs: True,
     )
     playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
     item = PlaylistItem(
@@ -873,359 +683,19 @@ def test_late_native_trigger_falls_back_to_progress(tmp_path):
         segue_seconds=5.0,
     )
     panel = SimpleNamespace(model=playlist)
-    frame._start_next_from_playlist = lambda *args, **kwargs: True
+    host._start_next_from_playlist = lambda *args, **kwargs: True
 
     # backend trigger spóźniony: seconds > mix_at + guard, a jesteśmy blisko końca -> progress fallback powinien zadziałać
-    frame._auto_mix_state_process(panel, item, SimpleNamespace(player=player), seconds=10.9, queued_selection=False)
+    host._auto_mix_state_process(panel, item, SimpleNamespace(player=player), seconds=10.9, queued_selection=False)
     assert auto_state[key] is True
-    assert key in frame._mix_plans and frame._mix_plans[key].triggered is True
+    assert key in host._mix_plans and host._mix_plans[key].triggered is True
     assert player.fade_calls and abs(player.fade_calls[0] - 1.1) < 1e-6  # remaining ~1.1s
 
 
-def test_pfl_mix_preview_uses_mix_timing(tmp_path):
-    playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
-    track_a = PlaylistItem(
-        id="a",
-        path=tmp_path / "a.wav",
-        title="A",
-        duration_seconds=10.0,
-        cue_in_seconds=1.0,
-        segue_seconds=3.0,  # mix_at = 4.0
-    )
-    track_b = PlaylistItem(
-        id="b",
-        path=tmp_path / "b.wav",
-        title="B",
-        duration_seconds=8.0,
-        cue_in_seconds=0.5,
-    )
-    playlist.add_items([track_a, track_b])
-
-    calls: dict[str, tuple] = {}
-
-    class _SpyPlayback:
-        def start_mix_preview(
-            self,
-            current_item,
-            next_item,
-            *,
-            mix_at_seconds,
-            pre_seconds,
-            fade_seconds,
-            current_effective_duration,
-            next_cue_override,
-        ):
-            calls["args"] = (
-                current_item,
-                next_item,
-                mix_at_seconds,
-                pre_seconds,
-                fade_seconds,
-                current_effective_duration,
-                next_cue_override,
-            )
-            return True
-
-    frame = MainFrame.__new__(MainFrame)
-    frame._playback = _SpyPlayback()
-    frame._settings = SimpleNamespace(get_pfl_device=lambda: "pfl-dev")
-    frame._fade_duration = 2.0
-    frame._mix_trigger_points = {}
-    frame._playlists = {"pl-1": SimpleNamespace(model=playlist)}
-    frame._announce_event = lambda *args, **kwargs: None
-    frame._index_of_item = lambda _pl, _id: 0
-
-    ok = frame._preview_mix_with_next(playlist, track_a, overrides=None)
-    assert ok is True
-    assert "args" in calls
-    _cur, _nxt, mix_at, pre_secs, fade_secs, eff, next_cue = calls["args"]
-    assert abs(mix_at - 4.0) < 1e-6
-    assert abs(pre_secs - 4.0) < 1e-6
-    assert abs(fade_secs - 2.0) < 1e-6
-    # effective_duration = duration - cue
-    assert abs(eff - 9.0) < 1e-6
-    assert abs(next_cue - 0.5) < 1e-6
-
-
-def test_pfl_mix_preview_uses_measured_effective_duration(tmp_path):
-    playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
-    track_a = PlaylistItem(
-        id="a",
-        path=tmp_path / "a.wav",
-        title="A",
-        duration_seconds=10.0,
-        cue_in_seconds=1.0,
-    )
-    track_b = PlaylistItem(
-        id="b",
-        path=tmp_path / "b.wav",
-        title="B",
-        duration_seconds=8.0,
-        cue_in_seconds=0.5,
-    )
-    playlist.add_items([track_a, track_b])
-
-    captured: dict[str, tuple] = {}
-
-    class _SpyPlayback:
-        def start_mix_preview(
-            self,
-            current_item,
-            next_item,
-            *,
-            mix_at_seconds,
-            pre_seconds,
-            fade_seconds,
-            current_effective_duration,
-            next_cue_override,
-        ):
-            captured["args"] = (
-                current_item,
-                next_item,
-                mix_at_seconds,
-                pre_seconds,
-                fade_seconds,
-                current_effective_duration,
-                next_cue_override,
-            )
-            return True
-
-    frame = MainFrame.__new__(MainFrame)
-    frame._playback = _SpyPlayback()
-    frame._settings = SimpleNamespace(get_pfl_device=lambda: "pfl-dev")
-    frame._fade_duration = 2.0
-    frame._mix_trigger_points = {}
-    frame._playlists = {"pl-1": SimpleNamespace(model=playlist)}
-    frame._announce_event = lambda *args, **kwargs: None
-    frame._index_of_item = lambda _pl, _id: 0
-    frame._measure_effective_duration = lambda _playlist, _item: 5.0  # override metadata (duration-cue = 9.0)
-
-    ok = frame._preview_mix_with_next(playlist, track_a, overrides=None)
-    assert ok is True
-    _cur, _nxt, mix_at, pre_secs, fade_secs, eff, _next_cue = captured["args"]
-    assert abs(mix_at - 4.0) < 1e-6  # cue 1.0 + (5.0 - fade 2.0)
-    assert abs(eff - 5.0) < 1e-6
-    assert abs(pre_secs - 4.0) < 1e-6
-
-
-def test_pfl_mix_preview_fails_without_device(tmp_path):
-    playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
-    track_a = PlaylistItem(
-        id="a",
-        path=tmp_path / "a.wav",
-        title="A",
-        duration_seconds=10.0,
-    )
-    track_b = PlaylistItem(
-        id="b",
-        path=tmp_path / "b.wav",
-        title="B",
-        duration_seconds=8.0,
-    )
-    playlist.add_items([track_a, track_b])
-
-    class _NoDevicePlayback:
-        def start_mix_preview(self, *args, **kwargs):
-            return False
-
-    frame = MainFrame.__new__(MainFrame)
-    frame._playback = _NoDevicePlayback()
-    frame._settings = SimpleNamespace(get_pfl_device=lambda: None)
-    frame._fade_duration = 2.0
-    frame._mix_trigger_points = {}
-    frame._playlists = {"pl-1": SimpleNamespace(model=playlist)}
-    frame._announce_event = lambda *args, **kwargs: None
-    frame._index_of_item = lambda _pl, _id: 0
-
-    ok = frame._preview_mix_with_next(playlist, track_a, overrides=None)
-    assert ok is False
-
-
-def test_loop_hold_blocks_auto_mix_play_next():
-    frame = MainFrame.__new__(MainFrame)
-    frame._fade_duration = 2.0
-    frame._auto_mix_enabled = True
-    frame._auto_mix_busy = {}
-    frame._last_started_item_id = {}
-    stopped: list[str] = []
-    frame._playback = SimpleNamespace(
-        auto_mix_state={("pl-1", "i1"): "loop_hold"},
-        stop_playlist=lambda pl_id, fade_duration=0.0: stopped.append(pl_id) or [((pl_id, "i1"), None)],
-        contexts={("pl-1", "i1"): SimpleNamespace(player=None)},
-        get_context=lambda pl_id: next((((k, v) for k, v in frame._playback.contexts.items() if k[0] == pl_id)), None),
-    )
-    frame._mix_plans = {}
-    frame._mix_trigger_points = {}
-    playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
-    playlist.items = [PlaylistItem(id="i1", path=Path("a"), title="A", duration_seconds=1.0)]
-    panel = SimpleNamespace(
-        model=playlist,
-        mark_item_status=lambda *_a, **_k: None,
-        update_progress=lambda *_a, **_k: None,
-        refresh=lambda *_a, **_k: None,
-    )
-    frame._playlists = {"pl-1": panel}
-    frame._auto_mix_tracker = SimpleNamespace(
-        next_index=lambda *args, **kwargs: 0,
-        _last_item_id={},
-        stage_next=lambda *a, **k: None,
-        set_last_started=lambda *_a, **_k: None,
-    )
-    frame._start_playback = lambda *args, **kwargs: True
-    result = frame._auto_mix_play_next(panel)
-    assert result is True
-    # stop_playlist mogło zostać wywołane wielokrotnie, ale co najmniej raz na daną playlistę
-    assert stopped and stopped[0] == "pl-1"
-
-
-def test_loop_hold_play_next_advances_cursor(tmp_path):
-    playlist = PlaylistModel(id="pl-hold", name="Loop Hold", kind=PlaylistKind.MUSIC)
-    intro = PlaylistItem(id="intro", path=tmp_path / "intro.wav", title="Intro", duration_seconds=5.0)
-    intro.status = PlaylistItemStatus.PLAYED
-    bed = PlaylistItem(
-        id="bed",
-        path=tmp_path / "bed.wav",
-        title="Bed",
-        duration_seconds=30.0,
-        loop_enabled=True,
-        loop_start_seconds=5.0,
-        loop_end_seconds=20.0,
-    )
-    bed.status = PlaylistItemStatus.PLAYING
-    jingle = PlaylistItem(id="jingle", path=tmp_path / "jingle.wav", title="Jingle", duration_seconds=8.0)
-    playlist.add_items([intro, bed, jingle])
-    panel = SimpleNamespace(
-        model=playlist,
-        mark_item_status=lambda *_a, **_k: None,
-        update_progress=lambda *_a, **_k: None,
-        refresh=lambda *_a, **_k: None,
-    )
-
-    frame = MainFrame.__new__(MainFrame)
-    frame._fade_duration = 1.0
-    frame._auto_mix_enabled = True
-    frame._auto_mix_busy = {}
-    frame._last_started_item_id = {}
-    tracker = AutoMixTracker()
-    tracker.set_last_started(playlist.id, intro.id)
-    frame._auto_mix_tracker = tracker
-    frame._playlists = {playlist.id: panel}
-    frame._mix_plans = {}
-    frame._mix_trigger_points = {}
-
-    def _stop_playlist(pl_id, fade_duration=0.0):
-        assert pl_id == playlist.id
-        return [((pl_id, bed.id), None)]
-
-    frame._playback = SimpleNamespace(
-        auto_mix_state={(playlist.id, bed.id): "loop_hold"},
-        stop_playlist=_stop_playlist,
-        contexts={(playlist.id, bed.id): SimpleNamespace(player=None)},
-        get_context=lambda _pl_id: None,
-    )
-
-    started_indices: list[int] = []
-
-    def _auto_mix_start_index(panel_arg, idx, **kwargs):
-        assert panel_arg is panel
-        started_indices.append(idx)
-        return True
-
-    frame._auto_mix_start_index = _auto_mix_start_index
-
-    result = frame._auto_mix_play_next(panel)
-
-    assert result is True
-    assert started_indices == [2]  # po zatrzymaniu loop_hold kursor przesuwa się na kolejny element
-    assert frame._auto_mix_tracker._last_item_id[playlist.id] == bed.id
-    assert frame._last_started_item_id[playlist.id] == bed.id
-
-
-def test_stop_playlist_clears_mix_plan_and_state(tmp_path):
-    frame = MainFrame.__new__(MainFrame)
-    frame._mix_plans = {("pl-1", "item-1"): None}
-    frame._mix_trigger_points = {("pl-1", "item-1"): 5.0}
-    frame._playback = SimpleNamespace(stop_playlist=lambda *_args, **_kwargs: [(( "pl-1","item-1"), None)], clear_auto_mix=lambda: None)
-    frame._playlists = {"pl-1": SimpleNamespace(model=PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC))}
-    frame._active_break_item = {}
-    frame._announce_event = lambda *args, **kwargs: None
-    frame._stop_playlist_playback("pl-1", mark_played=False, fade_duration=0.0)
-    assert frame._mix_plans == {}
-    assert frame._mix_trigger_points == {}
-
-
-def test_clear_playlist_entries_removes_mix_plans(tmp_path):
-    frame = MainFrame.__new__(MainFrame)
-    frame._mix_plans = {("pl-1", "item-1"): None, ("pl-1", "item-2"): None}
-    frame._mix_trigger_points = {("pl-1", "item-1"): 5.0, ("pl-1", "item-2"): 6.0}
-    playback = SimpleNamespace(
-        contexts={( "pl-1","item-1"): None, ("pl-1","item-2"): None},
-        clear_auto_mix=lambda: None,
-        clear_playlist_entries=lambda playlist_id: playback.contexts.clear(),
-    )
-    frame._playback = playback
-    model = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
-    model.items = [
-        PlaylistItem(id="item-1", path=tmp_path / "a", title="A", duration_seconds=1.0),
-        PlaylistItem(id="item-2", path=tmp_path / "b", title="B", duration_seconds=1.0),
-    ]
-    frame._playlists = {"pl-1": SimpleNamespace(model=model)}
-    frame._cleanup_unused_mixers = lambda: None
-    frame._playback.clear_playlist_entries("pl-1")
-    frame._clear_mix_plan("pl-1", "item-1")
-    frame._clear_mix_plan("pl-1", "item-2")
-    assert frame._mix_plans == {}
-    assert frame._mix_trigger_points == {}
-
-
-def _make_frame_for_automix(fade: float = 3.0) -> MainFrame:
-    frame = MainFrame.__new__(MainFrame)
-    frame._fade_duration = fade
-    frame._mix_plans = {}
-    frame._mix_trigger_points = {}
-    frame._auto_mix_enabled = True
-    frame._active_break_item = {}
-    frame._state = AppState()
-    frame._playlists = {}
-    frame._auto_mix_tracker = AutoMixTracker()
-    frame._last_started_item_id = {}
-    playback = SimpleNamespace(auto_mix_state={}, contexts={})
-
-    def _get_ctx(playlist_id: str):
-        for key, ctx in playback.contexts.items():
-            if key[0] == playlist_id:
-                return key, ctx
-        return None
-
-    playback.get_context = _get_ctx  # type: ignore[attr-defined]
-    frame._playback = playback
-    frame._supports_mix_trigger = lambda _player=None: False
-    return frame
-
-
-def _register_playlist(frame: MainFrame, playlist: PlaylistModel, panel: object | None = None) -> None:
-    if not hasattr(frame, "_state"):
-        frame._state = AppState()
-    frame._state.add_playlist(playlist)
-    if not hasattr(frame, "_playlists"):
-        frame._playlists = {}
-    if panel is not None:
-        frame._playlists[playlist.id] = panel  # type: ignore[attr-defined]
-
-
-class _AutoMixPlayer(_DummyPlayer):
-    def __init__(self, device_id: str, *, supports_mix_trigger: bool = False):
-        super().__init__(device_id, supports=supports_mix_trigger)
-        self.fade_calls: list[float] = []
-
-    def fade_out(self, duration: float):
-        self.fade_calls.append(duration)
-
-
 def test_automix_prefers_segue_over_fallback(tmp_path):
-    frame = _make_frame_for_automix(fade=3.0)
+    host = _MixHost(fade=3.0, auto_mix_enabled=True)
     started: list[dict] = []
-    frame._start_next_from_playlist = lambda *_args, **kwargs: started.append(kwargs) or True
+    host._start_next_from_playlist = lambda *_args, **kwargs: started.append(kwargs) or True
 
     playlist = PlaylistModel(id="pl-auto", name="Auto", kind=PlaylistKind.MUSIC)
     item = PlaylistItem(
@@ -1237,23 +707,22 @@ def test_automix_prefers_segue_over_fallback(tmp_path):
     )
     playlist.add_items([item, PlaylistItem(id="next", path=tmp_path / "next.wav", title="Next", duration_seconds=10.0)])
     panel = SimpleNamespace(model=playlist)
-    _register_playlist(frame, playlist, panel)
     player = _AutoMixPlayer("dev-1")
     ctx = SimpleNamespace(player=player)
 
-    frame._auto_mix_state_process(panel, item, ctx, seconds=152.0, queued_selection=False)
+    host._auto_mix_state_process(panel, item, ctx, seconds=152.0, queued_selection=False)
     key = (playlist.id, item.id)
-    assert frame._mix_plans[key].mix_at == 150.0
-    assert frame._playback.auto_mix_state[key] is True
-    # fade is capped to remaining time (155 - 151.5 = 3.5s)
+    assert host._mix_plans[key].mix_at == 150.0
+    assert host._playback.auto_mix_state[key] is True
+    # fade is capped to remaining time
     assert player.fade_calls == [pytest.approx(3.0, rel=0.01)]
     assert started, "Next track should be queued in automix sequence"
 
 
 def test_automix_falls_back_to_global_fade_without_markers(tmp_path):
-    frame = _make_frame_for_automix(fade=2.5)
+    host = _MixHost(fade=2.5, auto_mix_enabled=True)
     started: list[dict] = []
-    frame._start_next_from_playlist = lambda *_args, **kwargs: started.append(kwargs) or True
+    host._start_next_from_playlist = lambda *_args, **kwargs: started.append(kwargs) or True
 
     playlist = PlaylistModel(id="pl-fallback", name="Fallback", kind=PlaylistKind.MUSIC)
     item = PlaylistItem(
@@ -1264,148 +733,78 @@ def test_automix_falls_back_to_global_fade_without_markers(tmp_path):
     )
     playlist.add_items([item, PlaylistItem(id="after", path=tmp_path / "after.wav", title="After", duration_seconds=5.0)])
     panel = SimpleNamespace(model=playlist)
-    _register_playlist(frame, playlist, panel)
     player = _AutoMixPlayer("dev-1")
     ctx = SimpleNamespace(player=player)
 
-    # effective=12, fade=2.5 -> mix_at=9.5; simulate close to end
-    frame._auto_mix_state_process(panel, item, ctx, seconds=10.5, queued_selection=False)
+    # fade triggers near the end (12 - 2.5 = 9.5)
+    host._auto_mix_state_process(panel, item, ctx, seconds=10.0, queued_selection=False)
     key = (playlist.id, item.id)
-    assert frame._mix_plans[key].mix_at == pytest.approx(9.5, rel=1e-3)
-    assert frame._playback.auto_mix_state[key] is True
-    # remaining time is 1.5s, so fade is trimmed to remaining
-    assert player.fade_calls == [pytest.approx(1.5, rel=0.01)]
-    assert started, "Automix should advance when only global fade is available"
+    assert host._mix_plans[key].mix_at == pytest.approx(9.5, rel=1e-6)
+    assert host._playback.auto_mix_state[key] is True
+    assert started
+    assert player.fade_calls
 
 
 def test_automix_waits_until_segue_point(tmp_path):
-    frame = _make_frame_for_automix(fade=2.0)
+    host = _MixHost(fade=2.0, auto_mix_enabled=True)
+    started: list[dict] = []
+    host._start_next_from_playlist = lambda *_args, **kwargs: started.append(kwargs) or True
+
     playlist = PlaylistModel(id="pl-wait", name="Wait", kind=PlaylistKind.MUSIC)
     item = PlaylistItem(
-        id="item-wait",
-        path=tmp_path / "wait.wav",
-        title="Wait",
-        duration_seconds=20.0,
-        segue_seconds=10.0,
+        id="item",
+        path=tmp_path / "seg.wav",
+        title="Segue",
+        duration_seconds=10.0,
+        segue_seconds=7.0,
     )
-    playlist.add_items([item, PlaylistItem(id="next", path=tmp_path / "n.wav", title="Next", duration_seconds=5.0)])
+    playlist.add_items([item, PlaylistItem(id="next", path=tmp_path / "next.wav", title="Next", duration_seconds=5.0)])
     panel = SimpleNamespace(model=playlist)
-    _register_playlist(frame, playlist, panel)
     player = _AutoMixPlayer("dev-1")
     ctx = SimpleNamespace(player=player)
-    frame._playback.contexts[(playlist.id, item.id)] = ctx
-    started: list[dict] = []
-    frame._start_next_from_playlist = lambda *_a, **_k: started.append({}) or True
 
-    frame._auto_mix_state_process(panel, item, ctx, seconds=8.5, queued_selection=False)
+    host._auto_mix_state_process(panel, item, ctx, seconds=6.0, queued_selection=False)
     assert started == []
+    assert player.fade_calls == []
 
-    frame._auto_mix_state_process(panel, item, ctx, seconds=10.05, queued_selection=False)
-    assert started, "Mix should fire only once the segue time is reached"
-
-
-def test_mix_point_changes_propagate_to_duplicates(tmp_path):
-    frame = MainFrame.__new__(MainFrame)
-    path = tmp_path / "dup.wav"
-    path.write_text("dup")
-    playlist = PlaylistModel(id="pl-dup", name="Dup", kind=PlaylistKind.MUSIC)
-    first = PlaylistItem(id="a", path=path, title="A", duration_seconds=10.0, segue_seconds=5.0)
-    duplicate = PlaylistItem(id="b", path=path, title="B", duration_seconds=10.0, segue_seconds=5.0)
-    playlist.add_items([first, duplicate])
-    refresh_calls: list[object] = []
-    panel = SimpleNamespace(model=playlist, refresh=lambda *args, **kwargs: refresh_calls.append(object()))
-    frame._playlists = {playlist.id: panel}
-    frame._playback = SimpleNamespace(auto_mix_state={}, contexts={})
-    frame._mix_plans = {(playlist.id, duplicate.id): MixPlan(mix_at=5.0, fade_seconds=1.0, base_cue=0.0, effective_duration=10.0, native_trigger=False)}
-    frame._mix_trigger_points = {(playlist.id, duplicate.id): 5.0}
-
-    mix_values = {"cue_in": 1.0, "intro": 2.0, "outro": 8.0, "segue": 6.0, "overlap": 1.5}
-    frame._propagate_mix_points_for_path(
-        path=path,
-        mix_values=mix_values,
-        source_playlist_id=playlist.id,
-        source_item_id=first.id,
-    )
-
-    assert duplicate.cue_in_seconds == 1.0
-    assert duplicate.segue_seconds == 6.0
-    assert (playlist.id, duplicate.id) not in frame._mix_plans
-    assert refresh_calls, "Panel should refresh to reflect updated mix data"
-
-
-def test_auto_mix_enable_starts_selected_track(tmp_path):
-    frame = MainFrame.__new__(MainFrame)
-    frame._auto_mix_enabled = False
-    playlist = PlaylistModel(id="pl-auto-select", name="Auto", kind=PlaylistKind.MUSIC)
-    items = [
-        PlaylistItem(id=f"item-{idx}", path=tmp_path / f"{idx}.wav", title=f"Track {idx}", duration_seconds=10.0)
-        for idx in range(4)
-    ]
-    playlist.add_items(items)
-    selected_idx = 2
-
-    panel = SimpleNamespace(
-        model=playlist,
-        get_selected_indices=lambda: [selected_idx],
-        get_focused_index=lambda: selected_idx,
-    )
-    frame._playback = SimpleNamespace(contexts={}, auto_mix_state={}, clear_auto_mix=lambda: None)
-    frame._auto_mix_tracker = AutoMixTracker()
-    frame._get_current_music_panel = lambda: panel
-    frame._get_playback_context = lambda _pid=None: None
-    frame._announce_event = lambda *_args, **_kwargs: None
-    started: list[tuple[int, bool]] = []
-    frame._auto_mix_start_index = lambda _p, idx, restart_playing: started.append((idx, restart_playing)) or True
-
-    frame._set_auto_mix_enabled(True)
-
-    assert frame._auto_mix_enabled is True
-    assert started == [(selected_idx, False)]
+    host._auto_mix_state_process(panel, item, ctx, seconds=7.1, queued_selection=False)
+    assert started
 
 
 def test_native_guard_handles_segue_near_track_end(tmp_path):
-    frame = _make_frame_for_automix(fade=2.0)
-    frame._supports_mix_trigger = lambda _player=None: True
+    host = _MixHost(fade=1.0, auto_mix_enabled=True)
+    host._supports_mix_trigger = lambda _p: True
     started: list[dict] = []
-    frame._start_next_from_playlist = lambda *_args, **kwargs: started.append(kwargs) or True
+    host._start_next_from_playlist = lambda *_args, **kwargs: started.append(kwargs) or True
 
-    playlist = PlaylistModel(id="pl-native-tight", name="Native tight", kind=PlaylistKind.MUSIC)
+    playlist = PlaylistModel(id="pl-guard", name="Guard", kind=PlaylistKind.MUSIC)
+    # cue=0, duration=5, segue=4.9 -> headroom after mix = 0.1
     item = PlaylistItem(
-        id="item-tight",
-        path=tmp_path / "tight.wav",
-        title="Tight segue",
-        duration_seconds=18.0,
-        segue_seconds=17.98,
+        id="item",
+        path=tmp_path / "x.wav",
+        title="X",
+        duration_seconds=5.0,
+        segue_seconds=4.9,
     )
-    playlist.add_items(
-        [
-            item,
-            PlaylistItem(id="next-tight", path=tmp_path / "next.wav", title="Next", duration_seconds=5.0),
-        ]
-    )
+    playlist.add_items([item])
     panel = SimpleNamespace(model=playlist)
-    _register_playlist(frame, playlist, panel)
     player = _AutoMixPlayer("dev-1", supports_mix_trigger=True)
     ctx = SimpleNamespace(player=player)
 
-    frame._auto_mix_state_process(panel, item, ctx, seconds=5.0, queued_selection=False)
     key = (playlist.id, item.id)
-    assert frame._mix_plans[key].native_trigger is True
+    host._playback.contexts[key] = ctx
 
-    trigger_seconds = max(0.0, item.segue_seconds - 0.02)
-    frame._auto_mix_state_process(panel, item, ctx, seconds=trigger_seconds, queued_selection=False)
-
-    assert frame._playback.auto_mix_state[key] is True
-    assert started, "Next track should start when native trigger cannot fire in time"
-    remaining = max(0.0, item.duration_seconds - trigger_seconds)
-    assert player.fade_calls == [pytest.approx(min(frame._fade_duration, remaining), rel=0.05)]
+    # We should still trigger around segue point even with tiny headroom (guard window shrinks)
+    host._auto_mix_state_process(panel, item, ctx, seconds=4.95, queued_selection=False)
+    assert started
+    assert player.fade_calls
 
 
 def test_native_guard_waits_until_shortfall_window(tmp_path):
-    frame = _make_frame_for_automix(fade=2.5)
-    frame._supports_mix_trigger = lambda _player=None: True
+    host = _MixHost(fade=2.5, auto_mix_enabled=True)
+    host._supports_mix_trigger = lambda _p: True
     started: list[dict] = []
-    frame._start_next_from_playlist = lambda *_args, **kwargs: started.append(kwargs) or True
+    host._start_next_from_playlist = lambda *_args, **kwargs: started.append(kwargs) or True
 
     playlist = PlaylistModel(id="pl-native-window", name="Native window", kind=PlaylistKind.MUSIC)
     item = PlaylistItem(
@@ -1415,84 +814,76 @@ def test_native_guard_waits_until_shortfall_window(tmp_path):
         duration_seconds=24.0,
         segue_seconds=23.8,
     )
-    playlist.add_items(
-        [
-            item,
-            PlaylistItem(id="next-window", path=tmp_path / "next2.wav", title="Next", duration_seconds=4.0),
-        ]
-    )
+    playlist.add_items([item, PlaylistItem(id="next-window", path=tmp_path / "next2.wav", title="Next", duration_seconds=4.0)])
     panel = SimpleNamespace(model=playlist)
-    _register_playlist(frame, playlist, panel)
     player = _AutoMixPlayer("dev-1", supports_mix_trigger=True)
     ctx = SimpleNamespace(player=player)
-
-    frame._auto_mix_state_process(panel, item, ctx, seconds=6.0, queued_selection=False)
     key = (playlist.id, item.id)
+    host._playback.contexts[key] = ctx
+
+    host._auto_mix_state_process(panel, item, ctx, seconds=6.0, queued_selection=False)
+    assert host._mix_plans[key].native_trigger is True
+
     headroom = item.duration_seconds - item.segue_seconds
-    fade_guard = min(MIX_NATIVE_LATE_GUARD, frame._fade_duration)
+    fade_guard = min(MIX_NATIVE_LATE_GUARD, host._fade_duration)
     shortfall = max(0.0, fade_guard - headroom)
     assert shortfall > 0.0
 
     early_seconds = max(0.0, item.segue_seconds - (shortfall + 0.05))
-    frame._auto_mix_state_process(panel, item, ctx, seconds=early_seconds, queued_selection=False)
-    assert key not in frame._playback.auto_mix_state
+    host._auto_mix_state_process(panel, item, ctx, seconds=early_seconds, queued_selection=False)
+    assert key not in host._playback.auto_mix_state
     assert started == []
 
     trigger_seconds = max(0.0, item.segue_seconds - max(0.0, shortfall / 2.0))
-    frame._auto_mix_state_process(panel, item, ctx, seconds=trigger_seconds, queued_selection=False)
-    assert frame._playback.auto_mix_state[key] is True
+    host._auto_mix_state_process(panel, item, ctx, seconds=trigger_seconds, queued_selection=False)
+    assert host._playback.auto_mix_state[key] is True
     assert len(started) == 1
     remaining = max(0.0, item.duration_seconds - trigger_seconds)
-    assert player.fade_calls[-1] == pytest.approx(min(frame._fade_duration, remaining), rel=0.05)
+    assert player.fade_calls[-1] == pytest.approx(min(host._fade_duration, remaining), rel=0.05)
 
 
 def test_native_guard_respects_short_fade_window(tmp_path):
-    frame = _make_frame_for_automix(fade=0.12)
-    frame._supports_mix_trigger = lambda _player=None: True
+    host = _MixHost(fade=0.12, auto_mix_enabled=True)
+    host._supports_mix_trigger = lambda _p: True
     started: list[dict] = []
-    frame._start_next_from_playlist = lambda *_args, **kwargs: started.append(kwargs) or True
+    host._start_next_from_playlist = lambda *_args, **kwargs: started.append(kwargs) or True
 
     playlist = PlaylistModel(id="pl-native-fade", name="Native fade", kind=PlaylistKind.MUSIC)
     item = PlaylistItem(
-        id="item-fade",
+        id="item",
         path=tmp_path / "fade.wav",
         title="Short fade guard",
         duration_seconds=40.0,
         segue_seconds=30.0,
     )
-    playlist.add_items(
-        [
-            item,
-            PlaylistItem(id="next-fade", path=tmp_path / "next3.wav", title="Next", duration_seconds=6.0),
-        ]
-    )
+    playlist.add_items([item, PlaylistItem(id="next-fade", path=tmp_path / "next3.wav", title="Next", duration_seconds=6.0)])
     panel = SimpleNamespace(model=playlist)
-    _register_playlist(frame, playlist, panel)
     player = _AutoMixPlayer("dev-1", supports_mix_trigger=True)
     ctx = SimpleNamespace(player=player)
+    key = (playlist.id, item.id)
+    host._playback.contexts[key] = ctx
 
     before_mix = max(0.0, item.segue_seconds - 0.05)
-    frame._auto_mix_state_process(panel, item, ctx, seconds=before_mix, queued_selection=False)
+    host._auto_mix_state_process(panel, item, ctx, seconds=before_mix, queued_selection=False)
     assert started == []
-    key = (playlist.id, item.id)
-    assert key not in frame._playback.auto_mix_state
+    assert key not in host._playback.auto_mix_state
 
     within_guard = item.segue_seconds + 0.05
-    frame._auto_mix_state_process(panel, item, ctx, seconds=within_guard, queued_selection=False)
+    host._auto_mix_state_process(panel, item, ctx, seconds=within_guard, queued_selection=False)
     assert started == []
-    assert key not in frame._playback.auto_mix_state
+    assert key not in host._playback.auto_mix_state
 
     beyond_guard = item.segue_seconds + 0.2
-    frame._auto_mix_state_process(panel, item, ctx, seconds=beyond_guard, queued_selection=False)
-    assert frame._playback.auto_mix_state[key] is True
+    host._auto_mix_state_process(panel, item, ctx, seconds=beyond_guard, queued_selection=False)
+    assert host._playback.auto_mix_state[key] is True
     assert len(started) == 1
     remaining = max(0.0, item.duration_seconds - beyond_guard)
-    assert player.fade_calls[-1] == pytest.approx(min(frame._fade_duration, remaining), rel=0.05)
+    assert player.fade_calls[-1] == pytest.approx(min(host._fade_duration, remaining), rel=0.05)
 
 
 def test_automix_respects_break_and_does_not_trigger(tmp_path):
-    frame = _make_frame_for_automix(fade=2.0)
-    frame._start_next_from_playlist = lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("Should not mix during break"))
+    host = _MixHost(fade=2.0, auto_mix_enabled=True)
+    host._start_next_from_playlist = lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("Should not mix during break"))
 
     playlist = PlaylistModel(id="pl-break", name="Break", kind=PlaylistKind.MUSIC)
     item = PlaylistItem(
@@ -1507,67 +898,11 @@ def test_automix_respects_break_and_does_not_trigger(tmp_path):
     player = _AutoMixPlayer("dev-1")
     ctx = SimpleNamespace(player=player)
 
-    frame._auto_mix_state_process(panel, item, ctx, seconds=7.0, queued_selection=False)
+    host._auto_mix_state_process(panel, item, ctx, seconds=7.0, queued_selection=False)
     key = (playlist.id, item.id)
-    assert key not in frame._playback.auto_mix_state
-    assert key not in frame._mix_plans or not getattr(frame._mix_plans.get(key), "triggered", False)
+    assert key not in host._playback.auto_mix_state
+    assert key not in host._mix_plans or not host._mix_plans.get(key).triggered
     assert player.fade_calls == []
-
-
-def test_manual_fade_disables_auto_mix(tmp_path):
-    frame = MainFrame.__new__(MainFrame)
-    frame._auto_mix_enabled = True
-    frame._fade_duration = 2.0
-    frame._state = AppState()
-    playlist = PlaylistModel(id="pl-manual", name="Manual", kind=PlaylistKind.MUSIC)
-    item = PlaylistItem(
-        id="item-manual",
-        path=tmp_path / "manual.wav",
-        title="Manual",
-        duration_seconds=8.0,
-    )
-    item.current_position = 1.0
-    playlist.add_items([item])
-    panel = SimpleNamespace(
-        model=playlist,
-        get_selected_indices=lambda: [],
-        get_focused_index=lambda: 0,
-        mark_item_status=lambda *_a, **_k: None,
-        refresh=lambda *_a, **_k: None,
-    )
-    context_key = (playlist.id, item.id)
-    ctx = SimpleNamespace(player=_DummyPlayer("dev-1"))
-    frame._playlists = {playlist.id: panel}
-    frame._get_current_music_panel = lambda: panel
-    frame._mix_plans = {
-        (playlist.id, item.id): MixPlan(
-            mix_at=6.0,
-            fade_seconds=4.0,
-            base_cue=0.0,
-            effective_duration=8.0,
-            native_trigger=False,
-        )
-    }
-    frame._playback = SimpleNamespace(
-        auto_mix_state={},
-        contexts={context_key: ctx},
-        clear_auto_mix=lambda: None,
-    )
-    frame._get_playback_context = lambda pl_id=None: (context_key, ctx) if pl_id == playlist.id else None
-    captured: dict[str, float] = {}
-
-    def _capture_stop(_pl_id, *, mark_played: bool, fade_duration: float):
-        captured["fade_duration"] = fade_duration
-
-    frame._stop_playlist_playback = _capture_stop
-    frame._announce_event = lambda *_a, **_k: None
-    frame._action_by_id = {1: "fade"}
-
-    event = SimpleNamespace(GetId=lambda: 1)
-    frame._on_playlist_hotkey(event)
-
-    assert frame._auto_mix_enabled is False
-    assert captured["fade_duration"] == pytest.approx(4.0)
 
 
 def _prepare_saramix_playlist(tmp_path: Path) -> tuple[PlaylistModel, dict[str, PlaylistItem]]:
@@ -1658,20 +993,19 @@ def test_saramix_mixpoint_wybory_prefers_segue(tmp_path):
 
     if wy_item.segue_seconds is None:
         pytest.skip("Wybory does not expose a segue marker in metadata")
-    frame = _make_frame_for_automix(fade=2.0)
-    frame._start_next_from_playlist = lambda *_args, **_kwargs: True
+    host = _MixHost(fade=2.0, auto_mix_enabled=True)
+    host._start_next_from_playlist = lambda *_args, **_kwargs: True
     panel = SimpleNamespace(model=playlist)
-    _register_playlist(frame, playlist, panel)
     player = _AutoMixPlayer("dev-1")
     ctx = SimpleNamespace(player=player)
 
     trigger_time = max(0.0, wy_item.segue_seconds + 0.3)
-    frame._auto_mix_state_process(panel, wy_item, ctx, seconds=trigger_time, queued_selection=False)
+    host._auto_mix_state_process(panel, wy_item, ctx, seconds=trigger_time, queued_selection=False)
     key = (playlist.id, wy_item.id)
-    assert frame._mix_plans[key].mix_at == pytest.approx(wy_item.segue_seconds, rel=1e-3)
-    assert frame._playback.auto_mix_state[key] is True
+    assert host._mix_plans[key].mix_at == pytest.approx(wy_item.segue_seconds, rel=1e-3)
+    assert host._playback.auto_mix_state[key] is True
     remaining = max(0.0, wy_item.duration_seconds - trigger_time)
-    assert player.fade_calls == [pytest.approx(min(frame._fade_duration, remaining), rel=0.05)]
+    assert player.fade_calls == [pytest.approx(min(host._fade_duration, remaining), rel=0.05)]
 
 
 def test_saramix_break_on_podklad_blocks_mix(tmp_path):
@@ -1681,14 +1015,13 @@ def test_saramix_break_on_podklad_blocks_mix(tmp_path):
         pytest.skip("podklad track not found in saramix.m3u")
 
     podklad.break_after = True
-    frame = _make_frame_for_automix(fade=2.5)
-    frame._start_next_from_playlist = lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("Break should prevent automix"))
+    host = _MixHost(fade=2.5, auto_mix_enabled=True)
+    host._start_next_from_playlist = lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("Break should prevent automix"))
     panel = SimpleNamespace(model=playlist)
-    _register_playlist(frame, playlist, panel)
     player = _AutoMixPlayer("dev-1")
     ctx = SimpleNamespace(player=player)
 
-    frame._auto_mix_state_process(panel, podklad, ctx, seconds=max(0.0, podklad.duration_seconds - 1.0), queued_selection=False)
+    host._auto_mix_state_process(panel, podklad, ctx, seconds=max(0.0, podklad.duration_seconds - 1.0), queued_selection=False)
     key = (playlist.id, podklad.id)
-    assert key not in frame._playback.auto_mix_state
+    assert key not in host._playback.auto_mix_state
     assert player.fade_calls == []

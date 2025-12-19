@@ -6,7 +6,7 @@ from threading import Event
 import numpy as np
 
 from sara.audio.engine import AudioDevice, BackendType
-from sara.audio import mixer as mixer_mod
+import sara.audio.mixer.device_mixer as mixer_mod
 from sara.audio.mixer import DeviceMixer, NullOutputStream
 
 

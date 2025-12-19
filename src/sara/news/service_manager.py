@@ -22,17 +22,6 @@ class NewsServiceManager:
         self._loader = loader
         self._saver = saver
         self._error_handler = error_handler or (lambda message: None)
-
-    def __init__(
-        self,
-        *,
-        loader: Callable[[Path], NewsService] = load_news_service,
-        saver: Callable[[Path, NewsService], None] = save_news_service,
-        error_handler: Callable[[str], None] | None = None,
-    ) -> None:
-        self._loader = loader
-        self._saver = saver
-        self._error_handler = error_handler or (lambda message: None)
         self._last_path: Path | None = None
 
     @property
