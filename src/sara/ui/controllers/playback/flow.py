@@ -154,7 +154,11 @@ def start_next_from_playlist(
                 playing_item.is_selected = False
                 playing_item.status = PlaylistItemStatus.PLAYED
                 playing_item.current_position = playing_item.effective_duration_seconds
-                panel.refresh(focus=False)
+                update_item = getattr(panel, "update_item_display", None)
+                if callable(update_item):
+                    update_item(playing_item.id)
+                else:
+                    panel.refresh(focus=False)
                 frame._stop_playlist_playback(
                     playlist.id,
                     mark_played=True,

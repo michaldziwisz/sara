@@ -9,8 +9,6 @@ import wx
 
 from sara.core.i18n import gettext as _
 from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistKind
-from sara.ui.controllers.playback.panel_refresh import capture_panel_selection, refresh_preserving_selection
-from sara.ui.nvda_sleep import notify_nvda_play_next
 from sara.ui.playlist_panel import PlaylistPanel
 
 
@@ -110,8 +108,12 @@ def start_playback(
 
     if not item.path.exists():
         item.status = PlaylistItemStatus.PENDING
-        panel.mark_item_status(item.id, item.status)
-        panel.refresh()
+        update_item = getattr(panel, "update_item_display", None)
+        if callable(update_item):
+            update_item(item.id)
+        else:
+            panel.mark_item_status(item.id, item.status)
+            panel.refresh()
         frame._announce_event("playback_errors", _("File %s does not exist") % item.path)
         return False
 
@@ -151,11 +153,6 @@ def start_playback(
 
     start_seconds = item.cue_in_seconds or 0.0
     logger.debug("UI: invoking playback controller for item %s at %.3fs", item.id, start_seconds)
-
-    try:
-        notify_nvda_play_next()
-    except Exception as exc:  # pylint: disable=broad-except
-        logger.warning("NVDA play-next notify failed: %s", exc)
 
     if frame._auto_mix_enabled and playlist.kind is PlaylistKind.MUSIC and item.status is PlaylistItemStatus.PLAYED:
         logger.debug("UI: automix skip PLAYED item=%s -> force next sequence", item.id)
@@ -215,8 +212,12 @@ def start_playback(
         return False
     if result is None:
         item.status = PlaylistItemStatus.PENDING
-        panel.mark_item_status(item.id, item.status)
-        panel.refresh()
+        update_item = getattr(panel, "update_item_display", None)
+        if callable(update_item):
+            update_item(item.id)
+        else:
+            panel.mark_item_status(item.id, item.status)
+            panel.refresh()
         return False
     played_tracks_logger = getattr(frame, "_played_tracks_logger", None)
     if played_tracks_logger:
@@ -242,26 +243,21 @@ def start_playback(
         native_trigger=native_trigger,
     )
     frame._adjust_duration_and_mix_trigger(panel, playlist, item, result)
+    item.status = PlaylistItemStatus.PLAYING
+    update_item = getattr(panel, "update_item_display", None)
+    if callable(update_item):
+        update_item(item.id)
+    else:
+        panel.mark_item_status(item.id, PlaylistItemStatus.PLAYING)
+        if frame._focus_playing_track:
+            panel.refresh(focus=False)
 
-    previous_selection, previous_focus = capture_panel_selection(panel)
-
-    panel.mark_item_status(item.id, PlaylistItemStatus.PLAYING)
     if frame._auto_mix_enabled and playlist.kind is PlaylistKind.MUSIC and frame._focus_playing_track:
         idx = playlist.index_of(item.id)
         if idx >= 0:
-            panel.refresh(selected_indices=[idx], focus=True)
-        else:
-            panel.refresh(focus=False)
-    else:
-        if frame._focus_playing_track:
-            panel.refresh(focus=False)
-        else:
-            refresh_preserving_selection(
-                panel,
-                previous_selection=previous_selection,
-                previous_focus=previous_focus,
-                item_count=len(playlist.items),
-            )
+            select_index = getattr(panel, "select_index", None)
+            if callable(select_index):
+                select_index(idx, focus=True)
     frame._focus_lock[playlist.id] = False
     frame._last_started_item_id[playlist.id] = item.id
     if playlist.kind is PlaylistKind.MUSIC and item.break_after:

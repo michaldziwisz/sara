@@ -6,7 +6,6 @@ import logging
 
 from sara.core.i18n import gettext as _
 from sara.core.playlist import PlaylistKind
-from sara.ui.controllers.playback.panel_refresh import capture_panel_selection, refresh_preserving_selection
 
 
 logger = logging.getLogger(__name__)
@@ -41,23 +40,18 @@ def handle_playback_finished(frame, playlist_id: str, item_id: str) -> None:
         played_tracks_logger.on_finished(model, item)
 
     removed = False
-    previous_selection, previous_focus = capture_panel_selection(panel)
     if frame._auto_remove_played:
         removed_item = frame._remove_item_from_playlist(panel, model, item_index, refocus=True)
         frame._announce_event("playback_events", _("Removed played track %s") % removed_item.title)
         removed = True
     else:
         model.mark_played(item_id)
-        panel.mark_item_status(item_id, item.status)
-        if frame._focus_playing_track:
-            panel.refresh(focus=False)
+        update_item = getattr(panel, "update_item_display", None)
+        if callable(update_item):
+            update_item(item_id)
         else:
-            refresh_preserving_selection(
-                panel,
-                previous_selection=previous_selection,
-                previous_focus=previous_focus,
-                item_count=len(model.items),
-            )
+            panel.mark_item_status(item_id, item.status)
+            panel.refresh(focus=False)
 
     if context:
         try:

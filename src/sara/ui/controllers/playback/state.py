@@ -64,9 +64,13 @@ def stop_playlist_playback(
         else:
             item.status = PlaylistItemStatus.PENDING
             item.current_position = 0.0
-        panel.mark_item_status(item.id, item.status)
-        panel.update_progress(item.id)
-        panel.refresh()
+        update_item = getattr(panel, "update_item_display", None)
+        if callable(update_item):
+            update_item(item.id)
+        else:
+            panel.mark_item_status(item.id, item.status)
+            panel.update_progress(item.id)
+            panel.refresh()
 
 
 def cancel_active_playback(frame, playlist_id: str, mark_played: bool = False) -> None:

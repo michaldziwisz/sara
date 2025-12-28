@@ -8,6 +8,7 @@ import wx
 
 from sara.core.i18n import gettext as _
 from sara.core.playlist import PlaylistItem, PlaylistKind, PlaylistModel
+from sara.ui.nvda_sleep import notify_nvda_play_next
 
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,10 @@ def on_global_play_next(frame, _event: wx.CommandEvent) -> None:
         return
 
     if frame._alternate_play_next:
+        try:
+            notify_nvda_play_next()
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.warning("NVDA play-next notify failed: %s", exc)
         if not frame._play_next_alternate():
             frame._announce_event("playback_events", _("No scheduled tracks available"))
         return
@@ -85,6 +90,11 @@ def on_global_play_next(frame, _event: wx.CommandEvent) -> None:
     if panel is None:
         frame._announce_event("playlist", _("Select a playlist first"))
         return
+
+    try:
+        notify_nvda_play_next()
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.warning("NVDA play-next notify failed: %s", exc)
 
     # Automix: Play Next zawsze gra kolejny pending w kolejności; break zatrzymuje i wybieramy pending za ostatnim PLAYED.
     if frame._auto_mix_enabled and panel.model.kind is PlaylistKind.MUSIC:
@@ -110,15 +120,29 @@ def handle_playback_progress(frame, playlist_id: str, item_id: str, seconds: flo
     panel = frame._playlists.get(playlist_id)
     if not panel:
         return
-    # automix: ignoruj wczesne wyzwalanie z powodu UI selection – sekwencją zarządza tracker
-    if frame._auto_mix_enabled and panel.model.kind is PlaylistKind.MUSIC:
-        queued_selection = False
     item = next((track for track in panel.model.items if track.id == item_id), None)
     if not item:
         return
     item.update_progress(seconds)
-    panel.update_progress(item_id)
-    frame._maybe_focus_playing_item(panel, item_id)
+    update_panel = True
+    focused_playlist_id = None
+    focused_getter = getattr(frame, "_focused_playlist_id", None)
+    if callable(focused_getter):
+        try:
+            focused_playlist_id = focused_getter()
+        except Exception:
+            focused_playlist_id = None
+    if focused_playlist_id is not None and focused_playlist_id != playlist_id:
+        update_panel = False
+    if (
+        update_panel
+        and getattr(frame, "_focus_playing_track", False)
+        and getattr(frame, "_focus_lock", {}).get(playlist_id)
+    ):
+        update_panel = False
+    if update_panel:
+        panel.update_progress(item_id)
+        frame._maybe_focus_playing_item(panel, item_id)
     frame._consider_intro_alert(panel, item, context_entry, seconds)
     frame._consider_track_end_alert(panel, item, context_entry)
 

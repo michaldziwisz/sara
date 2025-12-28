@@ -125,6 +125,15 @@ class PlaylistPanel(wx.Panel):
                 self._list_ctrl.SetItem(index, 3, item.progress_display)
                 break
 
+    def update_item_display(self, item_id: str) -> None:
+        for index, item in enumerate(self.model.items):
+            if item.id == item_id:
+                self._list_ctrl.SetItem(index, 0, self._display_title(item))
+                self._list_ctrl.SetItem(index, 1, item.duration_display)
+                self._list_ctrl.SetItem(index, 2, self._status_label(item))
+                self._list_ctrl.SetItem(index, 3, item.progress_display)
+                break
+
     def append_items(self, items: list[PlaylistItem]) -> None:
         self.model.add_items(items)
         current_count = self._list_ctrl.GetItemCount()
@@ -139,9 +148,19 @@ class PlaylistPanel(wx.Panel):
     def update_progress(self, item_id: str) -> None:
         for index, item in enumerate(self.model.items):
             if item.id == item_id:
-                self._list_ctrl.SetItem(index, 3, item.progress_display)
+                progress_text = item.progress_display
+                try:
+                    if self._list_ctrl.GetItemText(index, 3) != progress_text:
+                        self._list_ctrl.SetItem(index, 3, progress_text)
+                except Exception:
+                    self._list_ctrl.SetItem(index, 3, progress_text)
                 if item.status is PlaylistItemStatus.PLAYING:
-                    self._list_ctrl.SetItem(index, 2, self._status_label(item))
+                    status_text = self._status_label(item)
+                    try:
+                        if self._list_ctrl.GetItemText(index, 2) != status_text:
+                            self._list_ctrl.SetItem(index, 2, status_text)
+                    except Exception:
+                        self._list_ctrl.SetItem(index, 2, status_text)
                 break
 
     def _display_title(self, item: PlaylistItem) -> str:
