@@ -30,7 +30,6 @@ class AnnouncementService:
         if not self._settings.get_announcement_enabled(category):
             return
         if spoken_message == "":
-            self._cancel()
             return
         self._speak(spoken_message if spoken_message is not None else message)
 
@@ -41,4 +40,3 @@ class AnnouncementService:
 __all__ = [
     "AnnouncementService",
 ]
-

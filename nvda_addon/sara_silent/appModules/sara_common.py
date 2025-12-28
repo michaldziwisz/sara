@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -28,6 +29,7 @@ _PLAYLIST_SPEECH_WINDOW_MS = 1200
 _MANUAL_SPEECH_GESTURE_TIMEOUT_MS = 1500
 _PLAY_NEXT_SILENCE_WINDOW_MS = 1200
 _ANNOUNCEMENT_PREFIX = "\uf8ff"
+_MAX_LOG_TEXT_CHARS = 160
 
 
 def _available_role(name: str) -> Role | None:
@@ -48,6 +50,27 @@ def _gesture_variants(keys: tuple[str, ...]) -> set[str]:
         variants.add(f"kb:{normalized}")
         variants.add(f"kb(desktop):{normalized}")
     return variants
+
+
+def _debug_logging_enabled() -> bool:
+    checker = getattr(log, "isEnabledFor", None)
+    if not callable(checker):
+        return False
+    try:
+        return bool(checker(logging.DEBUG))
+    except Exception:
+        return False
+
+
+def _truncate_for_log(text: str, *, limit: int = _MAX_LOG_TEXT_CHARS) -> str:
+    if not text:
+        return ""
+    flattened = str(text).replace("\r", " ").replace("\n", " ").strip()
+    if len(flattened) <= limit:
+        return flattened
+    return f"{flattened[:limit]}… (len={len(flattened)})"
+
+
 def _is_playlist_window(obj: Any) -> bool:
     def _matches(candidate: Any) -> bool:
         try:
@@ -338,7 +361,6 @@ class AppModule(AppModule):
     def _trigger_playback_silence(self, reason: str, obj: Any | None) -> None:
         self._play_next_silence_until = time.monotonic() + (_PLAY_NEXT_SILENCE_WINDOW_MS / 1000)
         self._end_playlist_speech_window()
-        cancelSpeech()
         self._update_mute_state(reason, obj)
 
     def _speak_current_playlist_item(self) -> None:
@@ -494,41 +516,45 @@ class AppModule(AppModule):
         if mtime <= self._last_play_next_signal_mtime:
             return
         self._last_play_next_signal_mtime = mtime
-        try:
-            log.info("SARA sleep addon external play-next signal detected")
-        except Exception:
-            pass
+        if _debug_logging_enabled():
+            try:
+                log.debug("SARA sleep addon external play-next signal detected")
+            except Exception:
+                pass
         self._trigger_playback_silence("play-next-signal", api.getFocusObject())
 
     def _suppress_event_for_play_next(self, event_name: str, obj: Any) -> bool:
         if not self._is_play_next_silence_active():
             return False
-        _, reason = _describe_window(obj)
-        if reason != "playing" and event_name != "valueChange":
+        if event_name not in {"foreground", "gainFocus", "selection", "stateChange", "valueChange"}:
             return False
-        try:
-            log.info(
-                "SARA sleep addon suppressing %s during play-next focus=%s/%s",
-                event_name,
-                getattr(obj, "windowClassName", None),
-                getattr(obj, "role", None),
-            )
-        except Exception:
-            pass
-        cancelSpeech()
+        if event_name != "valueChange" and not _is_playing_entry(obj):
+            return False
+        if _debug_logging_enabled():
+            try:
+                log.debug(
+                    "SARA sleep addon suppressing %s during play-next focus=%s/%s",
+                    event_name,
+                    getattr(obj, "windowClassName", None),
+                    getattr(obj, "role", None),
+                )
+            except Exception:
+                pass
         self._update_mute_state(f"{event_name}-suppressed", obj)
         return True
 
     @staticmethod
     def _log_event(name: str, obj: Any) -> None:
+        if not _debug_logging_enabled():
+            return
         try:
             text, _ = _describe_window(obj)
-            log.info(
+            log.debug(
                 "SARA sleep addon %s focus=%s/%s text=%s",
                 name,
                 getattr(obj, "windowClassName", None),
                 getattr(obj, "role", None),
-                text,
+                _truncate_for_log(text),
             )
         except Exception:
             pass

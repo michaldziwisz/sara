@@ -44,4 +44,4 @@ def test_announcement_silence_and_empty_spoken(tmp_path):
     service.announce("general", "First")
     service.announce("general", "stop", spoken_message="")
     service.silence()
-    assert spoken == ["First", "CANCEL", "CANCEL"]
+    assert spoken == ["First", "CANCEL"]
