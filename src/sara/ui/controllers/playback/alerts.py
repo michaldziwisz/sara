@@ -6,6 +6,7 @@ from importlib.resources import files
 import logging
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import wx
 
@@ -13,10 +14,29 @@ from sara.audio.engine import Player
 from sara.core.i18n import gettext as _
 from sara.core.playlist import PlaylistItem
 from sara.ui.playback_controller import PlaybackContext
-from sara.ui.playlist_panel import PlaylistPanel
+
+if TYPE_CHECKING:  # pragma: no cover
+    from sara.ui.playlist_panel import PlaylistPanel
 
 
 logger = logging.getLogger(__name__)
+
+
+def _is_preview_active(frame) -> bool:
+    """Return True when PFL preview is currently active (players still playing)."""
+    context = getattr(frame, "_playback", None)
+    context = getattr(context, "preview_context", None)
+    if not context:
+        return False
+    players = getattr(context, "players", None) or []
+    for player in players:
+        is_active = getattr(player, "is_active", None)
+        try:
+            if callable(is_active) and is_active():
+                return True
+        except Exception:  # pylint: disable=broad-except
+            continue
+    return False
 
 
 def compute_intro_remaining(item: PlaylistItem, absolute_seconds: float | None = None) -> float | None:
@@ -65,23 +85,29 @@ def cleanup_intro_alert_player(frame, player: Player) -> None:
 
 def play_intro_alert(frame) -> bool:
     if frame._intro_alert_seconds <= 0:
+        logger.debug("Intro alert: disabled (threshold=%.3f)", frame._intro_alert_seconds)
         return False
     if not frame._settings.get_announcement_enabled("intro_alert"):
+        logger.debug("Intro alert: disabled via announcement settings")
         return False
     pfl_device_id = frame._playback.pfl_device_id or frame._settings.get_pfl_device()
     if not pfl_device_id:
+        logger.debug("Intro alert: no PFL device configured")
         return False
-    if frame._playback.preview_context:
+    if _is_preview_active(frame):
+        logger.debug("Intro alert: suppressed (PFL preview active)")
         return False
     known_devices = {device.id for device in frame._audio_engine.get_devices()}
     if pfl_device_id not in known_devices:
         frame._audio_engine.refresh_devices()
         known_devices = {device.id for device in frame._audio_engine.get_devices()}
     if pfl_device_id not in known_devices:
+        logger.debug("Intro alert: PFL device unavailable id=%s", pfl_device_id)
         return False
     try:
-        player = frame._audio_engine.create_player(pfl_device_id)
+        player = frame._audio_engine.create_player_instance(pfl_device_id)
     except Exception:  # pylint: disable=broad-except
+        logger.debug("Intro alert: failed to create player for device=%s", pfl_device_id, exc_info=True)
         return False
 
     try:
@@ -91,6 +117,7 @@ def play_intro_alert(frame) -> bool:
             tmp.write(source.read())
             tmp_path = Path(tmp.name)
     except Exception:  # pylint: disable=broad-except
+        logger.debug("Intro alert: failed to load beep resource", exc_info=True)
         try:
             player.stop()
         except Exception:  # pylint: disable=broad-except
@@ -106,6 +133,7 @@ def play_intro_alert(frame) -> bool:
         player.set_progress_callback(None)
         player.play("intro-alert", str(tmp_path), allow_loop=False)
     except Exception:  # pylint: disable=broad-except
+        logger.debug("Intro alert: failed to start playback on PFL device=%s", pfl_device_id, exc_info=True)
         try:
             player.stop()
         except Exception:  # pylint: disable=broad-except
@@ -117,6 +145,7 @@ def play_intro_alert(frame) -> bool:
         return False
 
     frame._intro_alert_players.append((player, tmp_path))
+    logger.debug("Intro alert: started on PFL device=%s", pfl_device_id)
     return True
 
 
@@ -137,23 +166,26 @@ def cleanup_track_end_alert_player(frame, player: Player) -> None:
 
 def play_track_end_alert(frame) -> bool:
     if frame._track_end_alert_seconds <= 0:
+        logger.debug("Track-end alert: disabled (threshold=%.3f)", frame._track_end_alert_seconds)
         return False
     if not frame._settings.get_announcement_enabled("track_end_alert"):
+        logger.debug("Track-end alert: disabled via announcement settings")
         return False
     pfl_device_id = frame._playback.pfl_device_id or frame._settings.get_pfl_device()
     if not pfl_device_id:
-        return False
-    if frame._playback.preview_context:
+        logger.debug("Track-end alert: no PFL device configured")
         return False
     known_devices = {device.id for device in frame._audio_engine.get_devices()}
     if pfl_device_id not in known_devices:
         frame._audio_engine.refresh_devices()
         known_devices = {device.id for device in frame._audio_engine.get_devices()}
     if pfl_device_id not in known_devices:
+        logger.debug("Track-end alert: PFL device unavailable id=%s", pfl_device_id)
         return False
     try:
-        player = frame._audio_engine.create_player(pfl_device_id)
+        player = frame._audio_engine.create_player_instance(pfl_device_id)
     except Exception:  # pylint: disable=broad-except
+        logger.debug("Track-end alert: failed to create player for device=%s", pfl_device_id, exc_info=True)
         return False
 
     try:
@@ -163,6 +195,7 @@ def play_track_end_alert(frame) -> bool:
             tmp.write(source.read())
             tmp_path = Path(tmp.name)
     except Exception:  # pylint: disable=broad-except
+        logger.debug("Track-end alert: failed to load audio resource", exc_info=True)
         try:
             player.stop()
         except Exception:  # pylint: disable=broad-except
@@ -178,6 +211,7 @@ def play_track_end_alert(frame) -> bool:
         player.set_progress_callback(None)
         player.play("track-end-alert", str(tmp_path), allow_loop=False)
     except Exception:  # pylint: disable=broad-except
+        logger.debug("Track-end alert: failed to start playback on PFL device=%s", pfl_device_id, exc_info=True)
         try:
             player.stop()
         except Exception:  # pylint: disable=broad-except
@@ -189,6 +223,7 @@ def play_track_end_alert(frame) -> bool:
         return False
 
     frame._track_end_alert_players.append((player, tmp_path))
+    logger.debug("Track-end alert: started on PFL device=%s", pfl_device_id)
     return True
 
 
@@ -216,6 +251,7 @@ def consider_intro_alert(
     if remaining <= threshold:
         played = frame._play_intro_alert()
         if not played:
+            logger.debug("Intro alert: audio unavailable -> announcing remaining item=%s", item.id)
             frame._announce_intro_remaining(remaining)
         context.intro_alert_triggered = True
 
@@ -235,9 +271,16 @@ def consider_track_end_alert(
         return
     duration = item.effective_duration_seconds
     if duration <= 0:
+        logger.debug("Track-end alert: skipped (duration<=0) item=%s", item.id)
         context.track_end_alert_triggered = True
         return
     if duration < threshold:
+        logger.debug(
+            "Track-end alert: skipped (duration<threshold) item=%s duration=%.3f threshold=%.3f",
+            item.id,
+            duration,
+            threshold,
+        )
         context.track_end_alert_triggered = True
         return
     remaining = duration - item.current_position
@@ -245,7 +288,16 @@ def consider_track_end_alert(
         context.track_end_alert_triggered = True
         return
     if remaining <= threshold:
+        logger.debug(
+            "Track-end alert: trigger item=%s remaining=%.3f threshold=%.3f duration=%.3f pos=%.3f",
+            item.id,
+            remaining,
+            threshold,
+            duration,
+            item.current_position,
+        )
         played = frame._play_track_end_alert()
         if not played:
+            logger.debug("Track-end alert: audio unavailable -> announcing remaining item=%s", item.id)
             frame._announce_track_end_remaining(remaining)
         context.track_end_alert_triggered = True

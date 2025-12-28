@@ -122,9 +122,8 @@ def handle_folder_preview(frame, playlist_id: str, item_id: str) -> None:
     if frame._active_folder_preview == (playlist_id, item_id):
         if frame._playback.preview_context:
             stop_preview(frame)
-        else:
-            frame._active_folder_preview = None
-        return
+            return
+        frame._active_folder_preview = None
     if frame._playback.start_preview(item, 0.0):
         frame._active_folder_preview = (playlist_id, item_id)
 

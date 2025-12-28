@@ -95,14 +95,33 @@ def start_preview(
         return False
 
     try:
-        player = controller._audio_engine.create_player(pfl_device_id)
+        player = controller._audio_engine.create_player_instance(pfl_device_id)
     except Exception as exc:  # pylint: disable=broad-except
         controller._announce("pfl", _("Failed to prepare PFL preview: %s") % exc)
         return False
 
     finished_event: Event | None = None
+    fallback_finished = Event()
+
+    def _on_finished(_item_id: str) -> None:
+        try:
+            fallback_finished.set()
+        except Exception:  # pylint: disable=broad-except
+            pass
+        context = controller._preview_context
+        if not context:
+            return
+        if context.item_path != item.path:
+            return
+        if context.device_id != pfl_device_id:
+            return
+        players = getattr(context, "players", None) or []
+        if player not in players:
+            return
+        controller._preview_context = None
+
     try:
-        player.set_finished_callback(None)
+        player.set_finished_callback(_on_finished)
         player.set_progress_callback(None)
         player.set_gain_db(item.replay_gain_db)
         finished_event = player.play(
@@ -124,6 +143,9 @@ def start_preview(
         except Exception:  # pylint: disable=broad-except
             pass
         return False
+
+    if finished_event is None:
+        finished_event = fallback_finished
 
     controller._preview_context = PreviewContext(
         players=[player],
@@ -167,8 +189,8 @@ def start_mix_preview(
         return False
 
     try:
-        player_a = controller._audio_engine.create_player(pfl_device_id)
-        player_b = controller._audio_engine.create_player(pfl_device_id)
+        player_a = controller._audio_engine.create_player_instance(pfl_device_id)
+        player_b = controller._audio_engine.create_player_instance(pfl_device_id)
     except Exception as exc:  # pylint: disable=broad-except
         controller._announce("pfl", _("Failed to prepare mix preview: %s") % exc)
         return False
@@ -281,4 +303,3 @@ def update_loop_preview(controller, item: PlaylistItem, start: float, end: float
         controller._announce("pfl", _("Preview error: %s") % exc)
         return False
     return True
-
