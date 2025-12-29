@@ -159,7 +159,15 @@ class SoundDevicePlayer:
                         if not fade_stop_event.is_set():
                             fade_stop_event.set()
                         if same_item and not interrupted:
+                            on_finished = None
+                            with self._lock:
+                                on_finished = self._on_finished
                             self.stop()
+                            if on_finished and target_item:
+                                try:
+                                    on_finished(target_item)
+                                except Exception as exc:  # pylint: disable=broad-except
+                                    logger.error("Błąd callbacku zakończenia odtwarzania: %s", exc)
 
                 thread = Thread(target=_runner, daemon=True)
                 self._fade_thread = thread

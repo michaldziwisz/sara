@@ -75,6 +75,13 @@ def stop(player, *, _from_fade: bool = False) -> None:
             player._manager.channel_remove_sync(player._stream, player._mix_sync_handle)
             player._mix_sync_handle = 0
             player._mix_sync_proc = None
+        if getattr(player, "_mix_end_sync_handle", 0):
+            try:
+                player._manager.channel_remove_sync(player._stream, player._mix_end_sync_handle)
+            except Exception:
+                pass
+            player._mix_end_sync_handle = 0
+            player._mix_end_sync_proc = None
         player._manager.stream_free(player._stream)
         player._stream = 0
     if player._device_context:
@@ -179,8 +186,13 @@ def fade_out(player, duration: float) -> None:
                 except Exception:
                     pass
             else:
+                finished_item_id = player._current_item_id
                 player.stop(_from_fade=True)
+                if player._finished_callback and finished_item_id:
+                    try:
+                        player._finished_callback(finished_item_id)
+                    except Exception:
+                        pass
 
     player._fade_thread = threading.Thread(target=_runner, args=(target_stream,), daemon=True)
     player._fade_thread.start()
-

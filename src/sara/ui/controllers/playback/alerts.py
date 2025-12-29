@@ -111,7 +111,7 @@ def play_intro_alert(frame) -> bool:
         return False
 
     try:
-        resource = files("sara.audio.media").joinpath("beep.wav")
+        resource = files("sara.audio").joinpath("media", "beep.wav")
         with resource.open("rb") as source:
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
             tmp.write(source.read())
@@ -189,7 +189,7 @@ def play_track_end_alert(frame) -> bool:
         return False
 
     try:
-        resource = files("sara.audio.media").joinpath("track_end_alert.wav")
+        resource = files("sara.audio").joinpath("media", "track_end_alert.wav")
         with resource.open("rb") as source:
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
             tmp.write(source.read())

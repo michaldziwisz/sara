@@ -14,6 +14,8 @@ def apply_mix_trigger(player, target_seconds: Optional[float], callback: Optiona
         logger.debug("BASS mix trigger: non-callable callback of type %s ignored", type(callback))
         callback = None
     player._mix_callback = callback
+    # Guard against duplicate calls (pos + end fallback, or backend quirks).
+    player._mix_triggered = False
     if not target_seconds or not player._stream:
         return
     original_target = float(target_seconds)
@@ -33,32 +35,54 @@ def apply_mix_trigger(player, target_seconds: Optional[float], callback: Optiona
         logger.debug("BASS mix trigger: failed to convert seconds to bytes: %s", exc)
         return
 
+    def _invoke_once(source: str, channel: int, *, fired_pos: float | None = None) -> None:
+        if getattr(player, "_mix_triggered", False):
+            return
+        player._mix_triggered = True
+        if player._mix_callback:
+            try:
+                player._mix_callback()
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.warning("BASS mix trigger callback error: %s", exc)
+        # Ensure end fallback cannot re-fire even if callback remains set.
+        player._mix_callback = None
+        logger.debug(
+            "BASS mix trigger fired stream=%s target=%.3f pos=%s via=%s",
+            channel,
+            clamped_target,
+            f"{fired_pos:.3f}" if fired_pos is not None else "unknown",
+            source,
+        )
+
     def _sync_proc(hsync, channel, data, user):  # pragma: no cover - C callback
         fired_pos = None
         try:
             fired_pos = player._manager.channel_get_seconds(channel)
         except Exception:
             fired_pos = None
-        if player._mix_callback:
-            try:
-                player._mix_callback()
-            except Exception as exc:  # pylint: disable=broad-except
-                logger.warning("BASS mix trigger callback error: %s", exc)
-        logger.debug(
-            "BASS mix trigger fired stream=%s target=%.3f pos=%s",
-            channel,
-            clamped_target,
-            f"{fired_pos:.3f}" if fired_pos is not None else "unknown",
-        )
+        _invoke_once("pos", channel, fired_pos=fired_pos)
+
+    def _end_sync_proc(hsync, channel, data, user):  # pragma: no cover - C callback
+        fired_pos = None
+        try:
+            fired_pos = player._manager.channel_get_seconds(channel)
+        except Exception:
+            fired_pos = None
+        _invoke_once("end", channel, fired_pos=fired_pos)
 
     player._mix_sync_proc = player._manager.make_sync_proc(_sync_proc)
+    player._mix_end_sync_proc = player._manager.make_sync_proc(_end_sync_proc)
     try:
+        player._mix_end_sync_handle = player._manager.channel_set_sync_end(
+            player._stream,
+            player._mix_end_sync_proc,
+        )
         player._mix_sync_handle = player._manager.channel_set_sync_pos(
             player._stream,
             target_bytes,
             player._mix_sync_proc,
             is_bytes=True,
-            mix_time=False,
+            mix_time=True,
         )
         logger.debug(
             "BASS mix trigger set stream=%s target=%.3f effective=%.3f offset=%.3f (requested=%.3f) callback=%s",
@@ -73,6 +97,8 @@ def apply_mix_trigger(player, target_seconds: Optional[float], callback: Optiona
         logger.debug("BASS mix trigger: failed to set sync: %s", exc)
         player._mix_sync_proc = None
         player._mix_sync_handle = 0
+        player._mix_end_sync_proc = None
+        player._mix_end_sync_handle = 0
 
 
 def set_mix_trigger(
@@ -88,5 +114,12 @@ def set_mix_trigger(
             pass
         player._mix_sync_handle = 0
         player._mix_sync_proc = None
+    if player._stream and getattr(player, "_mix_end_sync_handle", 0):
+        try:
+            player._manager.channel_remove_sync(player._stream, player._mix_end_sync_handle)
+        except Exception:
+            pass
+        player._mix_end_sync_handle = 0
+        player._mix_end_sync_proc = None
+    player._mix_triggered = False
     player._apply_mix_trigger(mix_trigger_seconds, on_mix_trigger)
-

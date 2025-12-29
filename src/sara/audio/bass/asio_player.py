@@ -137,6 +137,7 @@ class BassAsioPlayer(BassPlayer):
         if self._fade_thread and self._fade_thread.is_alive():
             return
         start_ts = time.perf_counter()
+        finished_item_id = self._current_item_id
 
         def _runner():
             nonlocal target_stream
@@ -175,6 +176,11 @@ class BassAsioPlayer(BassPlayer):
                 )
                 if completed:
                     self.stop(_from_fade=True)
+                    if self._finished_callback and finished_item_id:
+                        try:
+                            self._finished_callback(finished_item_id)
+                        except Exception:
+                            pass
 
         self._fade_thread = threading.Thread(target=_runner, daemon=True)
         self._fade_thread.start()
