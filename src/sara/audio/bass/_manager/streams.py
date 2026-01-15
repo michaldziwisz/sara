@@ -100,7 +100,8 @@ def channel_get_length_seconds(manager: "BassManager", stream: int) -> float:
 
 
 def channel_set_volume(manager: "BassManager", stream: int, volume: float) -> None:
-    volume = max(0.0, min(float(volume), 1.0))
+    # BASS supports values above 1.0 for amplification (see vendor docs: BASS_ATTRIB_VOL).
+    volume = max(0.0, float(volume))
     manager._lib.BASS_ChannelSetAttribute(stream, _BassConstants.ATTRIB_VOL, ctypes.c_float(volume))
 
 
