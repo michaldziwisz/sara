@@ -57,4 +57,4 @@ class MixerSource:
     finished_event: Event = field(default_factory=Event)
     on_progress: Optional[Callable[[str, float], None]] = None
     on_finished: Optional[Callable[[str], None]] = None
-
+    transcoded_path: Path | None = None

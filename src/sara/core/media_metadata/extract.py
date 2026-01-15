@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Optional
 
@@ -22,6 +24,8 @@ from sara.core.media_metadata.models import AudioMetadata
 
 logger = logging.getLogger(__name__)
 
+_FFPROBE_DURATION_EXTENSIONS = {".mpeg", ".mpg"}
+
 
 def _parse_replay_gain(value: Optional[str]) -> Optional[float]:
     if not value:
@@ -32,6 +36,36 @@ def _parse_replay_gain(value: Optional[str]) -> Optional[float]:
             cleaned = cleaned[:-3]
         return float(cleaned)
     except (ValueError, TypeError):
+        return None
+
+
+def _probe_duration_seconds(path: Path) -> float | None:
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        return None
+    try:
+        completed = subprocess.run(
+            [
+                ffprobe,
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except Exception:
+        return None
+    if completed.returncode != 0:
+        return None
+    try:
+        return float((completed.stdout or "").strip())
+    except (TypeError, ValueError):
         return None
 
 
@@ -49,14 +83,6 @@ def extract_metadata(path: Path) -> AudioMetadata:
     audio = None
     try:
         audio = MutagenFile(path)
-        if audio is None:
-            return AudioMetadata(
-                title=title,
-                duration_seconds=duration,
-                artist=artist,
-                replay_gain_db=_scan_ape_replay_gain(path),
-                outro_seconds=None,
-            )
         if audio.tags:
             title_tag = audio.tags.get("TIT2") or audio.tags.get("title")
             if title_tag:
@@ -114,6 +140,11 @@ def extract_metadata(path: Path) -> AudioMetadata:
             duration = float(audio.info.length)
     except Exception as exc:  # pylint: disable=broad-except
         logger.warning("Failed to read metadata %s: %s", path, exc)
+
+    if duration <= 0 and path.suffix.lower() in _FFPROBE_DURATION_EXTENSIONS:
+        probed = _probe_duration_seconds(path)
+        if probed is not None and probed > 0:
+            duration = probed
 
     if replay_gain is None:
         replay_gain = _scan_ape_replay_gain(path)
@@ -260,4 +291,3 @@ def extract_metadata(path: Path) -> AudioMetadata:
         loop_auto_enabled=loop_auto_enabled,
         loop_enabled=loop_enabled,
     )
-

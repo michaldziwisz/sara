@@ -10,13 +10,21 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 
-TRANSCODE_EXTENSIONS = {".mp4", ".m4a", ".m4v"}
+TRANSCODE_EXTENSIONS = {
+    ".m4a",
+    ".m4v",
+    ".mp2",
+    ".mp3",
+    ".mp4",
+    ".mpeg",
+    ".mpg",
+}
 
 
 def transcode_source_to_wav(source: Path) -> Path:
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
-        raise RuntimeError("FFmpeg jest wymagany do odtwarzania plików MP4/M4A")
+        raise RuntimeError("FFmpeg jest wymagany do odtwarzania plików wymagających transkodowania (MP4/M4A/MPEG)")
     fd, temp_name = tempfile.mkstemp(suffix=".wav")
     os.close(fd)
     target = Path(temp_name)
@@ -69,4 +77,3 @@ def open_audio_file_with_transcoding(
                 pass
             raise RuntimeError("Nie udało się odczytać przekodowanego pliku MP4") from exc
         return sound_file, wav_path
-

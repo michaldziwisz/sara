@@ -94,6 +94,11 @@ class DeviceMixer:
                 source.sound_file.close()
             except Exception:  # pylint: disable=broad-except
                 pass
+            if source.transcoded_path is not None:
+                try:
+                    source.transcoded_path.unlink(missing_ok=True)
+                except Exception:  # pragma: no cover - best-effort cleanup
+                    pass
             source.finished_event.set()
 
     def start_source(
@@ -107,7 +112,7 @@ class DeviceMixer:
         on_progress: Optional[Callable[[str, float], None]] = None,
         on_finished: Optional[Callable[[str], None]] = None,
     ) -> Event:
-        sound_file = open_sound_file(path, sf=sf)
+        sound_file, transcoded_path = open_sound_file(path, sf=sf)
         samplerate, channels = get_sound_file_format(
             sound_file,
             default_samplerate=self._samplerate,
@@ -142,6 +147,7 @@ class DeviceMixer:
             loop=loop,
             on_progress=on_progress,
             on_finished=on_finished,
+            transcoded_path=transcoded_path,
         )
 
         old = self._source_manager.replace(source)
@@ -182,6 +188,11 @@ class DeviceMixer:
             source.sound_file.close()
         except Exception:  # pylint: disable=broad-except
             pass
+        if source.transcoded_path is not None:
+            try:
+                source.transcoded_path.unlink(missing_ok=True)
+            except Exception:  # pragma: no cover - best-effort cleanup
+                pass
         if source.on_finished:
             try:
                 source.on_finished(source_id)
@@ -246,6 +257,11 @@ class DeviceMixer:
             source.sound_file.close()
         except Exception:  # pylint: disable=broad-except
             pass
+        if source.transcoded_path is not None:
+            try:
+                source.transcoded_path.unlink(missing_ok=True)
+            except Exception:  # pragma: no cover - best-effort cleanup
+                pass
         if source.on_progress:
             try:
                 source.on_progress(source_id, source.position_frames / float(source.samplerate or 1))

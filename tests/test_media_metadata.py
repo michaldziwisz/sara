@@ -15,6 +15,8 @@ def test_supported_audio_extensions_case_insensitive() -> None:
     assert is_supported_audio_file(Path("/tmp/audio.FlAc"))
     assert is_supported_audio_file(Path("clip.mp4"))
     assert is_supported_audio_file(Path("jingle.mp2"))
+    assert is_supported_audio_file(Path("spot.MPEG"))
+    assert is_supported_audio_file(Path("spot.MpG"))
 
 
 def test_unsupported_extensions_and_sidecar_files() -> None:

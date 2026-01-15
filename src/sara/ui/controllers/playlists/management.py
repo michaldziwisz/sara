@@ -41,7 +41,11 @@ def on_add_tracks(frame, _event: wx.CommandEvent) -> None:
         return
 
     style = wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE
-    wildcard = _("Audio files (*.mp3;*.mp2;*.wav;*.flac;*.ogg)|*.mp3;*.mp2;*.wav;*.flac;*.ogg|All files|*.*")
+    wildcard = _(
+        "Audio files (*.mp3;*.mp2;*.mpg;*.mpeg;*.wav;*.flac;*.ogg)"
+        "|*.mp3;*.mp2;*.mpg;*.mpeg;*.wav;*.flac;*.ogg"
+        "|All files|*.*"
+    )
     dialog = FileSelectionDialog(
         frame,
         title=_("Select audio files"),

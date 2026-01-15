@@ -44,7 +44,7 @@ class DummySF:
         self._mapping = mapping
 
     def SoundFile(self, path, mode="r"):
-        return self._mapping[path]
+        return self._mapping[str(path)]
 
 
 def test_device_mixer_soft_mix_and_callbacks(monkeypatch, tmp_path):

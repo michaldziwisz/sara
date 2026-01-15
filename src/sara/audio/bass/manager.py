@@ -9,6 +9,8 @@ import threading
 from pathlib import Path
 from typing import Any, Optional
 
+from sara.audio.transcoding import TRANSCODE_EXTENSIONS, transcode_source_to_wav
+
 from ._manager import asio as _asio_ops
 from ._manager import devices as _devices_ops
 from ._manager import streams as _streams_ops
@@ -44,8 +46,6 @@ class BassManager:
     _release_device = _devices_ops._release_device
     list_devices = _devices_ops.list_devices
 
-    stream_create_file = _streams_ops.stream_create_file
-    stream_free = _streams_ops.stream_free
     channel_play = _streams_ops.channel_play
     channel_pause = _streams_ops.channel_pause
     channel_stop = _streams_ops.channel_stop
@@ -69,6 +69,7 @@ class BassManager:
         self._stream_uses_wchar = sys.platform.startswith("win")
         self._devices: dict[int, dict[str, Any]] = {}
         self._global_lock = threading.Lock()
+        self._transcoded_streams: dict[int, Path] = {}
         # skróć opóźnienie aktualizacji, żeby pętle reagowały szybko
         self._lib.BASS_SetConfig(0x10500, 1)  # BASS_CONFIG_UPDATEPERIOD
         self._lib.BASS_SetConfig(0x10504, 4)  # BASS_CONFIG_UPDATETHREADS
@@ -77,6 +78,61 @@ class BassManager:
         self._asio = None
         self._asio_load_attempted = False
         self._asio_devices: dict[int, dict[str, Any]] = {}
+
+    def stream_create_file(
+        self,
+        index: int,
+        path: Path,
+        *,
+        allow_loop: bool = False,
+        decode: bool = False,
+        set_device: bool = True,
+    ) -> int:
+        try:
+            return _streams_ops.stream_create_file(
+                self,
+                index,
+                path,
+                allow_loop=allow_loop,
+                decode=decode,
+                set_device=set_device,
+            )
+        except BassNotAvailable as exc:
+            if "BASS_StreamCreateFile" not in str(exc):
+                raise
+            if path.suffix.lower() not in TRANSCODE_EXTENSIONS:
+                raise
+
+            wav_path = transcode_source_to_wav(path)
+            try:
+                stream = _streams_ops.stream_create_file(
+                    self,
+                    index,
+                    wav_path,
+                    allow_loop=allow_loop,
+                    decode=decode,
+                    set_device=set_device,
+                )
+            except Exception:
+                try:
+                    wav_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                raise
+            with self._global_lock:
+                self._transcoded_streams[stream] = wav_path
+            return stream
+
+    def stream_free(self, stream: int) -> None:
+        _streams_ops.stream_free(self, stream)
+        wav_path: Path | None = None
+        with self._global_lock:
+            wav_path = self._transcoded_streams.pop(stream, None)
+        if wav_path is not None:
+            try:
+                wav_path.unlink(missing_ok=True)
+            except Exception:
+                pass
 
     @classmethod
     def instance(cls) -> "BassManager":

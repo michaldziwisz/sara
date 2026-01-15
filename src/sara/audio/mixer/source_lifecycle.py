@@ -11,6 +11,7 @@ import math
 from pathlib import Path
 from typing import Callable, Optional
 
+from sara.audio.transcoding import open_audio_file_with_transcoding
 from sara.audio.mixer.dsp import snap_to_zero_crossing
 from sara.audio.mixer.types import MixerSource
 from sara.audio.types import AudioDevice
@@ -23,10 +24,11 @@ except ImportError:  # pragma: no cover - numpy should be available with soundfi
     np = None
 
 
-def open_sound_file(path: str, *, sf):
+def open_sound_file(path: str, *, sf) -> tuple[object, Path | None]:
     if sf is None:
         raise RuntimeError("soundfile is required for DeviceMixer")
-    return sf.SoundFile(path, mode="r")
+    sound_file, transcoded_path = open_audio_file_with_transcoding(Path(path), sf=sf)
+    return sound_file, transcoded_path
 
 
 def get_sound_file_format(sound_file, *, default_samplerate: int, default_channels: int) -> tuple[int, int]:
@@ -115,6 +117,7 @@ def create_source(
     loop: Optional[tuple[float, float]],
     on_progress: Optional[Callable[[str, float], None]],
     on_finished: Optional[Callable[[str], None]],
+    transcoded_path: Path | None = None,
 ) -> MixerSource:
     start_frame = prepare_start_frame(
         sound_file,
@@ -141,6 +144,7 @@ def create_source(
         on_progress=on_progress,
         on_finished=on_finished,
         position_frames=start_frame,
+        transcoded_path=transcoded_path,
     )
 
 
@@ -149,4 +153,9 @@ def dispose_replaced_source(source: MixerSource) -> None:
         source.sound_file.close()
     except Exception:  # pylint: disable=broad-except
         pass
+    if source.transcoded_path is not None:
+        try:
+            source.transcoded_path.unlink(missing_ok=True)
+        except Exception:  # pragma: no cover - best-effort cleanup
+            pass
     source.finished_event.set()

@@ -15,6 +15,12 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+try:
+    from sara.audio.transcoding import TRANSCODE_EXTENSIONS, transcode_source_to_wav
+except Exception:  # pragma: no cover - audio layer optional in some environments
+    TRANSCODE_EXTENSIONS = set()
+    transcode_source_to_wav = None  # type: ignore[assignment]
+
 
 class LoudnessStandard(Enum):
     """Normalization references."""
@@ -60,40 +66,63 @@ def analyze_loudness(path: Path, *, standard: LoudnessStandard) -> LoudnessMeasu
     if executable is None:
         raise FileNotFoundError("bs1770gain was not found on PATH or bundled resources")
 
-    completed = _run_bs1770gain(executable, path, standard)
-    used_temp_copy = False
-    if completed.returncode != 0:
-        fallback = _retry_with_temp_copy(executable, path, standard)
-        if fallback is not None:
-            completed = fallback
-            used_temp_copy = True
-    if completed.returncode != 0:
-        stderr_text = (getattr(completed, "stderr", None) or "").strip()
-        stdout_text = (getattr(completed, "stdout", None) or "").strip()
-        raise RuntimeError(stderr_text or stdout_text or "bs1770gain failed")
-
-    try:
-        xml_text = _extract_xml(getattr(completed, "stdout", None), getattr(completed, "stderr", None))
-        root = ET.fromstring(xml_text)
-    except RuntimeError as exc:
-        if "missing XML payload" in str(exc) and not used_temp_copy:
-            fallback = _retry_with_temp_copy(executable, path, standard)
+    def _run_for(target: Path) -> LoudnessMeasurement:
+        completed = _run_bs1770gain(executable, target, standard)
+        used_temp_copy = False
+        if completed.returncode != 0:
+            fallback = _retry_with_temp_copy(executable, target, standard)
             if fallback is not None:
                 completed = fallback
-                xml_text = _extract_xml(getattr(completed, "stdout", None), getattr(completed, "stderr", None))
-                root = ET.fromstring(xml_text)
+                used_temp_copy = True
+        if completed.returncode != 0:
+            stderr_text = (getattr(completed, "stderr", None) or "").strip()
+            stdout_text = (getattr(completed, "stdout", None) or "").strip()
+            raise RuntimeError(stderr_text or stdout_text or "bs1770gain failed")
+
+        try:
+            xml_text = _extract_xml(getattr(completed, "stdout", None), getattr(completed, "stderr", None))
+            root = ET.fromstring(xml_text)
+        except RuntimeError as exc:
+            if "missing XML payload" in str(exc) and not used_temp_copy:
+                fallback = _retry_with_temp_copy(executable, target, standard)
+                if fallback is not None:
+                    completed = fallback
+                    xml_text = _extract_xml(getattr(completed, "stdout", None), getattr(completed, "stderr", None))
+                    root = ET.fromstring(xml_text)
+                else:
+                    raise
             else:
                 raise
-        else:
-            raise
-    except ET.ParseError as exc:  # pragma: no cover - depends on CLI output
-        raise RuntimeError(f"Unable to parse bs1770gain output: {exc}") from exc
+        except ET.ParseError as exc:  # pragma: no cover - depends on CLI output
+            raise RuntimeError(f"Unable to parse bs1770gain output: {exc}") from exc
 
-    track_node = root.find("./track/integrated")
-    if track_node is None or "lufs" not in track_node.attrib:
-        raise RuntimeError("bs1770gain output did not include integrated loudness")
-    integrated = float(track_node.attrib["lufs"])
-    return LoudnessMeasurement(integrated_lufs=integrated)
+        track_node = root.find("./track/integrated")
+        if track_node is None or "lufs" not in track_node.attrib:
+            raise RuntimeError("bs1770gain output did not include integrated loudness")
+        integrated = float(track_node.attrib["lufs"])
+        return LoudnessMeasurement(integrated_lufs=integrated)
+
+    try:
+        return _run_for(path)
+    except RuntimeError as exc:
+        if transcode_source_to_wav is None:
+            raise
+        if not executable.exists():
+            raise
+        if path.suffix.lower() not in TRANSCODE_EXTENSIONS:
+            raise
+
+        try:
+            wav_path = transcode_source_to_wav(path)
+        except Exception:
+            raise exc from None
+        try:
+            return _run_for(wav_path)
+        finally:
+            try:
+                wav_path.unlink(missing_ok=True)
+            except Exception:
+                pass
 
 
 def _extract_xml(output: str | None, stderr: str | None = None) -> str:

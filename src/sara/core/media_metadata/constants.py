@@ -3,6 +3,8 @@ from __future__ import annotations
 SUPPORTED_AUDIO_EXTENSIONS = {
     ".mp3",
     ".mp2",
+    ".mpg",
+    ".mpeg",
     ".wav",
     ".flac",
     ".ogg",
@@ -28,4 +30,3 @@ SEGUE_TAG = "SARA_SEGUE_START"
 SEGUE_FADE_TAG = "SARA_SEGUE_FADE_DURATION"
 OVERLAP_TAG = "SARA_OVERLAP_DURATION"
 REPLAYGAIN_TRACK_GAIN_TAG = "REPLAYGAIN_TRACK_GAIN"
-

@@ -14,7 +14,7 @@ from sara.jingles import JingleSet, JinglePage, JingleSlot, ensure_page_count, s
 from sara.ui.file_selection_dialog import FileSelectionDialog
 
 
-_AUDIO_WILDCARD = _("Audio files|*.wav;*.mp3;*.flac;*.ogg;*.m4a;*.aac;*.mp4|All files|*.*")
+_AUDIO_WILDCARD = _("Audio files|*.wav;*.mp3;*.mp2;*.mpg;*.mpeg;*.flac;*.ogg;*.m4a;*.aac;*.mp4|All files|*.*")
 
 
 @dataclass
@@ -287,4 +287,3 @@ class JinglesDialog(wx.Dialog):
             wx.MessageBox(_("Failed to save jingles: %s") % exc, _("Error"), parent=self)
             return
         self.EndModal(wx.ID_OK)
-
