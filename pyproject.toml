@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sara"
-version = "0.0.28"
+version = "0.0.29"
 description = "Simple Accessible Radio Automation for radio stations"
 readme = "README.md"
 authors = [{name = "SARA Team"}]
