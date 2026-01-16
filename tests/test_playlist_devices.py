@@ -48,6 +48,29 @@ def test_playlist_fallback_to_available_devices_when_unconfigured():
     assert result_second == (1, "y")
 
 
+def test_playlist_peek_next_slot_does_not_advance_cursor():
+    playlist = PlaylistModel(id="pl-10", name="Peek", output_slots=["a", "b"])
+    available = {"a", "b"}
+    busy: set[str] = set()
+
+    assert playlist.next_slot_index == 0
+    assert playlist.peek_next_slot(available, busy) == (0, "a")
+    assert playlist.next_slot_index == 0
+
+    assert playlist.select_next_slot(available, busy) == (0, "a")
+    assert playlist.next_slot_index == 1
+    assert playlist.peek_next_slot(available, busy) == (1, "b")
+
+
+def test_playlist_peek_next_slot_respects_busy_devices():
+    playlist = PlaylistModel(id="pl-11", name="PeekBusy", output_slots=["a", "b"])
+    available = {"a", "b"}
+    busy = {"a"}
+
+    assert playlist.peek_next_slot(available, busy) == (1, "b")
+    assert playlist.next_slot_index == 0
+
+
 def test_playlist_item_loop_flags():
     playlist = PlaylistModel(id="pl-3", name="LoopTest")
     item = PlaylistItem(

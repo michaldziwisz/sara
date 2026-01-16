@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import logging
+import os
 from pathlib import Path
 from typing import Callable, TYPE_CHECKING
 
@@ -27,6 +28,8 @@ def stream_create_file(
     if set_device:
         manager._set_device(index)
     flags = _BassConstants.SAMPLE_FLOAT | _BassConstants.STREAM_PRESCAN
+    if os.environ.get("SARA_BASS_ASYNCFILE", "1") not in {"0", "false", "False"}:
+        flags |= _BassConstants.ASYNCFILE
     if allow_loop:
         flags |= _BassConstants.SAMPLE_LOOP
     if decode:

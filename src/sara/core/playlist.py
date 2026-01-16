@@ -201,6 +201,36 @@ class PlaylistModel:
 
         return None
 
+    def peek_next_slot(self, available_devices: set[str], busy_devices: set[str]) -> Optional[tuple[int, str]]:
+        """Return the next slot selection without advancing the internal cursor."""
+        slots = self.get_configured_slots()
+        fallback = False
+        if not slots and available_devices:
+            slots = sorted(available_devices)
+            fallback = True
+        if not slots:
+            return None
+
+        count = len(slots)
+        if count == 0:
+            return None
+
+        start_index = self.next_slot_index % count
+
+        for phase in ("free", "available"):
+            for offset in range(count):
+                idx = (start_index + offset) % count
+                device_id = slots[idx]
+                if not device_id:
+                    continue
+                if device_id not in available_devices:
+                    continue
+                if phase == "free" and device_id in busy_devices:
+                    continue
+                return idx if not fallback else idx % max(count, 1), device_id
+
+        return None
+
     def remove_item(self, item_id: str) -> None:
         self.items = [item for item in self.items if item.id != item_id]
 

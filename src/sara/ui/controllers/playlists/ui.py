@@ -57,6 +57,7 @@ def add_playlist(frame, model: PlaylistModel) -> None:
             on_send_to_music=lambda playlist_id, item_ids: frame._send_folder_items_to_music(playlist_id, item_ids),
             on_select_folder=lambda playlist_id: frame._select_folder_for_playlist(playlist_id),
             on_reload_folder=lambda playlist_id: frame._reload_folder_playlist(playlist_id),
+            get_fade_duration=lambda: frame._fade_duration,
         )
     else:
         panel = PlaylistPanel(
@@ -68,6 +69,7 @@ def add_playlist(frame, model: PlaylistModel) -> None:
             on_selection_change=frame._on_playlist_selection_change,
             on_play_request=frame._on_playlist_play_request,
             swap_play_select=frame._swap_play_select,
+            get_fade_duration=lambda: frame._fade_duration,
         )
     panel.SetMinSize((360, 300))
 

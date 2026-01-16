@@ -27,6 +27,7 @@ class FolderPlaylistPanel(PlaylistPanel):
         on_send_to_music: Callable[[str, Sequence[str]], None] | None,
         on_select_folder: Callable[[str], None] | None,
         on_reload_folder: Callable[[str], None] | None,
+        get_fade_duration: Callable[[], float] | None = None,
     ) -> None:
         super().__init__(
             parent,
@@ -37,6 +38,7 @@ class FolderPlaylistPanel(PlaylistPanel):
             on_selection_change=on_selection_change,
             on_play_request=None,
             swap_play_select=False,
+            get_fade_duration=get_fade_duration,
         )
         self._on_preview_request = on_preview_request
         self._on_send_to_music = on_send_to_music

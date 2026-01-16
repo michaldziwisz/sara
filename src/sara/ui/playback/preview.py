@@ -225,6 +225,22 @@ def start_mix_preview(
         next_start,
     )
 
+    preload_enabled = getattr(controller, "_preload_enabled", True)
+    if preload_enabled and next_item.path.exists():
+        preloader = getattr(player_b, "preload", None)
+        if callable(preloader):
+            try:
+                preloader(str(next_item.path), start_seconds=next_start, allow_loop=False)
+            except Exception:  # pragma: no cover - best-effort
+                logger.debug("PFL mix preview: preload failed", exc_info=True)
+        else:
+            warmer = getattr(controller, "_schedule_file_warmup", None)
+            if callable(warmer):
+                try:
+                    warmer(next_item.path)
+                except Exception:  # pragma: no cover - best-effort
+                    logger.debug("PFL mix preview: warm-up failed", exc_info=True)
+
     stop_event = Event()
 
     # jeśli trigger w przeszłości, odpal B natychmiast i skróć pre-window

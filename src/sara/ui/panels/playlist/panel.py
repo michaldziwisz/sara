@@ -10,6 +10,7 @@ import wx
 from typing import Callable
 
 from sara.core.i18n import gettext as _
+from sara.core.mix_planner import compute_air_duration_seconds
 from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistItemType, PlaylistModel, PlaylistKind
 from sara.core.hotkeys import HotkeyAction
 
@@ -30,6 +31,7 @@ class PlaylistPanel(wx.Panel):
         on_selection_change: Callable[[str, list[int]], None] | None = None,
         on_play_request: Callable[[str, str], None] | None = None,
         swap_play_select: bool = False,
+        get_fade_duration: Callable[[], float] | None = None,
     ):
         super().__init__(parent)
         self.SetName(model.name)
@@ -40,6 +42,7 @@ class PlaylistPanel(wx.Panel):
         self._on_selection_change = on_selection_change
         self._on_play_request = on_play_request
         self._swap_play_select = bool(swap_play_select)
+        self._get_fade_duration = get_fade_duration
         self._active = False
         self._base_accessible_name = model.name
         self._list_ctrl = wx.ListCtrl(self, style=wx.LC_REPORT)
@@ -114,24 +117,24 @@ class PlaylistPanel(wx.Panel):
         self._list_ctrl.DeleteAllItems()
         for index, item in enumerate(self.model.items):
             self._list_ctrl.InsertItem(index, self._display_title(item))
-            self._list_ctrl.SetItem(index, 1, item.duration_display)
+            self._list_ctrl.SetItem(index, 1, self._duration_display(item))
             self._list_ctrl.SetItem(index, 2, self._status_label(item))
-            self._list_ctrl.SetItem(index, 3, item.progress_display)
+            self._list_ctrl.SetItem(index, 3, self._progress_display(item))
 
     def mark_item_status(self, item_id: str, status: PlaylistItemStatus) -> None:
         for index, item in enumerate(self.model.items):
             if item.id == item_id:
                 self._list_ctrl.SetItem(index, 2, self._status_label(item))
-                self._list_ctrl.SetItem(index, 3, item.progress_display)
+                self._list_ctrl.SetItem(index, 3, self._progress_display(item))
                 break
 
     def update_item_display(self, item_id: str) -> None:
         for index, item in enumerate(self.model.items):
             if item.id == item_id:
                 self._list_ctrl.SetItem(index, 0, self._display_title(item))
-                self._list_ctrl.SetItem(index, 1, item.duration_display)
+                self._list_ctrl.SetItem(index, 1, self._duration_display(item))
                 self._list_ctrl.SetItem(index, 2, self._status_label(item))
-                self._list_ctrl.SetItem(index, 3, item.progress_display)
+                self._list_ctrl.SetItem(index, 3, self._progress_display(item))
                 break
 
     def append_items(self, items: list[PlaylistItem]) -> None:
@@ -140,15 +143,15 @@ class PlaylistPanel(wx.Panel):
         for item in items:
             index = current_count
             self._list_ctrl.InsertItem(index, self._display_title(item))
-            self._list_ctrl.SetItem(index, 1, item.duration_display)
+            self._list_ctrl.SetItem(index, 1, self._duration_display(item))
             self._list_ctrl.SetItem(index, 2, item.status.value)
-            self._list_ctrl.SetItem(index, 3, item.progress_display)
+            self._list_ctrl.SetItem(index, 3, self._progress_display(item))
             current_count += 1
 
     def update_progress(self, item_id: str) -> None:
         for index, item in enumerate(self.model.items):
             if item.id == item_id:
-                progress_text = item.progress_display
+                progress_text = self._progress_display(item)
                 try:
                     if self._list_ctrl.GetItemText(index, 3) != progress_text:
                         self._list_ctrl.SetItem(index, 3, progress_text)
@@ -162,6 +165,35 @@ class PlaylistPanel(wx.Panel):
                     except Exception:
                         self._list_ctrl.SetItem(index, 2, status_text)
                 break
+
+    def _effective_air_duration_seconds(self, item: PlaylistItem) -> float:
+        if item.break_after or (item.loop_enabled and item.has_loop()):
+            return max(0.0, float(item.effective_duration_seconds))
+        fade_duration = 0.0
+        if self._get_fade_duration:
+            try:
+                fade_duration = max(0.0, float(self._get_fade_duration() or 0.0))
+            except Exception:
+                fade_duration = 0.0
+        return compute_air_duration_seconds(item, fade_duration)
+
+    @staticmethod
+    def _format_mmss(seconds: float) -> str:
+        minutes, secs = divmod(int(max(0.0, seconds)), 60)
+        return f"{minutes:02d}:{secs:02d}"
+
+    def _duration_display(self, item: PlaylistItem) -> str:
+        if not item.duration_seconds:
+            return "--:--"
+        return self._format_mmss(self._effective_air_duration_seconds(item))
+
+    def _progress_display(self, item: PlaylistItem) -> str:
+        played_seconds = max(0.0, float(item.current_position or 0.0))
+        if not item.duration_seconds:
+            return f"{self._format_mmss(played_seconds)} / --:--"
+        total_seconds = self._effective_air_duration_seconds(item)
+        played_seconds = min(played_seconds, total_seconds) if total_seconds > 0 else played_seconds
+        return f"{self._format_mmss(played_seconds)} / {self._format_mmss(total_seconds)}"
 
     def _display_title(self, item: PlaylistItem) -> str:
         title = item.title

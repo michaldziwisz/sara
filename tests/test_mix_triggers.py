@@ -15,6 +15,7 @@ from sara.core.mix_planner import (
     MIX_NATIVE_LATE_GUARD,
     MixPlan,
     clear_mix_plan,
+    compute_air_duration_seconds,
     mark_mix_triggered,
     register_mix_plan,
     resolve_mix_timing,
@@ -290,6 +291,59 @@ def test_resolve_mix_timing_honours_segue_fade_override():
     assert effective == 11.0
     assert mix_at == pytest.approx(5.0, rel=1e-6)
     assert fade == pytest.approx(0.5, rel=1e-6)
+
+
+def test_compute_air_duration_seconds_follows_mix_points():
+    fade_duration = 2.0
+    item = PlaylistItem(
+        id="i-air-1",
+        path=Path("x"),
+        title="T",
+        duration_seconds=11.0,
+        cue_in_seconds=1.0,
+        segue_seconds=3.0,
+        overlap_seconds=None,
+    )
+    assert compute_air_duration_seconds(item, fade_duration) == pytest.approx(3.0, rel=1e-6)
+
+    item2 = PlaylistItem(
+        id="i-air-2",
+        path=Path("x"),
+        title="T",
+        duration_seconds=11.0,
+        cue_in_seconds=1.0,
+        segue_seconds=None,
+        overlap_seconds=2.5,
+    )
+    # effective=10, overlap=2.5 -> mix at 7.5 after cue
+    assert compute_air_duration_seconds(item2, fade_duration) == pytest.approx(7.5, rel=1e-6)
+
+    item3 = PlaylistItem(
+        id="i-air-3",
+        path=Path("x"),
+        title="T",
+        duration_seconds=11.0,
+        cue_in_seconds=1.0,
+        segue_seconds=None,
+        overlap_seconds=None,
+    )
+    # no markers -> use global fade: mix at 8.0 after cue (effective=10, fade=2)
+    assert compute_air_duration_seconds(item3, fade_duration) == pytest.approx(8.0, rel=1e-6)
+
+
+def test_compute_air_duration_seconds_treats_near_end_mix_as_full_duration():
+    fade_duration = 2.0
+    item = PlaylistItem(
+        id="i-air-end",
+        path=Path("x"),
+        title="Near end",
+        duration_seconds=11.0,
+        cue_in_seconds=1.0,
+        segue_seconds=999.0,
+        overlap_seconds=None,
+    )
+    # resolve_mix_timing caps internal trigger to -0.01s from end; for display we keep full effective duration.
+    assert compute_air_duration_seconds(item, fade_duration) == pytest.approx(10.0, rel=1e-6)
 
 
 class _MixHost:

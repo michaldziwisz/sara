@@ -22,11 +22,26 @@ def play(
     mix_trigger_seconds: Optional[float] = None,
     on_mix_trigger: Optional[Callable[[], None]] = None,
 ) -> Optional[threading.Event]:
+    path = Path(source_path)
+    start_seconds = max(0.0, float(start_seconds or 0.0))
+    allow_loop = bool(allow_loop)
+    prepared = None
+    consumer = getattr(player, "_consume_preloaded", None)
+    if callable(consumer):
+        try:
+            prepared = consumer(path, start_seconds=start_seconds, allow_loop=allow_loop)
+        except Exception:
+            prepared = None
+
     player.stop()
     player._current_item_id = playlist_item_id
-    path = Path(source_path)
-    player._device_context = player._manager.acquire_device(player._device_index)
-    player._stream = player._manager.stream_create_file(player._device_index, path, allow_loop=allow_loop)
+    if prepared:
+        stream, device_context = prepared
+        player._device_context = device_context or player._manager.acquire_device(player._device_index)
+        player._stream = stream
+    else:
+        player._device_context = player._manager.acquire_device(player._device_index)
+        player._stream = player._manager.stream_create_file(player._device_index, path, allow_loop=allow_loop)
     player._start_offset = 0.0
     if start_seconds > 0:
         player._manager.channel_set_position(player._stream, start_seconds)
@@ -99,6 +114,13 @@ def stop(player, *, _from_fade: bool = False) -> None:
     player._monitor_stop.clear()
     if _from_fade:
         player._fade_thread = None
+    if not _from_fade:
+        dropper = getattr(player, "_drop_preloaded", None)
+        if callable(dropper):
+            try:
+                dropper()
+            except Exception:
+                pass
 
 
 def jump_to_loop_start(player, reason: str, pos: Optional[float] = None) -> None:

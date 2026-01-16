@@ -50,6 +50,12 @@ def set_auto_mix_enabled(frame, enabled: bool, *, reason: str | None = None) -> 
                 frame._auto_mix_tracker.set_last_started(pl_id, item_id)
             except Exception:
                 pass
+            try:
+                playlist = frame._get_playlist_model(pl_id)
+                if playlist:
+                    frame._playback.schedule_next_preload(playlist, current_item_id=item_id)
+            except Exception:
+                pass
         panel = frame._get_current_music_panel()
         if panel is not None:
             playlist = getattr(panel, "model", None)

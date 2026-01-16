@@ -7,6 +7,7 @@ import logging
 import wx
 
 from sara.core.i18n import gettext as _
+from sara.core.mix_planner import compute_air_duration_seconds
 from sara.core.media_metadata import save_loop_metadata
 from sara.core.playlist import PlaylistItem, PlaylistModel
 from sara.ui.playback_controller import PlaybackContext
@@ -130,11 +131,12 @@ def on_track_remaining(frame, _event: wx.CommandEvent | None = None) -> None:
         frame._announce_event("playback_events", _("No active playback to report remaining time"))
         return
     playlist, item, remaining = info
-    if item.effective_duration_seconds <= 0:
+    total_seconds = _resolve_on_air_total_seconds(frame, playlist, item)
+    if total_seconds <= 0:
         frame._announce_event("playback_events", _("Remaining time unavailable for %s") % item.title)
         return
-    total_seconds = max(0, int(round(remaining)))
-    hours, remainder = divmod(total_seconds, 3600)
+    remaining_seconds = max(0, int(round(remaining)))
+    hours, remainder = divmod(remaining_seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
     if hours:
         time_text = f"{hours:d}:{minutes:02d}:{seconds:02d}"
@@ -204,9 +206,30 @@ def resolve_remaining_playback(frame) -> tuple[PlaylistModel, PlaylistItem, floa
         item = frame._active_playlist_item(panel.model)
         if item is None:
             continue
-        remaining = max(0.0, item.effective_duration_seconds - item.current_position)
+        total_seconds = _resolve_on_air_total_seconds(frame, panel.model, item)
+        remaining = max(0.0, total_seconds - item.current_position)
         return panel.model, item, remaining
     return None
+
+
+def _resolve_on_air_total_seconds(frame, playlist: PlaylistModel, item: PlaylistItem) -> float:
+    if item.break_after or (item.loop_enabled and item.has_loop()):
+        return max(0.0, float(item.effective_duration_seconds))
+
+    key = (playlist.id, item.id)
+    plan = getattr(frame, "_mix_plans", {}).get(key)
+    if plan:
+        effective = max(0.0, float(plan.effective_duration))
+        mix_at = plan.mix_at
+        if mix_at is None:
+            return effective
+        track_end = float(plan.base_cue) + effective
+        if (track_end - float(mix_at)) <= 0.05:
+            return effective
+        return max(0.0, float(mix_at) - float(plan.base_cue))
+
+    fade_duration = max(0.0, float(getattr(frame, "_fade_duration", 0.0) or 0.0))
+    return compute_air_duration_seconds(item, fade_duration)
 
 
 def active_playlist_item(frame, playlist: PlaylistModel) -> PlaylistItem | None:

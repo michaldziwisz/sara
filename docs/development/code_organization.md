@@ -12,6 +12,8 @@ Trzymaj zależności w jednym kierunku:
 
 Reguła: jeśli logika da się przetestować bez UI, **niech żyje w `core` albo w testowalnych helperach `ui` bez `wx`**.
 
+Przykład: wyliczanie „czasu antenowego” utworu (cue/segue/overlap/fade) należy do `sara/core` (patrz `docs/development/track_timing.md`).
+
 ## Kanoniczne miejsca na nowy kod (żeby nie wrócić do „mega-plików”)
 
 Nowy kod dodawaj do „docelowych” pakietów, a nie do wrapperów kompatybilności.
@@ -86,4 +88,3 @@ Nie dodawaj nowego pliku, jeśli:
 
 - to 1–2 krótkie funkcje używane tylko lokalnie,
 - a rozdział utrudni nawigację (skakanie po plikach bez zysku).
-

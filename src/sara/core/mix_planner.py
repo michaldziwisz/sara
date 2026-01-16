@@ -129,3 +129,35 @@ def compute_mix_trigger_seconds(item: PlaylistItem, fade_duration: float) -> flo
     """Calculate absolute time (seconds) to trigger automix/crossfade."""
     mix_at, _, _, _ = resolve_mix_timing(item, fade_duration)
     return mix_at
+
+
+def compute_air_duration_seconds(
+    item: PlaylistItem,
+    fade_duration: float,
+    overrides: dict[str, float | None] | None = None,
+    *,
+    effective_duration_override: float | None = None,
+    near_end_threshold: float = 0.05,
+) -> float:
+    """Return how long the item will play *on air* (seconds, after cue-in).
+
+    This is the duration from cue-in to the planned mix point (segue/overlap/default fade).
+    When no mix point is scheduled (e.g. fade_duration=0 and no markers), this falls back
+    to the full effective duration (track end minus cue-in).
+
+    `near_end_threshold` is used to avoid displaying the internal trigger cap (default -0.01s)
+    as a shorter time when the mix point is effectively at the end of the track.
+    """
+    mix_at, _fade_seconds, base_cue, effective_duration = resolve_mix_timing(
+        item,
+        fade_duration,
+        overrides,
+        effective_duration_override=effective_duration_override,
+    )
+    effective_duration = max(0.0, float(effective_duration))
+    if mix_at is None:
+        return effective_duration
+    track_end = base_cue + effective_duration
+    if (track_end - mix_at) <= max(0.0, float(near_end_threshold)):
+        return effective_duration
+    return max(0.0, float(mix_at) - float(base_cue))

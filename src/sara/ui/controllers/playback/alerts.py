@@ -12,6 +12,7 @@ import wx
 
 from sara.audio.engine import Player
 from sara.core.i18n import gettext as _
+from sara.core.mix_planner import compute_air_duration_seconds
 from sara.core.playlist import PlaylistItem
 from sara.ui.playback_controller import PlaybackContext
 
@@ -258,7 +259,7 @@ def consider_intro_alert(
 
 def consider_track_end_alert(
     frame,
-    _panel: PlaylistPanel,
+    panel: PlaylistPanel,
     item: PlaylistItem,
     context: PlaybackContext,
 ) -> None:
@@ -269,7 +270,25 @@ def consider_track_end_alert(
     threshold = frame._track_end_alert_seconds
     if threshold <= 0:
         return
-    duration = item.effective_duration_seconds
+    duration = float(item.effective_duration_seconds)
+    if not item.break_after:
+        playlist = panel.model
+        key = (playlist.id, item.id)
+        plan = getattr(frame, "_mix_plans", {}).get(key)
+        if plan:
+            effective = max(0.0, float(plan.effective_duration))
+            mix_at = plan.mix_at
+            if mix_at is None:
+                duration = effective
+            else:
+                track_end = float(plan.base_cue) + effective
+                if (track_end - float(mix_at)) <= 0.05:
+                    duration = effective
+                else:
+                    duration = max(0.0, float(mix_at) - float(plan.base_cue))
+        else:
+            fade_duration = max(0.0, float(getattr(frame, "_fade_duration", 0.0) or 0.0))
+            duration = compute_air_duration_seconds(item, fade_duration)
     if duration <= 0:
         logger.debug("Track-end alert: skipped (duration<=0) item=%s", item.id)
         context.track_end_alert_triggered = True

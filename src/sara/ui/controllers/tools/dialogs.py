@@ -17,6 +17,13 @@ def on_options(frame, _event: wx.CommandEvent) -> None:
     if dialog.ShowModal() == wx.ID_OK:
         frame._settings.save()
         frame._fade_duration = max(frame._settings.get_playback_fade_seconds(), 0.0)
+        for panel in frame._playlists.values():
+            refresh = getattr(panel, "refresh", None)
+            if callable(refresh):
+                try:
+                    refresh()
+                except Exception:
+                    pass
         frame._playback.reload_pfl_device()
         frame._alternate_play_next = frame._settings.get_alternate_play_next()
         frame._swap_play_select = frame._settings.get_swap_play_select()
