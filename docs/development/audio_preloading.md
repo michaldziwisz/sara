@@ -23,6 +23,7 @@ Podgląd miksu na PFL (`start_mix_preview`) również próbuje przygotować utw�
 - `SARA_PRELOAD_WARM_BYTES` (domyślnie `33554432`, czyli 32 MiB) – ile danych czyta fallback warm-up.
 - `SARA_PRELOAD_REFETCH_SECONDS` (domyślnie `60`) – minimalny odstęp między kolejnymi warm-up tego samego pliku.
 - `SARA_BASS_ASYNCFILE` (domyślnie `1`) – dodaje flagę `BASS_ASYNCFILE` do `BASS_StreamCreateFile`, co pomaga na wolnych I/O.
+- `SARA_BASS_BUFFER_MS` (domyślnie `250`) – ustawia długość bufora wyjściowego BASS (mniejsze wartości = mniejsza latencja i mniej „rozjazdów” przy `SYNC_MIXTIME`, ale zbyt niskie mogą powodować dropy).
 
 ## Kod
 

@@ -70,6 +70,18 @@ class BassManager:
         self._devices: dict[int, dict[str, Any]] = {}
         self._global_lock = threading.Lock()
         self._transcoded_streams: dict[int, Path] = {}
+        # Zmniejsz bufor wyjściowy – duże wartości powodują „poczucie laga” oraz rozjazdy
+        # między pozycją z `ChannelGetPosition` a wyzwalaczami typu SYNC_MIXTIME.
+        buffer_ms_raw = os.environ.get("SARA_BASS_BUFFER_MS", "250")
+        try:
+            buffer_ms = int(float(buffer_ms_raw))
+        except Exception:  # pragma: no cover - defensywne
+            buffer_ms = 0
+        if buffer_ms > 0:
+            try:
+                self._lib.BASS_SetConfig(0x10400, buffer_ms)  # BASS_CONFIG_BUFFER
+            except Exception:  # pragma: no cover - zależne od środowiska
+                pass
         # skróć opóźnienie aktualizacji, żeby pętle reagowały szybko
         self._lib.BASS_SetConfig(0x10500, 1)  # BASS_CONFIG_UPDATEPERIOD
         self._lib.BASS_SetConfig(0x10504, 4)  # BASS_CONFIG_UPDATETHREADS

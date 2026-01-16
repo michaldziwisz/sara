@@ -110,6 +110,13 @@ def start_item_impl(
             )
             return None
 
+    # Reset progress immediately so scheduling logic does not see stale values (eg. after marking PLAYED).
+    try:
+        cue_base = item.cue_in_seconds or 0.0
+        item.current_position = max(0.0, float(start_seconds) - float(cue_base))
+    except Exception:
+        item.current_position = 0.0
+
     def _do_play(p: Player) -> None:
         supports_mix_trigger = controller.supports_mix_trigger(p)
         # wyzeruj ewentualne poprzednie ustawienia pętli zanim wystartujemy nowy utwór
@@ -192,4 +199,3 @@ def start_item_impl(
 __all__ = [
     "start_item_impl",
 ]
-
