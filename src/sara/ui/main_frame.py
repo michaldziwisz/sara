@@ -109,6 +109,7 @@ class MainFrame(wx.Frame):
     _on_edit_shortcuts = _tools_dialogs.on_edit_shortcuts
     _on_jingles = _tools_dialogs.on_jingles
     _on_options = _tools_dialogs.on_options
+    _on_send_feedback = _tools_dialogs.on_send_feedback
 
     _set_auto_mix_enabled = _automix_flow.set_auto_mix_enabled
     _preferred_auto_mix_index = staticmethod(_automix_flow.preferred_auto_mix_index)

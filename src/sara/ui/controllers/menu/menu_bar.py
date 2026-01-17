@@ -126,6 +126,10 @@ def create_menu_bar(frame) -> None:
     tools_menu.Append(int(options_id), _("&Options…"))
     menu_bar.Append(tools_menu, _("&Tools"))
 
+    help_menu = wx.Menu()
+    help_menu.Append(int(frame._send_feedback_id), _("Send &feedback…"))
+    menu_bar.Append(help_menu, _("&Help"))
+
     frame.SetMenuBar(menu_bar)
 
     frame.Bind(wx.EVT_MENU, frame._on_new_playlist, id=wx.ID_NEW)
@@ -137,6 +141,7 @@ def create_menu_bar(frame) -> None:
     frame.Bind(wx.EVT_MENU, frame._on_remove_playlist, id=frame._remove_playlist_id)
     frame.Bind(wx.EVT_MENU, frame._on_manage_playlists, id=frame._manage_playlists_id)
     frame.Bind(wx.EVT_MENU, frame._on_options, id=int(options_id))
+    frame.Bind(wx.EVT_MENU, frame._on_send_feedback, id=int(frame._send_feedback_id))
     frame.Bind(wx.EVT_MENU, frame._on_toggle_loop_playback, id=int(frame._loop_playback_toggle_id))
     frame.Bind(wx.EVT_MENU, frame._on_loop_info, id=int(frame._loop_info_id))
     frame.Bind(wx.EVT_MENU, frame._on_track_remaining, id=int(frame._track_remaining_id))

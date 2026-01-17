@@ -72,6 +72,7 @@ def init_command_ids(frame) -> None:
     frame._redo_id = wx.NewIdRef()
     frame._shortcut_editor_id = wx.NewIdRef()
     frame._jingles_manage_id = wx.NewIdRef()
+    frame._send_feedback_id = wx.NewIdRef()
 
 
 def init_runtime_state(frame) -> None:

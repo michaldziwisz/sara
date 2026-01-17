@@ -9,6 +9,7 @@ from sara.core.shortcuts import get_shortcut
 from sara.ui.jingles_dialog import JinglesDialog
 from sara.ui.options_dialog import OptionsDialog
 from sara.ui.shortcut_editor_dialog import ShortcutEditorDialog
+from sara.ui.dialogs.feedback.dialog import FeedbackDialog
 
 
 def on_options(frame, _event: wx.CommandEvent) -> None:
@@ -86,3 +87,11 @@ def on_jingles(frame, _event: wx.CommandEvent) -> None:
     frame._jingles.set_active_page_index(result.active_page_index)
     frame._jingles.set_device_id(result.device_id)
     frame._announce_event("jingles", frame._jingles.page_label())
+
+
+def on_send_feedback(frame, _event: wx.CommandEvent) -> None:
+    dialog = FeedbackDialog(frame)
+    try:
+        dialog.ShowModal()
+    finally:
+        dialog.Destroy()
