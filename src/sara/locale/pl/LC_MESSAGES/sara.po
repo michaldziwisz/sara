@@ -266,6 +266,14 @@ msgstr "&Opcje…"
 msgid "&Tools"
 msgstr "&Narzędzia"
 
+#: src/sara/ui/controllers/menu/menu_bar.py
+msgid "&Help"
+msgstr "&Pomoc"
+
+#: src/sara/ui/controllers/menu/menu_bar.py
+msgid "Send &feedback…"
+msgstr "Zgłoś &błąd / sugestię…"
+
 #: src/sara/ui/main_frame.py:305
 #, python-format
 msgid "No playlists available. Use %s to add a new playlist."
@@ -1455,6 +1463,99 @@ msgstr "Odtwarzacze: używa urządzenia PFL"
 msgid "PFL"
 msgstr "PFL"
 
+#: src/sara/ui/dialogs/feedback/dialog.py
+msgid "Send feedback"
+msgstr "Zgłoś błąd / sugestię"
+
+#: src/sara/ui/dialogs/feedback/dialog.py
+msgid "Category"
+msgstr "Kategoria"
+
+#: src/sara/ui/dialogs/feedback/dialog.py
+msgid "Bug report"
+msgstr "Zgłoszenie błędu"
+
+#: src/sara/ui/dialogs/feedback/dialog.py
+msgid "Suggestion"
+msgstr "Sugestia"
+
+#: src/sara/ui/dialogs/feedback/dialog.py
+msgid "Description"
+msgstr "Opis"
+
+#: src/sara/ui/dialogs/feedback/dialog.py
+msgid "Email (optional)"
+msgstr "E-mail (opcjonalnie)"
+
+#: src/sara/ui/dialogs/feedback/dialog.py
+msgid "If you provide an email, it will be visible publicly on GitHub."
+msgstr "Jeśli podasz e-mail, będzie on widoczny publicznie na GitHubie."
+
+#: src/sara/ui/dialogs/feedback/dialog.py
+msgid "Attach log file"
+msgstr "Dołącz plik logu"
+
+#: src/sara/ui/dialogs/feedback/dialog.py
+msgid "Log file"
+msgstr "Plik logu"
+
+#: src/sara/ui/dialogs/feedback/dialog.py
+msgid "Browse…"
+msgstr "Przeglądaj…"
+
+#: src/sara/ui/dialogs/feedback/dialog.py
+msgid "Select a log file"
+msgstr "Wybierz plik logu"
+
+#: src/sara/ui/dialogs/feedback/dialog.py
+msgid "Log files (*.log;*.txt;*.gz)|*.log;*.txt;*.gz|All files|*.*"
+msgstr "Pliki logów (*.log;*.txt;*.gz)|*.log;*.txt;*.gz|Wszystkie pliki|*.*"
+
+#: src/sara/ui/dialogs/feedback/dialog.py
+msgid "Send"
+msgstr "Wyślij"
+
+#: src/sara/ui/dialogs/feedback/dialog.py
+msgid "Cancel"
+msgstr "Anuluj"
+
+#: src/sara/ui/dialogs/feedback/dialog.py
+msgid "Sending…"
+msgstr "Wysyłanie…"
+
+#: src/sara/ui/dialogs/feedback/dialog.py
+msgid "Sygnalista is not configured. Set SARA_SYGNALISTA_URL or SYGNALISTA_BASE_URL."
+msgstr "Sygnalista nie jest skonfigurowany. Ustaw SARA_SYGNALISTA_URL lub SYGNALISTA_BASE_URL."
+
+#: src/sara/ui/dialogs/feedback/dialog.py
+msgid "Title is required."
+msgstr "Tytuł jest wymagany."
+
+#: src/sara/ui/dialogs/feedback/dialog.py
+msgid "Description is required."
+msgstr "Opis jest wymagany."
+
+#: src/sara/ui/dialogs/feedback/dialog.py
+msgid "Request failed"
+msgstr "Nie udało się wysłać zgłoszenia"
+
+#: src/sara/ui/dialogs/feedback/dialog.py
+#, python-format
+msgid ""
+"Created GitHub issue:\n"
+"%s"
+msgstr ""
+"Utworzono zgłoszenie na GitHubie:\n"
+"%s"
+
+#: src/sara/ui/dialogs/feedback/dialog.py
+msgid "Thank you"
+msgstr "Dziękujemy"
+
+#: src/sara/ui/dialogs/feedback/dialog.py
+msgid "Report sent."
+msgstr "Zgłoszenie zostało wysłane."
+
 #~ msgid " [marker]"
 #~ msgstr " [znacznik]"
 
@@ -1508,9 +1609,6 @@ msgstr "PFL"
 
 #~ msgid "Device availability warnings"
 #~ msgstr "Ostrzeżenia o dostępności urządzeń"
-
-#~ msgid "Intro alert notifications"
-#~ msgstr "Powiadomienia alertu intra"
 
 #~ msgid "Enable loop for this track"
 #~ msgstr "Włącz pętlę dla tego utworu"

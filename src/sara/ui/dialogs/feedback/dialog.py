@@ -61,6 +61,7 @@ def _app_version() -> str:
 class FeedbackDialog(wx.Dialog):
     def __init__(self, parent: wx.Window) -> None:
         super().__init__(parent, title=_("Send feedback"), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER)
+        self.SetName("feedback_dialog")
 
         self._sending = False
         self._base_url = _resolve_base_url()
@@ -92,6 +93,14 @@ class FeedbackDialog(wx.Dialog):
         self._log_path = wx.TextCtrl(panel)
         browse = wx.Button(panel, label=_("Browse…"))
         browse.Bind(wx.EVT_BUTTON, self._on_browse_log)
+
+        self._kind.SetName(_("Category"))
+        self._title.SetName(_("Title"))
+        self._description.SetName(_("Description"))
+        self._email.SetName(_("Email (optional)"))
+        self._include_logs.SetName(_("Attach log file"))
+        self._log_path.SetName(_("Log file"))
+        browse.SetName(_("Browse…"))
 
         if self._default_log_path is not None:
             self._log_path.SetValue(str(self._default_log_path))
@@ -146,7 +155,7 @@ class FeedbackDialog(wx.Dialog):
     def _on_browse_log(self, _evt: wx.CommandEvent) -> None:
         default_path = Path(self._log_path.GetValue()) if self._log_path.GetValue().strip() else None
         default_dir = str(default_path.parent) if default_path and default_path.parent.exists() else ""
-        wildcard = "Log files (*.log;*.txt;*.gz)|*.log;*.txt;*.gz|All files|*.*"
+        wildcard = _("Log files (*.log;*.txt;*.gz)|*.log;*.txt;*.gz|All files|*.*")
         dlg = wx.FileDialog(
             self,
             message=_("Select a log file"),
@@ -287,4 +296,3 @@ class FeedbackDialog(wx.Dialog):
     def _on_error(self, title: str, message: str) -> None:
         self._set_sending(False)
         wx.MessageBox(message, title, parent=self, style=wx.ICON_ERROR)
-
