@@ -5,6 +5,7 @@ from __future__ import annotations
 import wx
 
 from sara.core.i18n import gettext as _
+from sara.ui.services.accessibility import apply_accessible_label
 
 
 def build_diagnostics_tab(dialog, notebook: wx.Notebook) -> wx.Panel:
@@ -16,7 +17,7 @@ def build_diagnostics_tab(dialog, notebook: wx.Notebook) -> wx.Panel:
         label=_("Periodic stack traces (faulthandler)"),
     )
     dialog._diag_faulthandler_checkbox.SetValue(dialog._settings.get_diagnostics_faulthandler())
-    dialog._diag_faulthandler_checkbox.SetName("options_diag_faulthandler")
+    apply_accessible_label(dialog._diag_faulthandler_checkbox, dialog._diag_faulthandler_checkbox.GetLabel())
     diag_box.Add(dialog._diag_faulthandler_checkbox, 0, wx.ALL, 5)
 
     interval_row = wx.BoxSizer(wx.HORIZONTAL)
@@ -24,7 +25,7 @@ def build_diagnostics_tab(dialog, notebook: wx.Notebook) -> wx.Panel:
     dialog._diag_interval_ctrl = wx.SpinCtrlDouble(diag_panel, min=0.0, max=600.0, inc=1.0)
     dialog._diag_interval_ctrl.SetDigits(1)
     dialog._diag_interval_ctrl.SetValue(dialog._settings.get_diagnostics_faulthandler_interval())
-    dialog._diag_interval_ctrl.SetName("options_diag_interval_seconds")
+    apply_accessible_label(dialog._diag_interval_ctrl, interval_label.GetLabel().rstrip(":").strip())
     interval_row.Add(interval_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
     interval_row.Add(dialog._diag_interval_ctrl, 0, wx.ALIGN_CENTER_VERTICAL)
     diag_box.Add(interval_row, 0, wx.ALL, 5)
@@ -34,14 +35,14 @@ def build_diagnostics_tab(dialog, notebook: wx.Notebook) -> wx.Panel:
         label=_("Detailed loop debug logging"),
     )
     dialog._diag_loop_checkbox.SetValue(dialog._settings.get_diagnostics_loop_debug())
-    dialog._diag_loop_checkbox.SetName("options_diag_loop_debug")
+    apply_accessible_label(dialog._diag_loop_checkbox, dialog._diag_loop_checkbox.GetLabel())
     diag_box.Add(dialog._diag_loop_checkbox, 0, wx.ALL, 5)
 
     level_row = wx.BoxSizer(wx.HORIZONTAL)
     level_label = wx.StaticText(diag_panel, label=_("Log level:"))
     levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
     dialog._diag_log_level_choice = wx.Choice(diag_panel, choices=levels)
-    dialog._diag_log_level_choice.SetName("options_diag_log_level")
+    apply_accessible_label(dialog._diag_log_level_choice, level_label.GetLabel().rstrip(":").strip())
     try:
         sel = levels.index(dialog._settings.get_diagnostics_log_level())
     except ValueError:
@@ -61,4 +62,3 @@ def build_diagnostics_tab(dialog, notebook: wx.Notebook) -> wx.Panel:
     diag_sizer.Add(diag_box, 0, wx.EXPAND | wx.ALL, 10)
     diag_panel.SetSizer(diag_sizer)
     return diag_panel
-

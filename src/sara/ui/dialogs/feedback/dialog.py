@@ -12,6 +12,7 @@ from typing import Any, Literal
 import wx
 
 from sara.core.i18n import gettext as _
+from sara.ui.services.accessibility import apply_accessible_label
 from sygnalista_reporter import ReportError, send_report
 
 ReportKind = Literal["bug", "suggestion"]
@@ -78,10 +79,19 @@ class FeedbackDialog(wx.Dialog):
             majorDimension=1,
             style=wx.RA_SPECIFY_ROWS,
         )
+        apply_accessible_label(self._kind, _("Category"))
 
+        title_label = wx.StaticText(panel, label=_("Title"))
         self._title = wx.TextCtrl(panel)
+        apply_accessible_label(self._title, _("Title"))
+
+        description_label = wx.StaticText(panel, label=_("Description"))
         self._description = wx.TextCtrl(panel, style=wx.TE_MULTILINE, size=(-1, 160))
+        apply_accessible_label(self._description, _("Description"))
+
+        email_label = wx.StaticText(panel, label=_("Email (optional)"))
         self._email = wx.TextCtrl(panel)
+        apply_accessible_label(self._email, _("Email (optional)"))
 
         warning = wx.StaticText(
             panel,
@@ -93,14 +103,9 @@ class FeedbackDialog(wx.Dialog):
         self._log_path = wx.TextCtrl(panel)
         browse = wx.Button(panel, label=_("Browse…"))
         browse.Bind(wx.EVT_BUTTON, self._on_browse_log)
-
-        self._kind.SetName(_("Category"))
-        self._title.SetName(_("Title"))
-        self._description.SetName(_("Description"))
-        self._email.SetName(_("Email (optional)"))
-        self._include_logs.SetName(_("Attach log file"))
-        self._log_path.SetName(_("Log file"))
-        browse.SetName(_("Browse…"))
+        apply_accessible_label(self._include_logs, _("Attach log file"))
+        apply_accessible_label(self._log_path, _("Log file"))
+        apply_accessible_label(browse, _("Browse…"))
 
         if self._default_log_path is not None:
             self._log_path.SetValue(str(self._default_log_path))
@@ -113,13 +118,13 @@ class FeedbackDialog(wx.Dialog):
         form = wx.FlexGridSizer(cols=2, vgap=8, hgap=10)
         form.AddGrowableCol(1, proportion=1)
 
-        form.Add(wx.StaticText(panel, label=_("Title")), 0, wx.ALIGN_CENTER_VERTICAL)
+        form.Add(title_label, 0, wx.ALIGN_CENTER_VERTICAL)
         form.Add(self._title, 1, wx.EXPAND)
 
-        form.Add(wx.StaticText(panel, label=_("Description")), 0, wx.ALIGN_TOP)
+        form.Add(description_label, 0, wx.ALIGN_TOP)
         form.Add(self._description, 1, wx.EXPAND)
 
-        form.Add(wx.StaticText(panel, label=_("Email (optional)")), 0, wx.ALIGN_CENTER_VERTICAL)
+        form.Add(email_label, 0, wx.ALIGN_CENTER_VERTICAL)
         form.Add(self._email, 1, wx.EXPAND)
 
         form.Add(wx.StaticText(panel, label=""), 0)

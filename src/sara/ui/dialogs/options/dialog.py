@@ -68,12 +68,6 @@ class OptionsDialog(wx.Dialog):
         button_sizer = self.CreateSeparatedButtonSizer(wx.OK | wx.CANCEL)
         if button_sizer:
             main_sizer.Add(button_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
-            ok_button = self.FindWindowById(wx.ID_OK)
-            cancel_button = self.FindWindowById(wx.ID_CANCEL)
-            if ok_button:
-                ok_button.SetName("options_ok")
-            if cancel_button:
-                cancel_button.SetName("options_cancel")
 
         self.SetSizer(main_sizer)
         self.SetMinSize((520, 420))

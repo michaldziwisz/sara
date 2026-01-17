@@ -6,6 +6,7 @@ import wx
 
 from sara.core.announcement_registry import ANNOUNCEMENT_CATEGORIES
 from sara.core.i18n import gettext as _
+from sara.ui.services.accessibility import apply_accessible_label
 
 
 def build_accessibility_tab(dialog, notebook: wx.Notebook) -> wx.Panel:
@@ -27,7 +28,7 @@ def build_accessibility_tab(dialog, notebook: wx.Notebook) -> wx.Panel:
     for category in ANNOUNCEMENT_CATEGORIES:
         checkbox = wx.CheckBox(accessibility_panel, label=_(category.label))
         checkbox.SetValue(announcements.get(category.id, category.default_enabled))
-        checkbox.SetName(f"options_announce_{category.id}")
+        apply_accessible_label(checkbox, checkbox.GetLabel())
         accessibility_box.Add(checkbox, 0, wx.ALL, 4)
         dialog._announcement_checkboxes[category.id] = checkbox
 
@@ -36,10 +37,9 @@ def build_accessibility_tab(dialog, notebook: wx.Notebook) -> wx.Panel:
         label=_("Keep selection on currently playing track"),
     )
     dialog._focus_playing_checkbox.SetValue(dialog._settings.get_focus_playing_track())
-    dialog._focus_playing_checkbox.SetName("options_focus_playing_selection")
+    apply_accessible_label(dialog._focus_playing_checkbox, dialog._focus_playing_checkbox.GetLabel())
     accessibility_box.Add(dialog._focus_playing_checkbox, 0, wx.ALL, 4)
 
     accessibility_sizer.Add(accessibility_box, 0, wx.EXPAND | wx.ALL, 10)
     accessibility_panel.SetSizer(accessibility_sizer)
     return accessibility_panel
-

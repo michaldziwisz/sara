@@ -9,6 +9,7 @@ import wx
 from sara.core.env import resolve_output_dir
 from sara.core.i18n import gettext as _
 from sara.ui.file_selection_dialog import FileSelectionDialog
+from sara.ui.services.accessibility import apply_accessible_label
 
 
 def _default_log_folder() -> Path:
@@ -28,18 +29,24 @@ def build_logging_tab(dialog, notebook: wx.Notebook) -> wx.Panel:
         panel,
         label=_("Save played tracks to log files"),
     )
-    dialog._played_tracks_logging_checkbox.SetName("options_logging_played_enabled")
     dialog._played_tracks_logging_checkbox.SetValue(dialog._settings.get_played_tracks_logging_enabled())
+    apply_accessible_label(dialog._played_tracks_logging_checkbox, dialog._played_tracks_logging_checkbox.GetLabel())
     played_box.Add(dialog._played_tracks_logging_checkbox, 0, wx.ALL, 5)
 
     folder_row = wx.BoxSizer(wx.HORIZONTAL)
     folder_label = wx.StaticText(panel, label=_("Log folder:"))
     dialog._played_tracks_logging_folder_ctrl = wx.TextCtrl(panel)
-    dialog._played_tracks_logging_folder_ctrl.SetName("options_logging_folder")
+    apply_accessible_label(
+        dialog._played_tracks_logging_folder_ctrl,
+        folder_label.GetLabel().rstrip(":").strip(),
+    )
     configured_folder = dialog._settings.get_played_tracks_logging_folder()
     dialog._played_tracks_logging_folder_ctrl.SetValue(str(configured_folder or _default_log_folder()))
     dialog._played_tracks_logging_folder_button = wx.Button(panel, label=_("Select folder…"))
-    dialog._played_tracks_logging_folder_button.SetName("options_logging_folder_browse")
+    apply_accessible_label(
+        dialog._played_tracks_logging_folder_button,
+        dialog._played_tracks_logging_folder_button.GetLabel(),
+    )
     folder_row.Add(folder_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
     folder_row.Add(dialog._played_tracks_logging_folder_ctrl, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
     folder_row.Add(dialog._played_tracks_logging_folder_button, 0, wx.ALIGN_CENTER_VERTICAL)
@@ -47,11 +54,17 @@ def build_logging_tab(dialog, notebook: wx.Notebook) -> wx.Panel:
 
     types_row = wx.BoxSizer(wx.HORIZONTAL)
     dialog._played_tracks_logging_songs_checkbox = wx.CheckBox(panel, label=_("Save songs"))
-    dialog._played_tracks_logging_songs_checkbox.SetName("options_logging_songs")
     dialog._played_tracks_logging_songs_checkbox.SetValue(dialog._settings.get_played_tracks_logging_songs_enabled())
     dialog._played_tracks_logging_spots_checkbox = wx.CheckBox(panel, label=_("Save spots"))
-    dialog._played_tracks_logging_spots_checkbox.SetName("options_logging_spots")
     dialog._played_tracks_logging_spots_checkbox.SetValue(dialog._settings.get_played_tracks_logging_spots_enabled())
+    apply_accessible_label(
+        dialog._played_tracks_logging_songs_checkbox,
+        dialog._played_tracks_logging_songs_checkbox.GetLabel(),
+    )
+    apply_accessible_label(
+        dialog._played_tracks_logging_spots_checkbox,
+        dialog._played_tracks_logging_spots_checkbox.GetLabel(),
+    )
     types_row.Add(dialog._played_tracks_logging_songs_checkbox, 0, wx.RIGHT, 12)
     types_row.Add(dialog._played_tracks_logging_spots_checkbox, 0)
     played_box.Add(types_row, 0, wx.ALL, 5)
@@ -63,18 +76,18 @@ def build_logging_tab(dialog, notebook: wx.Notebook) -> wx.Panel:
         panel,
         label=_("Save currently playing track to a file"),
     )
-    dialog._now_playing_checkbox.SetName("options_nowplaying_enabled")
     dialog._now_playing_checkbox.SetValue(dialog._settings.get_now_playing_enabled())
+    apply_accessible_label(dialog._now_playing_checkbox, dialog._now_playing_checkbox.GetLabel())
     now_box.Add(dialog._now_playing_checkbox, 0, wx.ALL, 5)
 
     path_row = wx.BoxSizer(wx.HORIZONTAL)
     path_label = wx.StaticText(panel, label=_("Now playing file:"))
     dialog._now_playing_path_ctrl = wx.TextCtrl(panel)
-    dialog._now_playing_path_ctrl.SetName("options_nowplaying_path")
+    apply_accessible_label(dialog._now_playing_path_ctrl, path_label.GetLabel().rstrip(":").strip())
     configured_path = dialog._settings.get_now_playing_path()
     dialog._now_playing_path_ctrl.SetValue(str(configured_path or _default_now_playing_path()))
     dialog._now_playing_path_button = wx.Button(panel, label=_("Select file…"))
-    dialog._now_playing_path_button.SetName("options_nowplaying_path_browse")
+    apply_accessible_label(dialog._now_playing_path_button, dialog._now_playing_path_button.GetLabel())
     path_row.Add(path_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
     path_row.Add(dialog._now_playing_path_ctrl, 1, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
     path_row.Add(dialog._now_playing_path_button, 0, wx.ALIGN_CENTER_VERTICAL)
@@ -82,22 +95,28 @@ def build_logging_tab(dialog, notebook: wx.Notebook) -> wx.Panel:
 
     triggers_box = wx.StaticBoxSizer(wx.StaticBox(panel, label=_("Update triggers")), wx.VERTICAL)
     dialog._now_playing_on_change_checkbox = wx.CheckBox(panel, label=_("On track change"))
-    dialog._now_playing_on_change_checkbox.SetName("options_nowplaying_on_change")
     stored_interval = int(dialog._settings.get_now_playing_update_interval_seconds() or 0)
     periodic_enabled = stored_interval > 0
     on_change_enabled = bool(dialog._settings.get_now_playing_update_on_track_change()) and not periodic_enabled
     dialog._now_playing_on_change_checkbox.SetValue(on_change_enabled)
+    apply_accessible_label(dialog._now_playing_on_change_checkbox, dialog._now_playing_on_change_checkbox.GetLabel())
     triggers_box.Add(dialog._now_playing_on_change_checkbox, 0, wx.ALL, 5)
 
     interval_row = wx.BoxSizer(wx.HORIZONTAL)
     dialog._now_playing_periodic_checkbox = wx.CheckBox(panel, label=_("Update every"))
-    dialog._now_playing_periodic_checkbox.SetName("options_nowplaying_periodic")
     interval_ctrl = wx.SpinCtrl(panel, min=1, max=86400)
-    interval_ctrl.SetName("options_nowplaying_interval")
     dialog._now_playing_periodic_checkbox.SetValue(periodic_enabled)
     interval_ctrl.SetValue(stored_interval if periodic_enabled else 5)
     dialog._now_playing_interval_ctrl = interval_ctrl
     interval_suffix = wx.StaticText(panel, label=_("seconds"))
+    apply_accessible_label(
+        dialog._now_playing_periodic_checkbox,
+        dialog._now_playing_periodic_checkbox.GetLabel(),
+    )
+    apply_accessible_label(
+        interval_ctrl,
+        f"{dialog._now_playing_periodic_checkbox.GetLabel()} ({interval_suffix.GetLabel()})",
+    )
     interval_row.Add(dialog._now_playing_periodic_checkbox, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
     interval_row.Add(interval_ctrl, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
     interval_row.Add(interval_suffix, 0, wx.ALIGN_CENTER_VERTICAL)
@@ -106,11 +125,11 @@ def build_logging_tab(dialog, notebook: wx.Notebook) -> wx.Panel:
 
     types_row = wx.BoxSizer(wx.HORIZONTAL)
     dialog._now_playing_songs_checkbox = wx.CheckBox(panel, label=_("Include songs"))
-    dialog._now_playing_songs_checkbox.SetName("options_nowplaying_songs")
     dialog._now_playing_songs_checkbox.SetValue(dialog._settings.get_now_playing_songs_enabled())
     dialog._now_playing_spots_checkbox = wx.CheckBox(panel, label=_("Include spots"))
-    dialog._now_playing_spots_checkbox.SetName("options_nowplaying_spots")
     dialog._now_playing_spots_checkbox.SetValue(dialog._settings.get_now_playing_spots_enabled())
+    apply_accessible_label(dialog._now_playing_songs_checkbox, dialog._now_playing_songs_checkbox.GetLabel())
+    apply_accessible_label(dialog._now_playing_spots_checkbox, dialog._now_playing_spots_checkbox.GetLabel())
     types_row.Add(dialog._now_playing_songs_checkbox, 0, wx.RIGHT, 12)
     types_row.Add(dialog._now_playing_spots_checkbox, 0)
     now_box.Add(types_row, 0, wx.ALL, 5)
@@ -118,7 +137,7 @@ def build_logging_tab(dialog, notebook: wx.Notebook) -> wx.Panel:
     template_row = wx.BoxSizer(wx.HORIZONTAL)
     template_label = wx.StaticText(panel, label=_("Template:"))
     dialog._now_playing_template_ctrl = wx.TextCtrl(panel)
-    dialog._now_playing_template_ctrl.SetName("options_nowplaying_template")
+    apply_accessible_label(dialog._now_playing_template_ctrl, template_label.GetLabel().rstrip(":").strip())
     dialog._now_playing_template_ctrl.SetValue(dialog._settings.get_now_playing_template())
     template_row.Add(template_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
     template_row.Add(dialog._now_playing_template_ctrl, 1, wx.ALIGN_CENTER_VERTICAL)
