@@ -59,6 +59,14 @@ def on_options(frame, _event: wx.CommandEvent) -> None:
                         frame._thread_mix_executor = None
                 except Exception:
                     pass
+            if current_executor == "rust" and new_executor != "rust":
+                try:
+                    executor = getattr(frame, "_rust_mix_executor", None)
+                    if executor:
+                        executor.shutdown(timeout=1.0)
+                        frame._rust_mix_executor = None
+                except Exception:
+                    pass
         now_playing_writer = getattr(frame, "_now_playing_writer", None)
         if now_playing_writer:
             now_playing_writer.refresh()

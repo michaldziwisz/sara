@@ -1,0 +1,12 @@
+[package]
+name = "sara_mix_executor"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "sara_mix_executor"
+crate-type = ["cdylib"]
+
+[dependencies]
+

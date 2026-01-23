@@ -273,6 +273,12 @@ class MainFrame(wx.Frame):
         except Exception:
             pass
         try:
+            executor = getattr(self, "_rust_mix_executor", None)
+            if executor:
+                executor.shutdown(timeout=1.0)
+        except Exception:
+            pass
+        try:
             executor = getattr(self, "_thread_mix_executor", None)
             if executor:
                 executor.shutdown(timeout=1.0)
@@ -303,7 +309,25 @@ class MainFrame(wx.Frame):
             except Exception:
                 mix_executor = "ui"
 
-        if mix_executor in {"thread"}:
+        if mix_executor in {"rust"}:
+            try:
+                executor = getattr(self, "_rust_mix_executor", None)
+                if executor is None:
+                    from sara.ui.mix_runtime.rust_executor import RustMixExecutor
+
+                    executor = RustMixExecutor(self)
+                    self._rust_mix_executor = executor
+
+                def _enqueue_call_after(_func, *args):
+                    if len(args) >= 2:
+                        executor.enqueue(str(args[0]), str(args[1]))
+                        return None
+                    return _func(*args)
+
+                call_after = _enqueue_call_after
+            except Exception:
+                call_after = wx.CallAfter
+        elif mix_executor in {"thread"}:
             try:
                 executor = getattr(self, "_thread_mix_executor", None)
                 if executor is None:

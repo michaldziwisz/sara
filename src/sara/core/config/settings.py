@@ -124,13 +124,15 @@ class SettingsManager:
             return "ui"
         if raw in {"thread"}:
             return "thread"
+        if raw in {"rust"}:
+            return "rust"
         return str(DEFAULT_CONFIG["playback"].get("mix_executor", "ui"))
 
     def set_playback_mix_executor(self, value: str | None) -> None:
         raw = str(value or "").strip().lower()
         if raw in {"wx"}:
             raw = "ui"
-        if raw not in {"ui", "thread"}:
+        if raw not in {"ui", "thread", "rust"}:
             raw = str(DEFAULT_CONFIG["playback"].get("mix_executor", "ui"))
         playback = self._data.setdefault("playback", {})
         playback["mix_executor"] = raw

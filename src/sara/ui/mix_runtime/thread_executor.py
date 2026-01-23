@@ -280,6 +280,7 @@ def handle_native_mix_trigger(
     playlist_id: str,
     item_id: str,
     enqueue_mix_trigger: Callable[[str, str], None],
+    executor_name: str = "thread",
 ) -> None:
     """Execute a native mix trigger without calling wx/UI code on the worker thread."""
 
@@ -489,7 +490,8 @@ def handle_native_mix_trigger(
             now_ts = time.perf_counter()
             delay_ms = (now_ts - float(trigger_ts)) * 1000.0 if trigger_ts is not None else None
             logger.info(
-                "MIX_METRIC native executor=thread playlist=%s item=%s started=%s delay_ms=%s fired_pos=%s target=%s requested=%s via=%s",
+                "MIX_METRIC native executor=%s playlist=%s item=%s started=%s delay_ms=%s fired_pos=%s target=%s requested=%s via=%s",
+                str(executor_name or "thread"),
                 playlist.id,
                 item.id,
                 started,

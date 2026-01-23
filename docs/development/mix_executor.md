@@ -33,9 +33,12 @@ playback:
 ```
 
 Override dla testów/diagnostyki:
-- `SARA_MIX_EXECUTOR=ui|thread|off`
+- `SARA_MIX_EXECUTOR=ui|thread|rust|off`
   - `off` wyłącza native triggery (zostaje fallback progresowy).
-  - `rust` jest obecnie **niezaimplementowane** (zostanie zalogowane ostrzeżenie i nastąpi fallback do `ui`).
+  - `rust` używa natywnej biblioteki `sara_mix_executor.dll` (eksperymentalne).
+
+Ścieżka do biblioteki (opcjonalnie, przydatne w dev/testach):
+- `SARA_MIX_EXECUTOR_LIBRARY_PATH` – może wskazywać na plik `.dll` albo katalog z `.dll`.
 
 ## Metryki
 

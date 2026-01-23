@@ -28,8 +28,8 @@ def build_general_tab(
 
     executor_row = wx.BoxSizer(wx.HORIZONTAL)
     executor_label = wx.StaticText(general_panel, label=_("Mix trigger executor:"))
-    dialog._mix_executor_codes = ["ui", "thread"]
-    executor_names = [_("UI (wx)"), _("Thread (low latency)")]
+    dialog._mix_executor_codes = ["ui", "thread", "rust"]
+    executor_names = [_("UI (wx)"), _("Thread (low latency)"), _("Rust DLL (experimental)")]
     dialog._mix_executor_choice = wx.Choice(general_panel, choices=executor_names)
     apply_accessible_label(dialog._mix_executor_choice, executor_label.GetLabel().rstrip(":").strip())
     current_executor = dialog._settings.get_playback_mix_executor()

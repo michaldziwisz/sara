@@ -59,6 +59,18 @@ def _build_mix_trigger_callback(frame, *, playlist_id: str, item_id: str) -> Cal
     mix_executor = _resolve_mix_executor(frame)
     if mix_executor in {"off", "none", "0", "false"}:
         return None
+    if mix_executor in {"rust"}:
+        try:
+            executor = getattr(frame, "_rust_mix_executor", None)
+            if executor is None:
+                from sara.ui.mix_runtime.rust_executor import RustMixExecutor
+
+                executor = RustMixExecutor(frame)
+                frame._rust_mix_executor = executor
+            return lambda pl_id=playlist_id, it_id=item_id: executor.enqueue(pl_id, it_id)
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.warning("mix_executor=rust failed (%s); falling back to thread", exc)
+            mix_executor = "thread"
     if mix_executor in {"thread"}:
         try:
             executor = getattr(frame, "_thread_mix_executor", None)
@@ -70,8 +82,6 @@ def _build_mix_trigger_callback(frame, *, playlist_id: str, item_id: str) -> Cal
             return lambda pl_id=playlist_id, it_id=item_id: executor.enqueue(pl_id, it_id)
         except Exception as exc:  # pylint: disable=broad-except
             logger.warning("mix_executor=thread failed (%s); falling back to ui", exc)
-    if mix_executor in {"rust"}:
-        logger.warning("mix_executor=rust is not implemented yet; falling back to ui")
     elif mix_executor not in {"ui", "wx"}:
         logger.warning("Unknown SARA_MIX_EXECUTOR=%s; falling back to ui", mix_executor)
     return lambda pl_id=playlist_id, it_id=item_id: _call_after_if_app(frame._auto_mix_now_from_callback, pl_id, it_id)
