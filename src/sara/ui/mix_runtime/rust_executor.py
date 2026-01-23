@@ -11,6 +11,7 @@ import ctypes
 import logging
 import os
 import sys
+import threading
 from pathlib import Path
 
 
@@ -149,3 +150,87 @@ class RustMixExecutor:
         except Exception:
             logger.exception("RUST: unhandled error while processing mix trigger")
 
+
+class RustCallbackExecutor:
+    """Execute arbitrary Python callbacks on a Rust worker thread.
+
+    Used for PFL mix preview/testing where we want the callback to run off the
+    BASS sync thread but still keep the worker thread in native code.
+    """
+
+    def __init__(self) -> None:
+        self._lib, self._lib_path = _load_library()
+
+        create = getattr(self._lib, "sara_mix_executor_create", None)
+        enqueue = getattr(self._lib, "sara_mix_executor_enqueue", None)
+        destroy = getattr(self._lib, "sara_mix_executor_destroy", None)
+        if not (create and enqueue and destroy):
+            raise RuntimeError("Rust callback executor: missing required symbols")
+
+        create.argtypes = [_CALLBACK]
+        create.restype = ctypes.c_void_p
+        enqueue.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p]
+        enqueue.restype = None
+        destroy.argtypes = [ctypes.c_void_p]
+        destroy.restype = None
+
+        self._enqueue = enqueue
+        self._destroy = destroy
+        self._lock = threading.Lock()
+        self._pending: dict[str, callable] = {}
+        self._counter = 0
+
+        self._callback = _CALLBACK(self._on_task)
+        self._handle = create(self._callback)
+        if not self._handle:
+            raise RuntimeError("Rust callback executor: failed to create executor")
+
+        if self._lib_path:
+            logger.info("Rust callback executor loaded: %s", self._lib_path)
+        else:
+            logger.info("Rust callback executor loaded via system loader")
+
+    def submit(self, func) -> str | None:
+        handle = getattr(self, "_handle", None)
+        if not handle or not callable(func):
+            return None
+        with self._lock:
+            self._counter += 1
+            token = f"task-{self._counter}"
+            self._pending[token] = func
+        try:
+            self._enqueue(handle, token.encode("utf-8", errors="replace"), b"")
+        except Exception:
+            with self._lock:
+                self._pending.pop(token, None)
+            logger.exception("RUST: submit failed token=%s", token)
+            return None
+        return token
+
+    def clear(self) -> None:
+        with self._lock:
+            self._pending.clear()
+
+    def shutdown(self) -> None:
+        handle = getattr(self, "_handle", None)
+        if not handle:
+            return
+        try:
+            self._destroy(handle)
+        except Exception:
+            logger.exception("RUST: callback executor shutdown failed")
+        finally:
+            self._handle = None
+            self.clear()
+
+    def _on_task(self, playlist_id: bytes | None, _item_id: bytes | None) -> None:
+        token = (playlist_id or b"").decode("utf-8", errors="replace")
+        func = None
+        with self._lock:
+            func = self._pending.pop(token, None)
+        if not func:
+            return
+        try:
+            func()
+        except Exception:
+            logger.exception("RUST: callback task failed token=%s", token)

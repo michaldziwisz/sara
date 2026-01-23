@@ -7,6 +7,8 @@ behaviour via thin delegating methods.
 from __future__ import annotations
 
 import logging
+import os
+import sys
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +28,7 @@ class PreviewContext:
     device_id: str
     item_path: Path
     finished_event: Event | None = None
+    mix_executor: object | None = None
 
 
 def stop_preview(controller, *, wait: bool = True) -> None:
@@ -55,6 +58,32 @@ def stop_preview(controller, *, wait: bool = True) -> None:
             finished_event.wait(timeout=0.5)
         except Exception:  # pylint: disable=broad-except
             pass
+    try:
+        executor = getattr(context, "mix_executor", None)
+        shutdown = getattr(executor, "shutdown", None) if executor else None
+        if callable(shutdown):
+            shutdown()
+    except Exception:  # pragma: no cover - best-effort cleanup
+        pass
+
+
+def _resolve_mix_executor(controller) -> str:
+    env_value = os.environ.get("SARA_MIX_EXECUTOR")
+    if env_value:
+        return env_value.strip().lower()
+    settings = getattr(controller, "_settings", None)
+    getter = getattr(settings, "get_playback_mix_executor", None)
+    if callable(getter):
+        try:
+            return str(getter()).strip().lower()
+        except Exception:
+            pass
+    return "ui"
+
+
+def _can_load_rust_executor() -> bool:
+    # Avoid trying to load the DLL in environments where it won't exist.
+    return sys.platform.startswith("win") or sys.platform == "darwin" or sys.platform.startswith("linux")
 
 
 def start_preview(
@@ -242,6 +271,15 @@ def start_mix_preview(
                     logger.debug("PFL mix preview: warm-up failed", exc_info=True)
 
     stop_event = Event()
+    callback_executor = None
+    mix_executor = _resolve_mix_executor(controller)
+    if mix_executor == "rust" and _can_load_rust_executor():
+        try:
+            from sara.ui.mix_runtime.rust_executor import RustCallbackExecutor
+
+            callback_executor = RustCallbackExecutor()
+        except Exception:
+            callback_executor = None
 
     # jeśli trigger w przeszłości, odpal B natychmiast i skróć pre-window
     if delay_b <= 0:
@@ -265,10 +303,20 @@ def start_mix_preview(
         if delay_b <= 0:
             _fire_mix()
             return
+
+        def _on_native_trigger() -> None:
+            if callback_executor:
+                try:
+                    callback_executor.submit(_fire_mix)
+                except Exception:
+                    _fire_mix()
+                return
+            _fire_mix()
+
         apply_trigger = getattr(player_a, "_apply_mix_trigger", None)
         if callable(apply_trigger):
             try:
-                apply_trigger(mix_at_seconds, _fire_mix)
+                apply_trigger(mix_at_seconds, _on_native_trigger)
                 return
             except Exception:  # pragma: no cover - defensywne
                 logger.debug("PFL mix preview: failed to arm BASS trigger, falling back to timer", exc_info=True)
@@ -303,6 +351,7 @@ def start_mix_preview(
         device_id=pfl_device_id,
         item_path=current_item.path,
         finished_event=stop_event,
+        mix_executor=callback_executor,
     )
     return True
 
