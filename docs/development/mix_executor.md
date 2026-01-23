@@ -35,8 +35,8 @@ playback:
 Override dla testów/diagnostyki:
 - `SARA_MIX_EXECUTOR=ui|thread|off`
   - `off` wyłącza native triggery (zostaje fallback progresowy).
+  - `rust` jest obecnie **niezaimplementowane** (zostanie zalogowane ostrzeżenie i nastąpi fallback do `ui`).
 
 ## Metryki
 
 W logach pojawia się linia `MIX_METRIC ...`, która raportuje opóźnienie między native callback a rozpoczęciem logiki miksu (pomocne do porównania `ui` vs `thread`).
-

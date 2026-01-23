@@ -187,7 +187,7 @@ def auto_mix_now(frame, playlist: PlaylistModel, item: PlaylistItem, panel: Any)
             now_ts = time.perf_counter()
             delay_ms = (now_ts - float(trigger_ts)) * 1000.0 if trigger_ts is not None else None
             logger.info(
-                "MIX_METRIC native playlist=%s item=%s started=%s delay_ms=%s fired_pos=%s target=%s requested=%s via=%s",
+                "MIX_METRIC native executor=ui playlist=%s item=%s started=%s delay_ms=%s fired_pos=%s target=%s requested=%s via=%s",
                 playlist.id,
                 item.id,
                 started,

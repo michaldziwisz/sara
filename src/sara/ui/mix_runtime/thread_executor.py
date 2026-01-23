@@ -481,15 +481,23 @@ def handle_native_mix_trigger(
     try:
         mix_event = getattr(ctx.player, "_last_mix_trigger_event", None) if ctx else None
         if isinstance(mix_event, dict) and not mix_event.get("reported"):
+            fired_pos = mix_event.get("fired_pos")
+            target = mix_event.get("target")
+            requested = mix_event.get("requested")
+            source = mix_event.get("source")
             trigger_ts = mix_event.get("perf_ts")
             now_ts = time.perf_counter()
             delay_ms = (now_ts - float(trigger_ts)) * 1000.0 if trigger_ts is not None else None
             logger.info(
-                "MIX_METRIC native executor=thread playlist=%s item=%s started=%s delay_ms=%s",
+                "MIX_METRIC native executor=thread playlist=%s item=%s started=%s delay_ms=%s fired_pos=%s target=%s requested=%s via=%s",
                 playlist.id,
                 item.id,
                 started,
                 f"{delay_ms:.2f}" if delay_ms is not None else "?",
+                f"{float(fired_pos):.3f}" if fired_pos is not None else "?",
+                f"{float(target):.3f}" if target is not None else "?",
+                f"{float(requested):.3f}" if requested is not None else "?",
+                source or "?",
             )
             mix_event["reported"] = True
     except Exception:  # pragma: no cover - metrics are best-effort
