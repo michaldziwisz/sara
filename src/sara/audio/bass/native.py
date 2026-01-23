@@ -176,6 +176,10 @@ class _BassLibrary:
         lib.BASS_ChannelGetAttribute.argtypes = [DWORD, DWORD, ctypes.POINTER(ctypes.c_float)]
         lib.BASS_ChannelGetAttribute.restype = BOOL
 
+        if hasattr(lib, "BASS_ChannelSlideAttribute"):
+            lib.BASS_ChannelSlideAttribute.argtypes = [DWORD, DWORD, ctypes.c_float, DWORD]
+            lib.BASS_ChannelSlideAttribute.restype = BOOL
+
         lib.BASS_PluginLoad.argtypes = [ctypes.c_char_p, DWORD]
         lib.BASS_PluginLoad.restype = ctypes.c_void_p
 

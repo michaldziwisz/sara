@@ -7,10 +7,12 @@ import os
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, TYPE_CHECKING
 
 from sara.audio.engine import AudioDevice, AudioEngine, Player
+from sara.audio.types import BackendType
 from sara.core.config import SettingsManager
 from sara.core.file_prefetch import warm_file
 from sara.core.playlist import PlaylistItem, PlaylistItemStatus, PlaylistModel
@@ -26,6 +28,13 @@ if TYPE_CHECKING:  # pragma: no cover - tylko dla typowania
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _SlotPlayerEntry:
+    device_id: str
+    player: Player
+    use_mixer: bool
 
 
 class PlaybackController(PlaybackMixerSupportMixin):
@@ -47,6 +56,8 @@ class PlaybackController(PlaybackMixerSupportMixin):
         self._pfl_device_id: str | None = settings.get_pfl_device()
         self._mixers: Dict[str, "DeviceMixer"] = {}
         self._mixer_factory = mixer_factory or self._default_mixer_factory
+        self._slot_players: dict[tuple[str, int], _SlotPlayerEntry] = {}
+        self._slot_players_lock = threading.RLock()
         self._preload_enabled = os.environ.get("SARA_ENABLE_PRELOAD", "1") not in {"0", "false", "False"}
         self._preload_warm_bytes = int(os.environ.get("SARA_PRELOAD_WARM_BYTES", str(32 * 1024 * 1024)))
         self._preload_refetch_seconds = float(os.environ.get("SARA_PRELOAD_REFETCH_SECONDS", "60"))
@@ -92,6 +103,60 @@ class PlaybackController(PlaybackMixerSupportMixin):
 
     def get_busy_device_ids(self) -> set[str]:
         return {context.device_id for context in self._playback_contexts.values()}
+
+    def _drop_slot_player(self, *, playlist_id: str, slot_index: int) -> None:
+        key = (playlist_id, int(slot_index))
+        with self._slot_players_lock:
+            entry = self._slot_players.pop(key, None)
+        if entry is None:
+            return
+        try:
+            entry.player.stop()
+        except Exception:
+            pass
+        for attr in ("set_finished_callback", "set_progress_callback"):
+            setter = getattr(entry.player, attr, None)
+            if callable(setter):
+                try:
+                    setter(None)
+                except Exception:
+                    pass
+
+    def _set_slot_player(self, *, playlist_id: str, slot_index: int, device_id: str, player: Player, use_mixer: bool) -> None:
+        key = (playlist_id, int(slot_index))
+        with self._slot_players_lock:
+            self._slot_players[key] = _SlotPlayerEntry(device_id=str(device_id), player=player, use_mixer=bool(use_mixer))
+
+    def _get_or_create_slot_player(
+        self,
+        playlist: PlaylistModel,
+        *,
+        slot_index: int,
+        device: AudioDevice,
+        use_mixer: bool,
+    ) -> Player:
+        key = (playlist.id, int(slot_index))
+        with self._slot_players_lock:
+            entry = self._slot_players.get(key)
+            if entry and entry.device_id == device.id and entry.use_mixer == bool(use_mixer):
+                return entry.player
+        if entry:
+            self._drop_slot_player(playlist_id=playlist.id, slot_index=slot_index)
+        if use_mixer:
+            mixer = self._get_or_create_mixer(device)
+            MixerPlayer = self._get_mixer_player_class()
+            player = MixerPlayer(mixer)
+        else:
+            creator = getattr(self._audio_engine, "create_player_instance", None)
+            player = creator(device.id) if callable(creator) else self._audio_engine.create_player(device.id)
+        self._set_slot_player(
+            playlist_id=playlist.id,
+            slot_index=slot_index,
+            device_id=device.id,
+            player=player,
+            use_mixer=use_mixer,
+        )
+        return player
 
     def stop_playlist(self, playlist_id: str, *, fade_duration: float = 0.0) -> list[tuple[tuple[str, str], PlaybackContext]]:
         keys_to_remove = [key for key in self._playback_contexts if key[0] == playlist_id]
@@ -235,24 +300,31 @@ class PlaybackController(PlaybackMixerSupportMixin):
 
         start_seconds = float(getattr(next_item, "cue_in_seconds", 0.0) or 0.0)
         allow_loop = bool(getattr(next_item, "loop_enabled", False) and getattr(next_item, "has_loop", lambda: False)())
-        device_id = self._resolve_preload_device_id(playlist)
+        preload_slot = self._resolve_preload_slot(playlist)
 
-        if device_id:
-            try:
-                player = self._audio_engine.create_player(device_id)
-            except Exception:
-                player = None
-            if player is not None:
-                preloader = getattr(player, "preload", None)
-                if callable(preloader):
-                    self._ensure_preload_executor().submit(
-                        self._safe_preload_call,
-                        preloader,
-                        str(next_item.path),
-                        start_seconds=start_seconds,
-                        allow_loop=allow_loop,
+        if preload_slot:
+            slot_index, device = preload_slot
+            if device.backend in (BackendType.BASS, BackendType.BASS_ASIO):
+                try:
+                    player = self._get_or_create_slot_player(
+                        playlist,
+                        slot_index=slot_index,
+                        device=device,
+                        use_mixer=False,
                     )
-                    return
+                except Exception:
+                    player = None
+                if player is not None:
+                    preloader = getattr(player, "preload", None)
+                    if callable(preloader):
+                        self._ensure_preload_executor().submit(
+                            self._safe_preload_call,
+                            preloader,
+                            str(next_item.path),
+                            start_seconds=start_seconds,
+                            allow_loop=allow_loop,
+                        )
+                        return
 
         self._schedule_file_warmup(next_item.path)
 
@@ -318,23 +390,28 @@ class PlaybackController(PlaybackMixerSupportMixin):
                 return candidate
         return None
 
-    def _resolve_preload_device_id(self, playlist: PlaylistModel) -> str | None:
-        configured = [slot for slot in playlist.get_configured_slots() if slot]
-        if not configured:
+    def _resolve_preload_slot(self, playlist: PlaylistModel) -> tuple[int, AudioDevice] | None:
+        slots = [slot for slot in playlist.get_configured_slots() if slot]
+        if not slots:
             return None
         try:
-            available = {device.id for device in self._audio_engine.get_devices()}
+            devices = self._audio_engine.get_devices()
         except Exception:
-            return configured[0]
-        if not available:
-            return configured[0]
+            return None
+        if not devices:
+            return None
+        device_map = {device.id: device for device in devices}
         try:
-            selection = playlist.peek_next_slot(available, self.get_busy_device_ids())
+            selection = playlist.peek_next_slot(set(device_map.keys()), self.get_busy_device_ids())
         except Exception:
             selection = None
-        if selection is not None:
-            return selection[1]
-        return configured[0]
+        if selection is None:
+            return None
+        slot_index, device_id = selection
+        device = device_map.get(device_id)
+        if device is None:
+            return None
+        return int(slot_index), device
 
     def stop_preview(self, *, wait: bool = True) -> None:
         _playback_preview.stop_preview(self, wait=wait)

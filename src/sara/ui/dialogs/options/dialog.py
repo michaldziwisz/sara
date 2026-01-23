@@ -152,6 +152,13 @@ class OptionsDialog(wx.Dialog):
 
     def _on_accept(self, _event: wx.Event) -> None:
         self._settings.set_playback_fade_seconds(self._fade_ctrl.GetValue())
+        if hasattr(self, "_mix_executor_choice") and hasattr(self, "_mix_executor_codes"):
+            selection = self._mix_executor_choice.GetSelection()
+            if selection != wx.NOT_FOUND:
+                try:
+                    self._settings.set_playback_mix_executor(self._mix_executor_codes[selection])
+                except Exception:
+                    pass
         self._settings.set_alternate_play_next(self._alternate_checkbox.GetValue())
         self._settings.set_swap_play_select(self._swap_play_select_checkbox.GetValue())
         self._settings.set_auto_remove_played(self._auto_remove_checkbox.GetValue())

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Callable
 
 import wx
@@ -14,6 +15,27 @@ from sara.ui.playlist_panel import PlaylistPanel
 
 logger = logging.getLogger(__name__)
 
+def _resolve_mix_executor(frame) -> str:
+    """Resolve mix trigger executor.
+
+    Precedence:
+    1) `SARA_MIX_EXECUTOR` env var (if set)
+    2) settings: `playback.mix_executor`
+    3) fallback: `ui`
+    """
+
+    env_value = os.environ.get("SARA_MIX_EXECUTOR")
+    if env_value:
+        return env_value.strip().lower()
+    settings = getattr(frame, "_settings", None)
+    getter = getattr(settings, "get_playback_mix_executor", None)
+    if callable(getter):
+        try:
+            return str(getter()).strip().lower()
+        except Exception:
+            pass
+    return "ui"
+
 
 def _call_after_if_app(func, *args) -> None:
     app = wx.GetApp()
@@ -21,6 +43,38 @@ def _call_after_if_app(func, *args) -> None:
         wx.CallAfter(func, *args)
     else:  # defensive: allow playback controller use without wx.App
         func(*args)
+
+
+def _build_mix_trigger_callback(frame, *, playlist_id: str, item_id: str) -> Callable[[], None] | None:
+    """Return the on-mix-trigger callback passed down to the audio backend.
+
+    Executor can be selected via config (`playback.mix_executor`) and overridden via
+    `SARA_MIX_EXECUTOR` env var:
+    - `ui` (default): schedule mix via `wx.CallAfter`.
+    - `thread`: enqueue mix trigger to a dedicated worker thread.
+    - `off`: disable native triggers (keep progress fallback).
+    - other values fall back to `ui`.
+    """
+
+    mix_executor = _resolve_mix_executor(frame)
+    if mix_executor in {"off", "none", "0", "false"}:
+        return None
+    if mix_executor in {"thread"}:
+        try:
+            executor = getattr(frame, "_thread_mix_executor", None)
+            if executor is None:
+                from sara.ui.mix_runtime.thread_executor import ThreadMixExecutor
+
+                executor = ThreadMixExecutor(frame)
+                frame._thread_mix_executor = executor
+            return lambda pl_id=playlist_id, it_id=item_id: executor.enqueue(pl_id, it_id)
+        except Exception as exc:  # pylint: disable=broad-except
+            logger.warning("mix_executor=thread failed (%s); falling back to ui", exc)
+    if mix_executor in {"rust"}:
+        logger.warning("mix_executor=rust is not implemented yet; falling back to ui")
+    elif mix_executor not in {"ui", "wx"}:
+        logger.warning("Unknown SARA_MIX_EXECUTOR=%s; falling back to ui", mix_executor)
+    return lambda pl_id=playlist_id, it_id=item_id: _call_after_if_app(frame._auto_mix_now_from_callback, pl_id, it_id)
 
 
 def _prepare_mix_schedule(
@@ -59,9 +113,7 @@ def _prepare_mix_schedule(
         item,
         effective_duration_override=effective_override,
     )
-    on_mix_trigger: Callable[[], None] | None = lambda pl_id=playlist.id, it_id=item.id: _call_after_if_app(
-        frame._auto_mix_now_from_callback, pl_id, it_id
-    )
+    on_mix_trigger = _build_mix_trigger_callback(frame, playlist_id=playlist.id, item_id=item.id)
     return mix_trigger_seconds, fade_seconds, base_cue, effective_duration, on_mix_trigger
 
 

@@ -169,29 +169,17 @@ def fade_out(player, duration: float) -> None:
     start_ts = time.perf_counter()
 
     def _runner(target: int) -> None:
-        steps = max(4, int(duration / 0.05))
         interrupted = False
         try:
             initial = player._gain_factor
-            logger.debug(
-                "BASS fade start stream=%s duration=%.3f gain=%.3f steps=%d",
-                target,
-                duration,
-                initial,
-                steps,
-            )
-            for i in range(steps):
-                if player._stream != target:
-                    interrupted = True
-                    break
-                factor = initial * (1.0 - float(i + 1) / steps)
+            logger.debug("BASS fade start stream=%s duration=%.3f gain=%.3f", target, duration, initial)
+            if not player._manager.channel_slide_volume(target, 0.0, duration):
+                # Fallback: direct volume set + sleep (should be rare).
                 try:
-                    player._manager.channel_set_volume(target, factor)
-                except Exception as exc:
-                    logger.debug("BASS fade step failed: %s", exc)
-                    interrupted = True
-                    break
-                time.sleep(duration / steps)
+                    player._manager.channel_set_volume(target, 0.0)
+                except Exception as exc:  # pragma: no cover - zależne od środowiska
+                    logger.debug("BASS fade fallback volume set failed: %s", exc)
+            time.sleep(duration)
         finally:
             elapsed = time.perf_counter() - start_ts
             completed = not interrupted and player._stream == target

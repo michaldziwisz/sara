@@ -26,6 +26,22 @@ def build_general_tab(
     playback_row.Add(dialog._fade_ctrl, 0, wx.ALIGN_CENTER_VERTICAL)
     playback_box.Add(playback_row, 0, wx.ALL, 5)
 
+    executor_row = wx.BoxSizer(wx.HORIZONTAL)
+    executor_label = wx.StaticText(general_panel, label=_("Mix trigger executor:"))
+    dialog._mix_executor_codes = ["ui", "thread"]
+    executor_names = [_("UI (wx)"), _("Thread (low latency)")]
+    dialog._mix_executor_choice = wx.Choice(general_panel, choices=executor_names)
+    apply_accessible_label(dialog._mix_executor_choice, executor_label.GetLabel().rstrip(":").strip())
+    current_executor = dialog._settings.get_playback_mix_executor()
+    try:
+        executor_selection = dialog._mix_executor_codes.index(current_executor)
+    except ValueError:
+        executor_selection = 0
+    dialog._mix_executor_choice.SetSelection(executor_selection)
+    executor_row.Add(executor_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 8)
+    executor_row.Add(dialog._mix_executor_choice, 0, wx.ALIGN_CENTER_VERTICAL)
+    playback_box.Add(executor_row, 0, wx.ALL, 5)
+
     dialog._alternate_checkbox = wx.CheckBox(
         general_panel,
         label=_("Alternate playlists with Space key"),

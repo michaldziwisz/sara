@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import wx
 
 from sara.core.app_state import AppState
@@ -270,6 +272,12 @@ class MainFrame(wx.Frame):
             self._jingles.stop_all()
         except Exception:
             pass
+        try:
+            executor = getattr(self, "_thread_mix_executor", None)
+            if executor:
+                executor.shutdown(timeout=1.0)
+        except Exception:
+            pass
         event.Skip()
 
     def _on_toggle_auto_mix(self, event: wx.CommandEvent) -> None:
@@ -284,12 +292,41 @@ class MainFrame(wx.Frame):
 
 
     def _apply_mix_trigger_to_playback(self, *, playlist_id: str, item: PlaylistItem, panel: PlaylistPanel) -> None:
+        call_after = wx.CallAfter
+        env_value = os.environ.get("SARA_MIX_EXECUTOR")
+        if env_value:
+            mix_executor = env_value.strip().lower()
+        else:
+            getter = getattr(getattr(self, "_settings", None), "get_playback_mix_executor", None)
+            try:
+                mix_executor = str(getter()).strip().lower() if callable(getter) else "ui"
+            except Exception:
+                mix_executor = "ui"
+
+        if mix_executor in {"thread"}:
+            try:
+                executor = getattr(self, "_thread_mix_executor", None)
+                if executor is None:
+                    from sara.ui.mix_runtime.thread_executor import ThreadMixExecutor
+
+                    executor = ThreadMixExecutor(self)
+                    self._thread_mix_executor = executor
+
+                def _enqueue_call_after(_func, *args):
+                    if len(args) >= 2:
+                        executor.enqueue(str(args[0]), str(args[1]))
+                        return None
+                    return _func(*args)
+
+                call_after = _enqueue_call_after
+            except Exception:
+                call_after = wx.CallAfter
         _mix_runtime.apply_mix_trigger_to_playback(
             self,
             playlist_id=playlist_id,
             item=item,
             panel=panel,
-            call_after=wx.CallAfter,
+            call_after=call_after,
         )
 
     def _get_audio_panel(self, kinds: tuple[PlaylistKind, ...]) -> PlaylistPanel | None:

@@ -9,11 +9,13 @@ from sara.core.shortcuts import get_shortcut
 from sara.ui.jingles_dialog import JinglesDialog
 from sara.ui.options_dialog import OptionsDialog
 from sara.ui.shortcut_editor_dialog import ShortcutEditorDialog
+from sara.ui.playlist_panel import PlaylistPanel
 from sara.ui.dialogs.feedback.dialog import FeedbackDialog
 
 
 def on_options(frame, _event: wx.CommandEvent) -> None:
     current_language = frame._settings.get_language()
+    current_executor = frame._settings.get_playback_mix_executor()
     dialog = OptionsDialog(frame, settings=frame._settings, audio_engine=frame._audio_engine)
     if dialog.ShowModal() == wx.ID_OK:
         frame._settings.save()
@@ -32,6 +34,31 @@ def on_options(frame, _event: wx.CommandEvent) -> None:
         frame._focus_playing_track = frame._settings.get_focus_playing_track()
         frame._intro_alert_seconds = frame._settings.get_intro_alert_seconds()
         frame._track_end_alert_seconds = frame._settings.get_track_end_alert_seconds()
+        new_executor = frame._settings.get_playback_mix_executor()
+        if new_executor != current_executor:
+            # Re-apply mix triggers for currently playing items so the new executor takes effect immediately.
+            for (pl_id, item_id), _ctx in list(frame._playback.contexts.items()):
+                panel = frame._playlists.get(pl_id)
+                if not isinstance(panel, PlaylistPanel):
+                    continue
+                playlist = frame._get_playlist_model(pl_id)
+                if not playlist:
+                    continue
+                item = playlist.get_item(item_id)
+                if not item:
+                    continue
+                try:
+                    frame._apply_mix_trigger_to_playback(playlist_id=pl_id, item=item, panel=panel)
+                except Exception:
+                    pass
+            if current_executor == "thread" and new_executor != "thread":
+                try:
+                    executor = getattr(frame, "_thread_mix_executor", None)
+                    if executor:
+                        executor.shutdown(timeout=1.0)
+                        frame._thread_mix_executor = None
+                except Exception:
+                    pass
         now_playing_writer = getattr(frame, "_now_playing_writer", None)
         if now_playing_writer:
             now_playing_writer.refresh()

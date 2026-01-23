@@ -108,6 +108,19 @@ def channel_set_volume(manager: "BassManager", stream: int, volume: float) -> No
     manager._lib.BASS_ChannelSetAttribute(stream, _BassConstants.ATTRIB_VOL, ctypes.c_float(volume))
 
 
+def channel_slide_volume(manager: "BassManager", stream: int, target_volume: float, duration_seconds: float) -> bool:
+    """Slide volume to `target_volume` over `duration_seconds` (best-effort)."""
+    slide = getattr(manager._lib, "BASS_ChannelSlideAttribute", None)
+    if not slide:
+        return False
+    duration_ms = int(max(0.0, float(duration_seconds)) * 1000.0)
+    target_volume = max(0.0, float(target_volume))
+    try:
+        return bool(slide(stream, _BassConstants.ATTRIB_VOL, ctypes.c_float(target_volume), duration_ms))
+    except Exception:  # pragma: no cover - zależne od środowiska
+        return False
+
+
 def seconds_to_bytes(manager: "BassManager", stream: int, seconds: float) -> int:
     return int(manager._lib.BASS_ChannelSeconds2Bytes(stream, ctypes.c_double(seconds)))
 

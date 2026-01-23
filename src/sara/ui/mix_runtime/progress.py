@@ -89,8 +89,6 @@ def auto_mix_state_process(
             if late_guard_shortfall <= 0.0 or seconds < mix_at - late_guard_shortfall:
                 return
 
-    already_mixing = frame._playback.auto_mix_state.get(key, False)
-
     elapsed = max(0.0, seconds - base_cue)
     remaining = max(0.0, effective_duration - elapsed)
     mix_remaining: float | None = None
@@ -114,10 +112,12 @@ def auto_mix_state_process(
             fallback_guard_trigger = True
     else:
         should_trigger = remaining_target <= max(0.1, trigger_window)
-    if not should_trigger or already_mixing:
+    if not should_trigger:
         return
 
-    if frame._playback.auto_mix_state.get(key) in {"break_halt", "loop_hold"}:
+    token = object()
+    existing = frame._playback.auto_mix_state.setdefault(key, token)
+    if existing is not token:
         return
     frame._playback.auto_mix_state[key] = True
     if plan:
@@ -153,4 +153,3 @@ def auto_mix_state_process(
     elif plan:
         plan.triggered = False
         frame._playback.auto_mix_state.pop(key, None)
-

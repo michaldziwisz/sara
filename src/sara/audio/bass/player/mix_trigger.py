@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Callable, Optional
 
 # Keep the historical logger name for backwards-compatible filtering.
@@ -39,6 +40,18 @@ def apply_mix_trigger(player, target_seconds: Optional[float], callback: Optiona
         if getattr(player, "_mix_triggered", False):
             return
         player._mix_triggered = True
+        try:
+            player._last_mix_trigger_event = {
+                "perf_ts": time.perf_counter(),
+                "source": source,
+                "stream": channel,
+                "target": float(clamped_target),
+                "requested": float(original_target),
+                "fired_pos": float(fired_pos) if fired_pos is not None else None,
+                "reported": False,
+            }
+        except Exception:  # pragma: no cover - defensive
+            pass
         if player._mix_callback:
             try:
                 player._mix_callback()

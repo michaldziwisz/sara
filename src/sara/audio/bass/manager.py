@@ -54,6 +54,7 @@ class BassManager:
     channel_is_active = _streams_ops.channel_is_active
     channel_get_length_seconds = _streams_ops.channel_get_length_seconds
     channel_set_volume = _streams_ops.channel_set_volume
+    channel_slide_volume = _streams_ops.channel_slide_volume
     seconds_to_bytes = _streams_ops.seconds_to_bytes
     channel_set_position_bytes = _streams_ops.channel_set_position_bytes
     make_sync_proc = _streams_ops.make_sync_proc

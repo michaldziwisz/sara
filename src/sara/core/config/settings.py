@@ -117,6 +117,24 @@ class SettingsManager:
         playback = self._data.setdefault("playback", {})
         playback["swap_play_select"] = bool(enabled)
 
+    def get_playback_mix_executor(self) -> str:
+        playback = self._data.get("playback", {})
+        raw = str(playback.get("mix_executor", DEFAULT_CONFIG["playback"].get("mix_executor", "ui"))).strip().lower()
+        if raw in {"ui", "wx"}:
+            return "ui"
+        if raw in {"thread"}:
+            return "thread"
+        return str(DEFAULT_CONFIG["playback"].get("mix_executor", "ui"))
+
+    def set_playback_mix_executor(self, value: str | None) -> None:
+        raw = str(value or "").strip().lower()
+        if raw in {"wx"}:
+            raw = "ui"
+        if raw not in {"ui", "thread"}:
+            raw = str(DEFAULT_CONFIG["playback"].get("mix_executor", "ui"))
+        playback = self._data.setdefault("playback", {})
+        playback["mix_executor"] = raw
+
     def get_focus_playing_track(self) -> bool:
         accessibility_raw = self._user_config.get("accessibility", {}) if isinstance(self._user_config, dict) else {}
         if isinstance(accessibility_raw, dict) and "follow_playing_selection" in accessibility_raw:

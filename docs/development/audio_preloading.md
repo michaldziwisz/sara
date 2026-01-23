@@ -13,6 +13,10 @@ Gdy automix jest włączony i startuje utwór, `PlaybackController` planuje prel
 
 Preloading jest best-effort: jeśli kolejny utwór się zmieni (np. ręczny wybór), przygotowany preload zostanie porzucony.
 
+### Dlaczego preload „działa” przy wielu slotach
+
+W emisji SARA utrzymuje cache playerów per **(playlista, slot)**. Dzięki temu preload jest wykonywany na tym samym obiekcie playera, który później faktycznie wystartuje kolejny utwór (dla wybranego slotu/urządzenia). To minimalizuje ryzyko sytuacji, w której preload zrobił się „gdzie indziej” i nie został wykorzystany w punkcie miksu.
+
 ## PFL / podsłuch miksu
 
 Podgląd miksu na PFL (`start_mix_preview`) również próbuje przygotować utwór B przed punktem miksu, żeby odsłuch przejścia był możliwie 1:1 z emisją (bez dodatkowego laga na starcie B).

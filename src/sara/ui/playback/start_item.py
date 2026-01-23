@@ -158,11 +158,23 @@ def start_item_impl(
         )
         # jeśli player jest stary/niekompletny, usuń cache i spróbuj raz jeszcze
         try:
-            controller._audio_engine._players.pop(device_id, None)  # pylint: disable=protected-access
+            dropper = getattr(controller, "_drop_slot_player", None)
+            if callable(dropper):
+                dropper(playlist_id=playlist.id, slot_index=slot_index)
         except Exception:
             pass
         try:
-            player = controller._audio_engine.create_player(device_id)
+            creator = getattr(controller._audio_engine, "create_player_instance", None)
+            player = creator(device_id) if callable(creator) else controller._audio_engine.create_player(device_id)
+            setter = getattr(controller, "_set_slot_player", None)
+            if callable(setter):
+                setter(
+                    playlist_id=playlist.id,
+                    slot_index=slot_index,
+                    device_id=device_id,
+                    player=player,
+                    use_mixer=False,
+                )
             player.set_finished_callback(on_finished)
             player.set_progress_callback(on_progress)
             # ponownie ustaw RG przed startem

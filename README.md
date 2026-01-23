@@ -24,7 +24,7 @@ SARA is a wxPython-based automation suite for radio stations. It provides multip
    - Playlist controls: `F1` play, `F2` pause, `F3` stop, `F4` fade out, `Ctrl+Shift+L` toggle loop, `Ctrl+Shift+M` auto-mix.
    - Loop dialog (`Shift+F10 → Loop…`): fine-tune start/end, capture preview (`Ctrl+P` / `Ctrl+Shift+P`). Loop ranges are saved in APEv2 tags (`SARA_LOOP_*`).
    - Use `Ctrl+Shift+L` to toggle looping per track; `Ctrl+Alt+Shift+L` announces loop info.
-   - Options (`Tools → Options…`) let you adjust fade out, PFL device, startup playlists, alternate play mode and auto removal of played tracks.
+   - Options (`Tools → Options…`) let you adjust fade out, PFL device, startup playlists, alternate play mode, auto removal of played tracks and the **mix trigger executor** (UI vs thread).
    - Startup playlists in Options can now include both music and news panels, so you can reopen newsroom scripts automatically at launch.
    - Edit menu provides standard clipboard actions, move items with `Alt+↑/↓`.
    - News playlists expose `Load service…` / `Save service…` buttons (and `Ctrl+O` / `Ctrl+S`) to import/export `.saranews` files. The same format is available in the standalone `sara-news-editor` app, which remembers the last device you picked and lets newsroom staff preview clips without launching the full SARA UI.
@@ -78,7 +78,7 @@ UI/E2E on Windows (optional): `RUN_SARA_E2E=1 PYTHONPATH=src python -m pytest -m
 - The workflow also copies the bs1770gain CLI (`src/sara/audio/vendor/windows/bs1770gain`) next to `SARA.exe`; do the same when preparing local PyInstaller builds so normalization keeps working.
 - Scripts `scripts/auto_download.sh` and `scripts/download_latest_artifact.sh` (install via `scripts/install_hooks.sh`) keep the latest Windows artifact under `artifacts/` after each successful build.
 - For frozen Windows builds, bundle NVDA controller DLLs and optional BASS binaries alongside the executable.
-- Release notes live in `docs/releases/` (see `docs/releases/0.0.32.md` for the latest changes).
+- Release notes live in `docs/releases/`.
 
 ### Roadmap highlights
 - Enhanced accessibility messages.
@@ -118,7 +118,7 @@ Wersja rozwojowa – odtwarzanie, wielokrotne sloty odtwarzaczy i narzędzia pę
    - Sterowanie playlistą: `F1` – start, `F2` – pauza, `F3` – stop, `F4` – fade out, `Ctrl+Shift+L` – pętla, `Ctrl+Shift+M` – auto mix.
    - Dialog pętli (`Shift+F10 → Zapętl…`): precyzyjne start/koniec, odsłuch PFL (`Ctrl+P` / `Ctrl+Shift+P`). Pętle zapisują się w tagach APEv2.
    - Przełączanie zapętlenia utworu (`Ctrl+Shift+L`) i informacja o pętli (`Ctrl+Alt+Shift+L`).
-   - `Narzędzia → Opcje…` udostępniają sterowanie fade, urządzeniem PFL, playlistami startowymi, językiem, trybem naprzemiennym i auto-usuwaniem.
+   - `Narzędzia → Opcje…` udostępniają sterowanie fade, urządzeniem PFL, playlistami startowymi, językiem, trybem naprzemiennym, auto-usuwaniem oraz wyborem **executora triggerów miksu** (UI vs wątek).
    - W sekcji Startup playlists możesz dodać zarówno playlisty muzyczne, jak i newsowe, żeby po starcie Sary od razu otwierały się właściwe panele.
    - Menu `Edycja` udostępnia operacje schowka, `Alt+↑/↓` przenosi pozycje.
    - Playlisty newsowe mają przyciski „Wczytaj serwis…” / „Zapisz serwis…” (oraz skróty `Ctrl+O` / `Ctrl+S`) działające na plikach `.saranews`. Ten sam format obsługuje niezależna aplikacja `sara-news-editor`, która zapamiętuje ostatnio użyte urządzenie, pozwala wybrać kartę audio i odsłuchiwać klipy bez uruchamiania całej Sary.
@@ -148,7 +148,7 @@ Testy UI/E2E na Windows (opcjonalnie): `RUN_SARA_E2E=1 PYTHONPATH=src python -m 
 - Playlisty newsowe z edycją Markdown, trybem tylko do odczytu i przyciskami audio.
 - Playlisty folderów muzycznych: wskaż katalog, odsłuchuj na PFL klawiszem `Spacja`, a `Enter` dodaje zaznaczone utwory do bieżącej playlisty muzycznej.
 - Import/eksport plików `.saranews` oraz niezależny News Editor (`sara-news-editor`) z zapamiętywaniem urządzenia audio do przygotowywania serwisów.
-- Opcje: fade, PFL, playlisty startowe, język interfejsu, tryb naprzemienny, auto-usuwanie.
+- Opcje: fade, PFL, playlisty startowe, język interfejsu, tryb naprzemienny, auto-usuwanie, executor triggerów miksu (UI/wątek).
 - Komunikaty dostępności (NVDA) i testy pokrywające kluczowe moduły.
 
 #### Playlisty newsowe – szczegóły

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 import wx
 
@@ -181,13 +182,42 @@ def sync_loop_mix_trigger(
     item: PlaylistItem,
     context: PlaybackContext,
 ) -> None:
+    call_after = wx.CallAfter
+    env_value = os.environ.get("SARA_MIX_EXECUTOR")
+    if env_value:
+        mix_executor = env_value.strip().lower()
+    else:
+        getter = getattr(getattr(frame, "_settings", None), "get_playback_mix_executor", None)
+        try:
+            mix_executor = str(getter()).strip().lower() if callable(getter) else "ui"
+        except Exception:
+            mix_executor = "ui"
+
+    if mix_executor in {"thread"}:
+        try:
+            executor = getattr(frame, "_thread_mix_executor", None)
+            if executor is None:
+                from sara.ui.mix_runtime.thread_executor import ThreadMixExecutor
+
+                executor = ThreadMixExecutor(frame)
+                frame._thread_mix_executor = executor
+
+            def _enqueue_call_after(_func, *args):
+                if len(args) >= 2:
+                    executor.enqueue(str(args[0]), str(args[1]))
+                    return None
+                return _func(*args)
+
+            call_after = _enqueue_call_after
+        except Exception:
+            call_after = wx.CallAfter
     _sync_loop_mix_trigger_impl(
         frame,
         panel=panel,
         playlist=playlist,
         item=item,
         context=context,
-        call_after=wx.CallAfter,
+        call_after=call_after,
     )
 
 

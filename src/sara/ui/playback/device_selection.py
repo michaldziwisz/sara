@@ -93,19 +93,25 @@ def ensure_player(controller, playlist: PlaylistModel) -> tuple[Player, str, int
         )
 
         try:
-            # Jeśli backend to BASS lub mixer nie jest dostępny, graj bezpośrednio
+            # Jeśli backend to BASS, graj bezpośrednio (mikser soft tylko dla non-BASS).
             effective_use_mixer = use_mixer and device.backend not in (BackendType.BASS, BackendType.BASS_ASIO)
-            player: Player
-            if effective_use_mixer:
-                try:
-                    mixer = controller._get_or_create_mixer(device)
-                    MixerPlayer = controller._get_mixer_player_class()
-                    player = MixerPlayer(mixer)
-                except Exception as exc:  # pylint: disable=broad-except
-                    logger.warning("Mixer unavailable for %s, falling back to direct player: %s", device_id, exc)
-                    effective_use_mixer = False
-            if not effective_use_mixer:
-                player = controller._audio_engine.create_player(device_id)
+            try:
+                player = controller._get_or_create_slot_player(
+                    playlist,
+                    slot_index=slot_index,
+                    device=device,
+                    use_mixer=effective_use_mixer,
+                )
+            except Exception as exc:  # pylint: disable=broad-except
+                if not effective_use_mixer:
+                    raise
+                logger.warning("Mixer unavailable for %s, falling back to direct player: %s", device_id, exc)
+                player = controller._get_or_create_slot_player(
+                    playlist,
+                    slot_index=slot_index,
+                    device=device,
+                    use_mixer=False,
+                )
             return player, device_id, slot_index
         except ValueError:
             attempts += 1
@@ -123,4 +129,3 @@ def ensure_player(controller, playlist: PlaylistModel) -> tuple[Player, str, int
 __all__ = [
     "ensure_player",
 ]
-

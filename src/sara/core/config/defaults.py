@@ -58,6 +58,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "intro_alert_seconds": 5.0,
         "track_end_alert_seconds": 10.0,
         "swap_play_select": False,
+        # Executor used for native mix triggers:
+        # - ui: schedule via wx.CallAfter (safe, may add latency under load)
+        # - thread: enqueue and execute on a dedicated worker thread (lower latency)
+        "mix_executor": "ui",
     },
     "startup": {
         "playlists": [],
