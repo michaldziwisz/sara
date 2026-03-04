@@ -153,7 +153,8 @@ class MixPointEditorDialog(
                 "F/G/C = move forward (1s/5s/0.01s), D = play/pause, "
                 "Q = preview from start, W = preview last 20s, X = capture point, "
                 "Z/C fine-tune active point, "
-                "V = preview active point, Shift+V = preview loop end, Alt+V = preview loop."
+                "V = preview active point, Shift+V = preview loop end, Alt+V = preview loop, "
+                "Ctrl+1-8 = enable/focus mix points (cue, segue, intro, outro, fade, overlap, loop start/end)."
             ),
         )
         info.Wrap(520)

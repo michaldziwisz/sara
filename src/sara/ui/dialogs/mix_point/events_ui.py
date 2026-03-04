@@ -8,6 +8,16 @@ import wx
 
 
 class MixPointEventsMixin:
+    def _focus_or_enable_point(self, key: str) -> None:
+        row = self._rows.get(key)
+        if not row:
+            wx.Bell()
+            return
+        if not row.checkbox.GetValue():
+            row.checkbox.SetValue(True)
+            self._toggle_point(key)
+        row.checkbox.SetFocus()
+
     def _bind_events(self) -> None:
         self._position_slider.Bind(wx.EVT_SLIDER, self._handle_slider_move)
         self._position_ctrl.Bind(wx.EVT_SPINCTRLDOUBLE, self._handle_spin_change)
@@ -66,6 +76,19 @@ class MixPointEventsMixin:
         bind("V", self._preview_active_point, flags=wx.ACCEL_NORMAL)
         bind("V", lambda: self._preview_loop_endpoint(is_start=False), flags=wx.ACCEL_SHIFT)
         bind("V", self._handle_loop_or_mix_preview, flags=wx.ACCEL_ALT)
+
+        ctrl_points = {
+            "1": "cue",
+            "2": "segue",
+            "3": "intro",
+            "4": "outro",
+            "5": "segue_fade",
+            "6": "overlap",
+            "7": "loop_start",
+            "8": "loop_end",
+        }
+        for digit, key in ctrl_points.items():
+            bind(digit, lambda row_key=key: self._focus_or_enable_point(row_key), flags=wx.ACCEL_CTRL)
 
         accel = wx.AcceleratorTable(entries)
         self.SetAcceleratorTable(accel)
