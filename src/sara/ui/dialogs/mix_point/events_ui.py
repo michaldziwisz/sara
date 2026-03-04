@@ -77,6 +77,8 @@ class MixPointEventsMixin:
         bind("V", lambda: self._preview_loop_endpoint(is_start=False), flags=wx.ACCEL_SHIFT)
         bind("V", self._handle_loop_or_mix_preview, flags=wx.ACCEL_ALT)
 
+        bind("0", lambda: self._handle_normalize(wx.CommandEvent()), flags=wx.ACCEL_CTRL)
+
         ctrl_points = {
             "1": "cue",
             "2": "segue",
