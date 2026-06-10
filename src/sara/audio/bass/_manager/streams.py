@@ -116,6 +116,28 @@ def channel_set_position_bytes(manager: "BassManager", stream: int, byte_pos: in
     manager._lib.BASS_ChannelSetPosition(stream, byte_pos, _BassConstants.POS_BYTE)
 
 
+def channel_set_looping(manager: "BassManager", stream: int, enabled: bool) -> None:
+    flags = _BassConstants.SAMPLE_LOOP if enabled else 0
+    result = manager._lib.BASS_ChannelFlags(stream, flags, _BassConstants.SAMPLE_LOOP)
+    if result == 0xFFFFFFFF:
+        code = manager._lib.BASS_ErrorGetCode()
+        raise BassNotAvailable(f"BASS_ChannelFlags LOOP nie powiodło się (kod {code})")
+
+
+def channel_set_loop_points(manager: "BassManager", stream: int, start_byte: int, end_byte: int) -> None:
+    if not manager._lib.BASS_ChannelSetPosition(stream, int(start_byte), _BassConstants.POS_LOOP):
+        code = manager._lib.BASS_ErrorGetCode()
+        raise BassNotAvailable(f"BASS_ChannelSetPosition LOOP nie powiodło się (kod {code})")
+    if not manager._lib.BASS_ChannelSetPosition(stream, int(end_byte), _BassConstants.POS_END):
+        code = manager._lib.BASS_ErrorGetCode()
+        raise BassNotAvailable(f"BASS_ChannelSetPosition END nie powiodło się (kod {code})")
+
+
+def channel_clear_loop_points(manager: "BassManager", stream: int) -> None:
+    manager._lib.BASS_ChannelSetPosition(stream, 0, _BassConstants.POS_END)
+    manager._lib.BASS_ChannelSetPosition(stream, 0, _BassConstants.POS_LOOP)
+
+
 def make_sync_proc(manager: "BassManager", func: Callable[[int, int, int, ctypes.c_void_p], None]):
     return manager._sync_type(func)
 

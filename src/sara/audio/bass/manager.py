@@ -56,6 +56,9 @@ class BassManager:
     channel_set_volume = _streams_ops.channel_set_volume
     seconds_to_bytes = _streams_ops.seconds_to_bytes
     channel_set_position_bytes = _streams_ops.channel_set_position_bytes
+    channel_set_looping = _streams_ops.channel_set_looping
+    channel_set_loop_points = _streams_ops.channel_set_loop_points
+    channel_clear_loop_points = _streams_ops.channel_clear_loop_points
     make_sync_proc = _streams_ops.make_sync_proc
     channel_set_sync_pos = _streams_ops.channel_set_sync_pos
     channel_remove_sync = _streams_ops.channel_remove_sync

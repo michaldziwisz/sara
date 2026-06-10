@@ -14,6 +14,10 @@ class _StubManager:
         self.removed_syncs: list[int] = []
         self.byte_positions: list[tuple[int, int]] = []
         self.current_byte_position: int = 0
+        self.looping_calls: list[tuple[int, bool]] = []
+        self.loop_point_calls: list[tuple[int, int, int]] = []
+        self.cleared_loop_points: list[int] = []
+        self.native_loop_supported: bool = True
 
     def channel_get_length_seconds(self, _stream: int) -> float:
         return 600.0
@@ -42,6 +46,17 @@ class _StubManager:
     def channel_set_position_bytes(self, stream: int, byte_pos: int) -> None:
         self.byte_positions.append((stream, byte_pos))
         self.current_byte_position = byte_pos
+
+    def channel_set_looping(self, stream: int, enabled: bool) -> None:
+        self.looping_calls.append((stream, enabled))
+
+    def channel_set_loop_points(self, stream: int, start_byte: int, end_byte: int) -> None:
+        if not self.native_loop_supported:
+            raise RuntimeError("native loop unavailable")
+        self.loop_point_calls.append((stream, start_byte, end_byte))
+
+    def channel_clear_loop_points(self, stream: int) -> None:
+        self.cleared_loop_points.append(stream)
 
     def channel_get_seconds(self, _stream: int) -> float:
         return self.current_byte_position / 1000.0
@@ -90,7 +105,7 @@ def test_bass_mix_trigger_fires_once_for_pos_and_end():
     assert fired["count"] == 1
 
 
-def test_bass_loop_sets_marker_syncs_and_jumps_to_loop_start():
+def test_bass_loop_uses_native_loop_points():
     player, manager = _player_with_stream(0.0)
 
     player.set_loop(26.137, 34.335)
@@ -98,6 +113,20 @@ def test_bass_loop_sets_marker_syncs_and_jumps_to_loop_start():
     assert player._loop_active is True
     assert player._loop_start_bytes == 26137
     assert player._loop_end_bytes == 34335
+    assert player._loop_native_active is True
+    assert manager.looping_calls[-1:] == [(player._stream, True)]
+    assert manager.loop_point_calls[-1:] == [(player._stream, 26137, 34335)]
+    assert manager.sync_calls == []
+
+
+def test_bass_loop_falls_back_to_marker_syncs_and_jumps_to_loop_start():
+    player, manager = _player_with_stream(0.0)
+    manager.native_loop_supported = False
+
+    player.set_loop(26.137, 34.335)
+
+    assert player._loop_native_active is False
+    assert manager.looping_calls[-2:] == [(player._stream, True), (player._stream, False)]
     assert manager.sync_calls[-1:] == [34335]
     assert manager.sync_mix_times[-1:] == [True]
 
@@ -113,13 +142,26 @@ def test_bass_loop_enable_after_end_jumps_immediately():
 
     player.set_loop(26.137, 34.335)
 
-    assert manager.sync_calls[-1:] == [34335]
+    assert manager.loop_point_calls[-1:] == [(player._stream, 26137, 34335)]
     assert manager.byte_positions[-1] == (player._stream, 26137)
     assert player._loop_iteration == 1
 
 
+def test_bass_loop_clear_disables_native_looping():
+    player, manager = _player_with_stream(0.0)
+    player.set_loop(26.137, 34.335)
+
+    player.set_loop(None, None)
+
+    assert player._loop_active is False
+    assert player._loop_native_active is False
+    assert manager.cleared_loop_points[-1:] == [player._stream]
+    assert manager.looping_calls[-1:] == [(player._stream, False)]
+
+
 def test_bass_loop_clear_removes_marker_syncs():
     player, manager = _player_with_stream(0.0)
+    manager.native_loop_supported = False
     player.set_loop(26.137, 34.335)
 
     player.set_loop(None, None)

@@ -61,6 +61,7 @@ class BassPlayer:
         self._loop_end_sync_proc = None
         self._loop_start_bytes: int = 0
         self._loop_end_bytes: int = 0
+        self._loop_native_active: bool = False
         self._debug_loop = _DEBUG_LOOP
         self._mix_sync_handle: int = 0
         self._mix_sync_proc = None
@@ -309,6 +310,7 @@ class BassPlayer:
             self._loop_alt_sync_proc = None
             self._loop_end_sync_handle = 0
             self._loop_end_sync_proc = None
+            self._loop_native_active = False
             return
         if self._loop_sync_handle:
             self._manager.channel_remove_sync(self._stream, self._loop_sync_handle)
@@ -322,6 +324,49 @@ class BassPlayer:
             self._manager.channel_remove_sync(self._stream, self._loop_end_sync_handle)
         self._loop_end_sync_handle = 0
         self._loop_end_sync_proc = None
+        self._disable_native_loop()
+
+    def _disable_native_loop(self) -> None:
+        if not self._stream:
+            self._loop_native_active = False
+            return
+        clear_loop_points = getattr(self._manager, "channel_clear_loop_points", None)
+        set_looping = getattr(self._manager, "channel_set_looping", None)
+        try:
+            if callable(clear_loop_points):
+                clear_loop_points(self._stream)
+        except Exception as exc:
+            if self._debug_loop:
+                logger.debug("Loop debug: failed to clear native loop points: %s", exc)
+        try:
+            if callable(set_looping):
+                set_looping(self._stream, False)
+        except Exception as exc:
+            if self._debug_loop:
+                logger.debug("Loop debug: failed to disable native loop: %s", exc)
+        self._loop_native_active = False
+
+    def _try_apply_native_loop(self) -> bool:
+        set_looping = getattr(self._manager, "channel_set_looping", None)
+        set_loop_points = getattr(self._manager, "channel_set_loop_points", None)
+        if not callable(set_looping) or not callable(set_loop_points):
+            return False
+        try:
+            set_looping(self._stream, True)
+            set_loop_points(self._stream, self._loop_start_bytes, self._loop_end_bytes)
+        except Exception as exc:
+            self._loop_native_active = False
+            try:
+                set_looping(self._stream, False)
+            except Exception:
+                pass
+            if self._debug_loop:
+                logger.debug("Loop debug: native loop unavailable: %s", exc)
+            return False
+        self._loop_native_active = True
+        if self._debug_loop:
+            logger.debug("Loop debug: native loop active")
+        return True
 
     def _apply_loop_settings(self) -> None:
         if not self._stream:
@@ -350,6 +395,18 @@ class BassPlayer:
                 self._stream,
             )
 
+        try:
+            current_pos = self._manager.channel_get_seconds(self._stream)
+        except Exception:
+            current_pos = None
+        if current_pos is not None and current_pos >= end:
+            self._jump_to_loop_start("enable-after-end", current_pos)
+
+        if self._try_apply_native_loop():
+            if self._debug_loop:
+                logger.debug("Loop debug: native+guard active")
+            return
+
         def _sync_cb(_handle, _channel, _data, _user):
             try:
                 self._jump_to_loop_start("sync")
@@ -371,13 +428,6 @@ class BassPlayer:
             self._loop_sync_handle = 0
             if self._debug_loop:
                 logger.debug("Loop debug: failed to set sync pos: %s", exc)
-
-        try:
-            current_pos = self._manager.channel_get_seconds(self._stream)
-        except Exception:
-            current_pos = None
-        if current_pos is not None and current_pos >= end:
-            self._jump_to_loop_start("enable-after-end", current_pos)
 
         if self._debug_loop:
             logger.debug("Loop debug: sync+guard active")

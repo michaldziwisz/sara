@@ -32,6 +32,8 @@ class _BassConstants:
     ASYNCFILE = 0x40000000
 
     POS_BYTE = 0
+    POS_END = 0x10
+    POS_LOOP = 0x11
     ATTRIB_VOL = 2
 
     ACTIVE_STOPPED = 0
@@ -160,6 +162,9 @@ class _BassLibrary:
 
         lib.BASS_ChannelSetPosition.argtypes = [DWORD, QWORD, DWORD]
         lib.BASS_ChannelSetPosition.restype = BOOL
+
+        lib.BASS_ChannelFlags.argtypes = [DWORD, DWORD, DWORD]
+        lib.BASS_ChannelFlags.restype = DWORD
 
         lib.BASS_ChannelSeconds2Bytes.argtypes = [DWORD, ctypes.c_double]
         lib.BASS_ChannelSeconds2Bytes.restype = QWORD

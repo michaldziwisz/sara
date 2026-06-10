@@ -43,11 +43,14 @@ def start_monitor(
                             pass
                         player._last_progress_ts = now
                     # nadzoruj pętlę również po stronie Python, żeby uniknąć pominiętych synców
+                    loop_active = player._loop_active
+                    loop_start = player._loop_start
+                    loop_end = player._loop_end
                     if (
                         player._loop_guard_enabled
-                        and player._loop_active
-                        and player._loop_end is not None
-                        and player._loop_start is not None
+                        and loop_active
+                        and loop_end is not None
+                        and loop_start is not None
                     ):
                         try:
                             pos = player._manager.channel_get_seconds(player._stream)
@@ -56,8 +59,8 @@ def start_monitor(
                                 logger.debug(
                                     "Loop debug: pos=%.6f start=%.6f end=%.6f stream=%s",
                                     pos,
-                                    player._loop_start,
-                                    player._loop_end,
+                                    loop_start,
+                                    loop_end,
                                     player._stream,
                                 )
                                 player._last_loop_debug_log = now
@@ -68,11 +71,11 @@ def start_monitor(
                                     if player._loop_guard_armed
                                     else loop_guard_fallback_slack
                                 )
-                                if pos > (player._loop_end + guard_slack):
+                                if pos > (loop_end + guard_slack):
                                     player._jump_to_loop_start("guard", pos)
                                     continue
                                 # twardy clamp tylko przy dużym odjechaniu
-                                if pos > (player._loop_end + 0.05):
+                                if pos > (loop_end + 0.05):
                                     player._jump_to_loop_start("clamp", pos)
                                     continue
                         except Exception as exc:
@@ -115,4 +118,3 @@ def start_monitor(
 
     player._monitor_thread = threading.Thread(target=_runner, daemon=True, name="bass-monitor")
     player._monitor_thread.start()
-
