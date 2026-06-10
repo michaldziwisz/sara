@@ -124,6 +124,10 @@ def start_preview(
         player.set_finished_callback(_on_finished)
         player.set_progress_callback(None)
         player.set_gain_db(item.replay_gain_db)
+        if loop_range:
+            player.set_loop(loop_range[0], loop_range[1])
+        else:
+            player.set_loop(None, None)
         finished_event = player.play(
             item.id + ":preview",
             str(item.path),
@@ -132,10 +136,6 @@ def start_preview(
             # przypadkach podsłuch powinien naturalnie się zatrzymać.
             allow_loop=bool(loop_range),
         )
-        if loop_range:
-            player.set_loop(loop_range[0], loop_range[1])
-        else:
-            player.set_loop(None, None)
     except Exception as exc:  # pylint: disable=broad-except
         controller._announce("pfl", _("Preview error: %s") % exc)
         try:
@@ -313,8 +313,11 @@ def update_loop_preview(controller, item: PlaylistItem, start: float, end: float
     context = controller._preview_context
     if not context or context.item_path != item.path:
         return False
+    players = getattr(context, "players", None) or []
+    if not players:
+        return False
     try:
-        context.player.set_loop(start, end)
+        players[0].set_loop(start, end)
     except Exception as exc:  # pylint: disable=broad-except
         controller._announce("pfl", _("Preview error: %s") % exc)
         return False

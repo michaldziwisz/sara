@@ -30,13 +30,16 @@ def play_impl(  # noqa: PLR0915
     np,
     logger: logging.Logger,
 ) -> Event:  # noqa: D401
-    del allow_loop, mix_trigger_seconds, on_mix_trigger
+    del mix_trigger_seconds, on_mix_trigger
 
     path = Path(source_path)
     with player._lock:
         if player._current_item == playlist_item_id:
             return player._finished_event or Event()
-        player.stop()
+        pending_loop_request = player._loop_request if allow_loop else None
+    player.stop()
+    with player._lock:
+        player._loop_request = pending_loop_request
         player._current_item = playlist_item_id
         player._path = path
         try:
@@ -252,4 +255,3 @@ def play_impl(  # noqa: PLR0915
         player._thread = Thread(target=_run, daemon=True)
         player._thread.start()
         return player._finished_event
-

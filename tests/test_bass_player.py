@@ -6,8 +6,17 @@ import pytest
 bass = pytest.importorskip("sara.audio.bass")
 
 
+class _StubDeviceContext:
+    def __init__(self, manager: "_StubManager") -> None:
+        self._manager = manager
+
+    def release(self) -> None:
+        self._manager.sequence.append("release")
+
+
 class _StubManager:
     def __init__(self) -> None:
+        self.sequence: list[str] = []
         self.sync_calls: list[float] = []
         self.sync_mix_times: list[bool] = []
         self.sync_end_calls: int = 0
@@ -22,12 +31,41 @@ class _StubManager:
     def channel_get_length_seconds(self, _stream: int) -> float:
         return 600.0
 
+    def acquire_device(self, _index: int) -> _StubDeviceContext:
+        self.sequence.append("acquire_device")
+        return _StubDeviceContext(self)
+
+    def stream_create_file(self, _index: int, _path, *, allow_loop: bool = False) -> int:  # noqa: ANN001
+        _ = allow_loop
+        self.sequence.append("stream_create_file")
+        return 1
+
+    def channel_set_position(self, _stream: int, seconds: float) -> None:
+        self.sequence.append("set_position")
+        self.current_byte_position = int(round(seconds * 1000))
+
+    def channel_set_volume(self, _stream: int, _volume: float) -> None:
+        self.sequence.append("set_volume")
+
+    def channel_play(self, _stream: int, _restart: bool) -> None:
+        self.sequence.append("play")
+
+    def channel_is_active(self, _stream: int) -> bool:
+        return False
+
+    def channel_stop(self, _stream: int) -> None:
+        self.sequence.append("stop")
+
+    def stream_free(self, _stream: int) -> None:
+        self.sequence.append("free")
+
     def seconds_to_bytes(self, _stream: int, seconds: float) -> float:
         self.last_seconds = seconds
         return int(round(seconds * 1000))
 
     def channel_set_sync_pos(self, _stream: int, position: float, proc, *, is_bytes: bool, mix_time: bool):
         # record target passed to BASS_ChannelSetSync
+        self.sequence.append("sync_pos")
         self.sync_calls.append(position)
         self.sync_mix_times.append(mix_time)
         self.last_pos_proc = proc
@@ -36,6 +74,7 @@ class _StubManager:
         return 100 + len(self.sync_calls)
 
     def channel_set_sync_end(self, _stream: int, proc):
+        self.sequence.append("sync_end")
         self.sync_end_calls += 1
         self.last_end_proc = proc
         return 456
@@ -48,11 +87,13 @@ class _StubManager:
         self.current_byte_position = byte_pos
 
     def channel_set_looping(self, stream: int, enabled: bool) -> None:
+        self.sequence.append("looping")
         self.looping_calls.append((stream, enabled))
 
     def channel_set_loop_points(self, stream: int, start_byte: int, end_byte: int) -> None:
         if not self.native_loop_supported:
             raise RuntimeError("native loop unavailable")
+        self.sequence.append("loop_points")
         self.loop_point_calls.append((stream, start_byte, end_byte))
 
     def channel_clear_loop_points(self, stream: int) -> None:
@@ -168,6 +209,26 @@ def test_bass_loop_clear_removes_marker_syncs():
 
     assert player._loop_active is False
     assert manager.removed_syncs[-1:] == [101]
+
+
+def test_bass_play_arms_loop_and_mix_before_channel_play(tmp_path):
+    manager = _StubManager()
+    player = bass.BassPlayer(manager, 0)
+    player._start_monitor = lambda: None
+    player.set_loop(2.0, 4.0)
+
+    player.play(
+        "item-1",
+        str(tmp_path / "a.wav"),
+        allow_loop=True,
+        mix_trigger_seconds=5.0,
+        on_mix_trigger=lambda: None,
+    )
+
+    play_index = manager.sequence.index("play")
+    assert manager.sequence.index("loop_points") < play_index
+    assert manager.sequence.index("sync_end") < play_index
+    assert manager.sequence.index("sync_pos") < play_index
 
 
 def test_bass_set_debug_loop_updates_concrete_player_module():

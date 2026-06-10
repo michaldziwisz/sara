@@ -119,12 +119,15 @@ def start_item_impl(
 
     def _do_play(p: Player) -> None:
         supports_mix_trigger = controller.supports_mix_trigger(p)
-        # wyzeruj ewentualne poprzednie ustawienia pętli zanim wystartujemy nowy utwór
-        if hasattr(p, "set_loop") and not (item.loop_enabled and item.has_loop()):
+        # Ustaw pętlę przed play(), żeby backend mógł uzbroić punkty przed startem strumienia.
+        if hasattr(p, "set_loop"):
             try:
-                p.set_loop(None, None)
-            except Exception:
-                pass
+                if item.loop_enabled and item.has_loop():
+                    p.set_loop(item.loop_start_seconds, item.loop_end_seconds)
+                else:
+                    p.set_loop(None, None)
+            except Exception as exc:  # pylint: disable=broad-except
+                logger.warning("Failed to preconfigure loop: %s", exc)
         p.play(
             item.id,
             str(item.path),
@@ -172,17 +175,6 @@ def start_item_impl(
             logger.exception("PlaybackController: retry after player refresh failed: %s", retry_exc)
             controller._announce("playback_errors", f"{retry_exc}")
             return None
-
-    try:
-        if hasattr(player, "set_loop"):
-            if item.loop_enabled and item.has_loop():
-                player.set_loop(item.loop_start_seconds, item.loop_end_seconds)
-            else:
-                player.set_loop(None, None)
-        else:
-            logger.debug("Loop not supported by player %s", type(player))
-    except Exception as exc:  # pylint: disable=broad-except
-        logger.warning("Failed to configure loop: %s", exc)
 
     context = PlaybackContext(
         player=player,

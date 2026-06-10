@@ -47,11 +47,11 @@ def play(
         player._manager.channel_set_position(player._stream, start_seconds)
         player._start_offset = float(start_seconds)
     player._apply_gain()
-    player._manager.channel_play(player._stream, False)
     player._loop_active = bool(player._loop_start is not None and player._loop_end is not None)
     player._last_loop_jump_ts = 0.0
     player._apply_loop_settings()
     player._apply_mix_trigger(mix_trigger_seconds, on_mix_trigger)
+    player._manager.channel_play(player._stream, False)
     player._start_monitor()
     return None
 

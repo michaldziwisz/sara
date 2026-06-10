@@ -9,6 +9,8 @@ from sara.ui.playback.start_item import start_item_impl
 class _DummyPlayer:
     def __init__(self) -> None:
         self.play_calls: list[dict[str, object]] = []
+        self.loop_calls: list[tuple[float | None, float | None]] = []
+        self.events: list[str] = []
 
     def stop(self) -> None:
         return None
@@ -26,6 +28,7 @@ class _DummyPlayer:
         mix_trigger_seconds=None,
         on_mix_trigger=None,
     ):
+        self.events.append("play")
         self.play_calls.append(
             {
                 "id": playlist_item_id,
@@ -56,8 +59,9 @@ class _DummyPlayer:
     def set_gain_db(self, _gain_db) -> None:
         return None
 
-    def set_loop(self, _start_seconds, _end_seconds) -> None:
-        return None
+    def set_loop(self, start_seconds, end_seconds) -> None:
+        self.events.append("set_loop")
+        self.loop_calls.append((start_seconds, end_seconds))
 
     def supports_mix_trigger(self) -> bool:
         return False
@@ -145,3 +149,45 @@ def test_start_item_sets_progress_for_nonzero_start(tmp_path) -> None:
     assert ctx is not None
     assert item.current_position == start_seconds - (item.cue_in_seconds or 0.0)
 
+
+def test_start_item_sets_loop_before_play(tmp_path) -> None:
+    player = _DummyPlayer()
+    playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
+    item = PlaylistItem(
+        id="item-loop",
+        path=tmp_path / "loop.wav",
+        title="Loop",
+        duration_seconds=100.0,
+        loop_start_seconds=2.0,
+        loop_end_seconds=4.0,
+        loop_enabled=True,
+    )
+    item.path.write_text("a")
+    playlist.add_items([item])
+
+    controller = SimpleNamespace(
+        _settings=SimpleNamespace(get_alternate_play_next=lambda: False),
+        _announce=lambda *_a, **_k: None,
+        _playback_contexts={},
+        _auto_mix_state={},
+        get_busy_device_ids=lambda: set(),
+        supports_mix_trigger=lambda _p: False,
+        _ensure_player=lambda _playlist: (player, "dev-1", 0),
+    )
+
+    ctx = start_item_impl(
+        controller,
+        playlist,
+        item,
+        start_seconds=0.0,
+        on_finished=lambda _id: None,
+        on_progress=lambda _id, _sec: None,
+        restart_if_playing=False,
+        mix_trigger_seconds=None,
+        on_mix_trigger=None,
+    )
+
+    assert ctx is not None
+    assert player.loop_calls[0] == (2.0, 4.0)
+    assert player.events[:2] == ["set_loop", "play"]
+    assert player.play_calls[0]["allow_loop"] is True

@@ -18,6 +18,8 @@ class _FakePlayer:
         self.finished_callback = None
         self.progress_callback = None
         self.play_calls: list[tuple[str, str]] = []
+        self.loop_calls: list[tuple[float | None, float | None]] = []
+        self.events: list[str] = []
 
     def is_active(self) -> bool:
         return self._active
@@ -33,11 +35,13 @@ class _FakePlayer:
 
     def play(self, playlist_item_id: str, source_path: str, *, start_seconds: float = 0.0, allow_loop: bool = True):  # noqa: ANN001, E501 - compat shim
         _ = start_seconds, allow_loop
+        self.events.append("play")
         self.play_calls.append((playlist_item_id, source_path))
         return None
 
-    def set_loop(self, _start_seconds, _end_seconds) -> None:  # noqa: ANN001 - compat shim
-        return
+    def set_loop(self, start_seconds, end_seconds) -> None:  # noqa: ANN001 - compat shim
+        self.events.append("set_loop")
+        self.loop_calls.append((start_seconds, end_seconds))
 
     def stop(self) -> None:
         self._active = False
@@ -100,3 +104,54 @@ def test_start_preview_clears_context_when_finished(tmp_path: Path) -> None:
 
     controller._audio_engine.player.finished_callback("it-1:preview")
     assert controller._preview_context is None
+
+
+def test_start_preview_sets_loop_before_play(tmp_path: Path) -> None:
+    class _Settings:
+        def get_pfl_device(self) -> str:
+            return "pfl:1"
+
+    class _AudioEngine:
+        def __init__(self) -> None:
+            self.player = _FakePlayer(active=True)
+
+        def get_devices(self):  # noqa: ANN001 - test stub
+            return [types.SimpleNamespace(id="pfl:1")]
+
+        def refresh_devices(self) -> None:
+            return
+
+        def create_player_instance(self, _device_id: str) -> _FakePlayer:
+            return self.player
+
+    controller = types.SimpleNamespace(
+        _audio_engine=_AudioEngine(),
+        _settings=_Settings(),
+        _pfl_device_id="pfl:1",
+        _preview_context=None,
+        _announce=lambda *_args, **_kwargs: None,
+        get_busy_device_ids=lambda: set(),
+    )
+    item_path = tmp_path / "clip.wav"
+    item_path.write_bytes(b"data")
+    item = PlaylistItem(id="it-1", path=item_path, title="Clip", duration_seconds=10.0)
+
+    assert preview_mod.start_preview(controller, item, 2.0, loop_range=(2.0, 4.0)) is True
+
+    player = controller._audio_engine.player
+    assert player.loop_calls[0] == (2.0, 4.0)
+    assert player.events[:2] == ["set_loop", "play"]
+
+
+def test_update_loop_preview_updates_first_preview_player(tmp_path: Path) -> None:
+    player = _FakePlayer(active=True)
+    item_path = tmp_path / "clip.wav"
+    item_path.write_bytes(b"data")
+    item = PlaylistItem(id="it-1", path=item_path, title="Clip", duration_seconds=10.0)
+    controller = types.SimpleNamespace(
+        _preview_context=preview_mod.PreviewContext(players=[player], device_id="pfl:1", item_path=item_path),
+        _announce=lambda *_args, **_kwargs: None,
+    )
+
+    assert preview_mod.update_loop_preview(controller, item, 1.5, 3.5) is True
+    assert player.loop_calls == [(1.5, 3.5)]

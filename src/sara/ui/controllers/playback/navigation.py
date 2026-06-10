@@ -152,14 +152,16 @@ def handle_playback_progress(frame, playlist_id: str, item_id: str, seconds: flo
 
 
 def manual_fade_duration(frame, playlist: PlaylistModel, item: PlaylistItem | None) -> float:
-    fade_seconds = max(0.0, frame._fade_duration)
+    configured_fade = max(0.0, frame._fade_duration)
+    fade_seconds = configured_fade
     if item is None:
         return fade_seconds
     plans = getattr(frame, "_mix_plans", {}) or {}
     plan = plans.get((playlist.id, item.id))
     effective_duration = None
     if plan:
-        fade_seconds = max(0.0, plan.fade_seconds)
+        planned_fade = max(0.0, plan.fade_seconds)
+        fade_seconds = planned_fade if planned_fade > 0.0 else configured_fade
         effective_duration = plan.effective_duration
     else:
         effective_override = frame._measure_effective_duration(playlist, item)
@@ -167,7 +169,8 @@ def manual_fade_duration(frame, playlist: PlaylistModel, item: PlaylistItem | No
             item,
             effective_duration_override=effective_override,
         )
-        fade_seconds = max(0.0, resolved_fade)
+        resolved_fade = max(0.0, resolved_fade)
+        fade_seconds = resolved_fade if resolved_fade > 0.0 else configured_fade
     if effective_duration is None:
         effective_duration = item.effective_duration_seconds
     if effective_duration is not None:

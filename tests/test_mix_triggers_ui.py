@@ -739,3 +739,54 @@ def test_manual_fade_disables_auto_mix(tmp_path):
     assert frame._auto_mix_enabled is False
     assert captured["fade_duration"] == pytest.approx(4.0)
 
+
+def test_manual_fade_uses_configured_fade_when_mix_plan_fade_is_zero(tmp_path):
+    frame = MainFrame.__new__(MainFrame)
+    frame._auto_mix_enabled = True
+    frame._fade_duration = 1.4
+    frame._state = AppState()
+    playlist = PlaylistModel(id="pl-manual-zero", name="Manual zero", kind=PlaylistKind.MUSIC)
+    item = PlaylistItem(
+        id="item-manual-zero",
+        path=tmp_path / "manual-zero.wav",
+        title="Manual zero",
+        duration_seconds=100.0,
+    )
+    item.current_position = 10.0
+    playlist.add_items([item])
+    panel = SimpleNamespace(
+        model=playlist,
+        get_selected_indices=lambda: [],
+        get_focused_index=lambda: 0,
+        mark_item_status=lambda *_a, **_k: None,
+        refresh=lambda *_a, **_k: None,
+    )
+    context_key = (playlist.id, item.id)
+    ctx = SimpleNamespace(player=_DummyPlayer("dev-1"))
+    frame._playlists = {playlist.id: panel}
+    frame._get_current_music_panel = lambda: panel
+    frame._mix_plans = {
+        context_key: MixPlan(
+            mix_at=99.99,
+            fade_seconds=0.0,
+            base_cue=0.0,
+            effective_duration=100.0,
+            native_trigger=True,
+        )
+    }
+    frame._playback = SimpleNamespace(
+        auto_mix_state={},
+        contexts={context_key: ctx},
+        clear_auto_mix=lambda: None,
+    )
+    frame._get_playback_context = lambda pl_id=None: (context_key, ctx) if pl_id == playlist.id else None
+    captured: dict[str, float] = {}
+    frame._stop_playlist_playback = lambda _pl_id, *, mark_played, fade_duration: captured.update(
+        fade_duration=fade_duration
+    )
+    frame._announce_event = lambda *_a, **_k: None
+    frame._action_by_id = {1: "fade"}
+
+    frame._on_playlist_hotkey(SimpleNamespace(GetId=lambda: 1))
+
+    assert captured["fade_duration"] == pytest.approx(1.4)
