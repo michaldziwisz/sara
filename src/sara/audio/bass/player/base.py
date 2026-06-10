@@ -283,5 +283,97 @@ class BassPlayer:
     def is_active(self) -> bool:
         return self._is_active()
 
+    def set_loop(self, start_seconds: Optional[float], end_seconds: Optional[float]) -> None:
+        if start_seconds is None or end_seconds is None or end_seconds <= start_seconds:
+            self._loop_start = None
+            self._loop_end = None
+            self._loop_active = False
+            self._last_loop_jump_ts = 0.0
+            self._loop_iteration = 0
+            self._loop_guard_armed = False
+            self._clear_loop_syncs()
+            return
+        self._loop_start = max(0.0, float(start_seconds))
+        self._loop_end = float(end_seconds)
+        self._loop_active = True
+        self._last_loop_jump_ts = 0.0
+        self._loop_iteration = 0
+        self._loop_guard_armed = False
+        self._apply_loop_settings()
+
+    def _clear_loop_syncs(self) -> None:
+        if not self._stream:
+            self._loop_sync_handle = 0
+            self._loop_sync_proc = None
+            self._loop_alt_sync_handle = 0
+            self._loop_alt_sync_proc = None
+            self._loop_end_sync_handle = 0
+            self._loop_end_sync_proc = None
+            return
+        if self._loop_sync_handle:
+            self._manager.channel_remove_sync(self._stream, self._loop_sync_handle)
+        self._loop_sync_handle = 0
+        self._loop_sync_proc = None
+        if self._loop_alt_sync_handle:
+            self._manager.channel_remove_sync(self._stream, self._loop_alt_sync_handle)
+        self._loop_alt_sync_handle = 0
+        self._loop_alt_sync_proc = None
+        if self._loop_end_sync_handle:
+            self._manager.channel_remove_sync(self._stream, self._loop_end_sync_handle)
+        self._loop_end_sync_handle = 0
+        self._loop_end_sync_proc = None
+
+    def _apply_loop_settings(self) -> None:
+        if not self._stream:
+            return
+        self._clear_loop_syncs()
+        if self._loop_fake_timer:
+            self._loop_fake_timer.cancel()
+            self._loop_fake_timer = None
+        if not self._loop_active or self._loop_end is None or self._loop_start is None:
+            return
+
+        start = max(0.0, self._loop_start)
+        end = max(start + 0.001, self._loop_end)
+        self._loop_start = start
+        self._loop_end = end
+        self._loop_iteration = 0
+        self._loop_start_bytes = self._manager.seconds_to_bytes(self._stream, start)
+        self._loop_end_bytes = self._manager.seconds_to_bytes(self._stream, end)
+        if self._debug_loop:
+            logger.debug(
+                "Loop debug: apply loop start=%.6fs end=%.6fs start_bytes=%s end_bytes=%s stream=%s",
+                start,
+                end,
+                self._loop_start_bytes,
+                self._loop_end_bytes,
+                self._stream,
+            )
+
+        def _sync_cb(_handle, _channel, _data, _user):
+            try:
+                self._jump_to_loop_start("sync")
+            except Exception as exc:  # pragma: no cover - defensive BASS callback
+                if self._debug_loop:
+                    logger.debug("Loop debug: sync jump failed: %s", exc)
+
+        try:
+            self._loop_sync_proc = self._manager.make_sync_proc(_sync_cb)
+            self._loop_sync_handle = self._manager.channel_set_sync_pos(
+                self._stream,
+                self._loop_end_bytes,
+                self._loop_sync_proc,
+                is_bytes=True,
+                mix_time=True,
+            )
+        except Exception as exc:
+            self._loop_sync_proc = None
+            self._loop_sync_handle = 0
+            if self._debug_loop:
+                logger.debug("Loop debug: failed to set sync pos: %s", exc)
+
+        if self._debug_loop:
+            logger.debug("Loop debug: sync+guard active")
+
     def supports_mix_trigger(self) -> bool:
         return True
