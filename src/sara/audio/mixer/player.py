@@ -23,9 +23,11 @@ class MixerPlayer:
         source_path: str,
         *,
         start_seconds: float = 0.0,
+        allow_loop: bool = True,
         mix_trigger_seconds: float | None = None,
         on_mix_trigger: Callable[[], None] | None = None,
     ) -> Event:
+        del allow_loop, mix_trigger_seconds, on_mix_trigger
         self._source_id = playlist_item_id
         return self._mixer.start_source(
             playlist_item_id,
@@ -77,6 +79,11 @@ class MixerPlayer:
             self._mixer.set_loop(self._source_id, None)
             return
         self._mixer.set_loop(self._source_id, (start_seconds, end_seconds))
+
+    def get_position_seconds(self) -> float:
+        if self._source_id is None:
+            return 0.0
+        return self._mixer.get_source_position_seconds(self._source_id)
 
     def supports_mix_trigger(self) -> bool:
         return False

@@ -263,6 +263,14 @@ class BassPlayer:
         except Exception:
             return 0.0
 
+    def get_position_seconds(self) -> float:
+        if not self._stream:
+            return 0.0
+        try:
+            return float(self._manager.channel_get_seconds(self._stream))
+        except Exception:
+            return 0.0
+
     def set_gain_db(self, gain_db: Optional[float]) -> None:
         if gain_db is None:
             self._gain_factor = 1.0

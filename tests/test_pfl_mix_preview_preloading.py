@@ -28,9 +28,12 @@ class _DummyAudioEngine:
 
 
 class _DummyPlayer:
-    def __init__(self) -> None:
+    def __init__(self, *, supports_mix_trigger: bool = False) -> None:
+        self._supports_mix_trigger = supports_mix_trigger
         self.preload_calls: list[tuple[str, float, bool]] = []
-        self.play_calls: list[tuple[str, str, float, bool]] = []
+        self.play_calls: list[dict[str, object]] = []
+        self.fade_calls: list[float] = []
+        self.apply_mix_trigger_calls: list[tuple[float, object]] = []
         self.stopped = 0
 
     def set_gain_db(self, _gain_db) -> None:
@@ -40,21 +43,42 @@ class _DummyPlayer:
         self.preload_calls.append((source_path, float(start_seconds), bool(allow_loop)))
         return True
 
-    def play(self, item_id: str, source_path: str, *, start_seconds: float = 0.0, allow_loop: bool = False):
-        self.play_calls.append((item_id, source_path, float(start_seconds), bool(allow_loop)))
+    def play(
+        self,
+        item_id: str,
+        source_path: str,
+        *,
+        start_seconds: float = 0.0,
+        allow_loop: bool = False,
+        mix_trigger_seconds=None,
+        on_mix_trigger=None,
+    ):
+        self.play_calls.append(
+            {
+                "item_id": item_id,
+                "path": source_path,
+                "start_seconds": float(start_seconds),
+                "allow_loop": bool(allow_loop),
+                "mix_trigger_seconds": mix_trigger_seconds,
+                "on_mix_trigger": on_mix_trigger,
+            }
+        )
         return None
 
     def stop(self) -> None:
         self.stopped += 1
 
     def fade_out(self, _duration: float) -> None:
-        return None
+        self.fade_calls.append(float(_duration))
 
     def set_loop(self, _start_seconds, _end_seconds) -> None:
         return None
 
     def _apply_mix_trigger(self, _mix_at_seconds: float, _callback) -> None:
-        return None
+        self.apply_mix_trigger_calls.append((_mix_at_seconds, _callback))
+
+    def supports_mix_trigger(self) -> bool:
+        return self._supports_mix_trigger
 
 
 def test_pfl_mix_preview_preloads_next_track(tmp_path) -> None:
@@ -138,3 +162,54 @@ def test_pfl_mix_preview_respects_preload_disable(tmp_path) -> None:
 
     assert player_b.preload_calls == []
 
+
+def test_pfl_mix_preview_arms_native_trigger_in_play_and_uses_cue_for_fade(tmp_path) -> None:
+    device_id = "pfl-dev"
+    path_a = tmp_path / "a.wav"
+    path_a.write_text("a")
+    path_b = tmp_path / "b.wav"
+    path_b.write_text("b")
+
+    current = PlaylistItem(id="a", path=path_a, title="A", duration_seconds=11.0, cue_in_seconds=1.0)
+    nxt = PlaylistItem(id="b", path=path_b, title="B", duration_seconds=8.0, cue_in_seconds=0.5)
+
+    player_a = _DummyPlayer(supports_mix_trigger=True)
+    player_b = _DummyPlayer()
+    engine = _DummyAudioEngine(players=[player_a, player_b], device_id=device_id)
+
+    controller = SimpleNamespace(
+        _preview_context=None,
+        _pfl_device_id=device_id,
+        _settings=SimpleNamespace(get_pfl_device=lambda: device_id),
+        _audio_engine=engine,
+        _announce=lambda *_args, **_kwargs: None,
+        _preload_enabled=True,
+        supports_mix_trigger=lambda player: player.supports_mix_trigger(),
+    )
+
+    assert (
+        start_mix_preview(
+            controller,
+            current,
+            nxt,
+            mix_at_seconds=4.0,
+            pre_seconds=2.0,
+            fade_seconds=10.0,
+            current_base_cue=1.0,
+            current_effective_duration=10.0,
+            next_cue_override=0.5,
+        )
+        is True
+    )
+
+    play_a = player_a.play_calls[0]
+    assert play_a["start_seconds"] == 2.0
+    assert play_a["mix_trigger_seconds"] == 4.0
+    assert callable(play_a["on_mix_trigger"])
+    assert player_a.apply_mix_trigger_calls == []
+
+    play_a["on_mix_trigger"]()
+    assert player_b.play_calls[0]["start_seconds"] == 0.5
+    assert player_a.fade_calls == [7.0]
+
+    stop_preview(controller, wait=False)

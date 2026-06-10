@@ -161,3 +161,19 @@ def compute_air_duration_seconds(
     if (track_end - mix_at) <= max(0.0, float(near_end_threshold)):
         return effective_duration
     return max(0.0, float(mix_at) - float(base_cue))
+
+
+def mix_elapsed_seconds(mix_at: float, base_cue: float) -> float:
+    """Return the mix point on the effective, post-cue timeline."""
+    return max(0.0, float(mix_at) - float(base_cue))
+
+
+def remaining_after_mix_seconds(mix_at: float, base_cue: float, effective_duration: float) -> float:
+    """Return remaining effective playback after an absolute mix point."""
+    elapsed = mix_elapsed_seconds(mix_at, base_cue)
+    return max(0.0, float(effective_duration) - elapsed)
+
+
+def fade_duration_at_mix(fade_seconds: float, mix_at: float, base_cue: float, effective_duration: float) -> float:
+    """Clamp fade duration to the actual post-mix tail on the effective timeline."""
+    return min(max(0.0, float(fade_seconds)), remaining_after_mix_seconds(mix_at, base_cue, effective_duration))

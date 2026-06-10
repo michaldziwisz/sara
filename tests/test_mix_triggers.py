@@ -16,8 +16,11 @@ from sara.core.mix_planner import (
     MixPlan,
     clear_mix_plan,
     compute_air_duration_seconds,
+    fade_duration_at_mix,
     mark_mix_triggered,
+    mix_elapsed_seconds,
     register_mix_plan,
+    remaining_after_mix_seconds,
     resolve_mix_timing,
 )
 from sara.core.playlist import PlaylistItem, PlaylistKind, PlaylistModel, PlaylistItemStatus
@@ -346,6 +349,12 @@ def test_compute_air_duration_seconds_treats_near_end_mix_as_full_duration():
     assert compute_air_duration_seconds(item, fade_duration) == pytest.approx(10.0, rel=1e-6)
 
 
+def test_mix_timeline_helpers_use_effective_post_cue_axis():
+    assert mix_elapsed_seconds(4.0, 1.0) == pytest.approx(3.0)
+    assert remaining_after_mix_seconds(4.0, 1.0, 10.0) == pytest.approx(7.0)
+    assert fade_duration_at_mix(10.0, 4.0, 1.0, 10.0) == pytest.approx(7.0)
+
+
 class _MixHost:
     def __init__(self, *, fade: float = 3.0, auto_mix_enabled: bool = True) -> None:
         self._fade_duration = fade
@@ -664,6 +673,101 @@ def test_native_fallback_triggers_progress_mix(tmp_path):
     ctx = host._playback.contexts[key]
     host._auto_mix_state_process(panel, item, ctx, seconds=15.2, queued_selection=False)
     assert started, "Fallback progresowy powinien wystartować miks"
+
+
+def test_auto_mix_now_uses_backend_position_instead_of_stale_ui_progress(tmp_path):
+    host = _MixHost(fade=2.0, auto_mix_enabled=True)
+    key = ("pl-1", "item-1")
+    host._mix_plans = {
+        key: MixPlan(mix_at=8.0, fade_seconds=2.0, base_cue=0.0, effective_duration=12.0, native_trigger=True)
+    }
+    host._mix_trigger_points = {key: 8.0}
+
+    class _PositionPlayer(_AutoMixPlayer):
+        def __init__(self):
+            super().__init__("dev-1", supports_mix_trigger=True)
+
+        def get_length_seconds(self):
+            return 12.0
+
+        def get_position_seconds(self):
+            return 8.05
+
+    player = _PositionPlayer()
+    host._supports_mix_trigger = lambda _p: True
+    host._playback = SimpleNamespace(
+        auto_mix_state={},
+        contexts={key: SimpleNamespace(player=player)},
+        update_mix_trigger=lambda *_args, **_kwargs: True,
+    )
+    playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
+    item = PlaylistItem(
+        id="item-1",
+        path=tmp_path / "a.wav",
+        title="A",
+        duration_seconds=12.0,
+        segue_seconds=8.0,
+        current_position=1.0,
+    )
+    panel = SimpleNamespace(model=playlist)
+    started: list[dict] = []
+    host._start_next_from_playlist = lambda *_args, **kwargs: started.append(kwargs) or True
+
+    host._auto_mix_now(playlist, item, panel)
+
+    assert started
+    assert host._playback.auto_mix_state[key] is True
+    assert item.current_position == pytest.approx(8.05)
+    assert player.fade_calls == [pytest.approx(2.0)]
+
+
+def test_auto_mix_now_reschedules_when_backend_position_is_too_early(tmp_path):
+    host = _MixHost(fade=2.0, auto_mix_enabled=True)
+    key = ("pl-1", "item-1")
+    host._mix_plans = {
+        key: MixPlan(mix_at=8.0, fade_seconds=2.0, base_cue=0.0, effective_duration=12.0, native_trigger=True)
+    }
+    host._mix_trigger_points = {key: 8.0}
+    update_calls: list[tuple] = []
+
+    def _update_mix_trigger(pl_id, item_id, mix_trigger_seconds=None, on_mix_trigger=None):
+        update_calls.append((pl_id, item_id, mix_trigger_seconds, on_mix_trigger))
+        return True
+
+    class _EarlyPositionPlayer(_AutoMixPlayer):
+        def __init__(self):
+            super().__init__("dev-1", supports_mix_trigger=True)
+
+        def get_length_seconds(self):
+            return 12.0
+
+        def get_position_seconds(self):
+            return 7.60
+
+    player = _EarlyPositionPlayer()
+    host._supports_mix_trigger = lambda _p: True
+    host._playback = SimpleNamespace(
+        auto_mix_state={},
+        contexts={key: SimpleNamespace(player=player)},
+        update_mix_trigger=_update_mix_trigger,
+    )
+    playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
+    item = PlaylistItem(
+        id="item-1",
+        path=tmp_path / "a.wav",
+        title="A",
+        duration_seconds=12.0,
+        segue_seconds=8.0,
+        current_position=7.95,
+    )
+    panel = SimpleNamespace(model=playlist)
+    host._start_next_from_playlist = lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("too early"))
+
+    host._auto_mix_now(playlist, item, panel)
+
+    assert update_calls and update_calls[0][2] is None
+    assert host._mix_plans[key].native_trigger is False
+    assert host._playback.auto_mix_state == {}
 
 
 def test_manual_selection_triggers_mix_when_auto_mix_disabled(tmp_path):

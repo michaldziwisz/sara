@@ -209,6 +209,9 @@ class DeviceMixer:
     ) -> None:
         self._source_manager.update_callbacks(source_id, on_progress=on_progress, on_finished=on_finished)
 
+    def get_source_position_seconds(self, source_id: str) -> float:
+        return self._source_manager.get_position_seconds(source_id)
+
     def _run(self) -> None:
         run_mixer_loop(
             stream_factory=self._stream_factory,

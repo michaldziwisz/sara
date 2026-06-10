@@ -98,6 +98,9 @@ class MockPlayer:
         self._loop_start = max(0.0, start_seconds)
         self._loop_end = end_seconds
 
+    def get_position_seconds(self) -> float:
+        return float(self._progress_seconds)
+
     def supports_mix_trigger(self) -> bool:
         return False
 
@@ -150,4 +153,3 @@ class MockBackendProvider:
 
     def create_player(self, device: AudioDevice) -> Player:
         return MockPlayer(device)
-

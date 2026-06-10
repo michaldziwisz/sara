@@ -5,10 +5,36 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from sara.core.mix_planner import MIX_NATIVE_EARLY_GUARD
 from sara.core.playlist import PlaylistItem, PlaylistKind, PlaylistModel
 
 
 logger = logging.getLogger(__name__)
+
+
+def _backend_position_seconds(ctx: Any | None) -> float | None:
+    if not ctx:
+        return None
+    getter = getattr(ctx.player, "get_position_seconds", None)
+    if not callable(getter):
+        return None
+    try:
+        position = float(getter())
+    except Exception:
+        return None
+    if position < 0.0:
+        return None
+    return position
+
+
+def _current_absolute_position(ctx: Any | None, item: PlaylistItem, base_cue: float) -> float:
+    ui_abs = float(base_cue) + float(item.current_position or 0.0)
+    backend_abs = _backend_position_seconds(ctx)
+    if backend_abs is None:
+        return ui_abs
+    if backend_abs <= 0.0 and ui_abs > 0.0:
+        return ui_abs
+    return backend_abs
 
 
 def auto_mix_now(frame, playlist: PlaylistModel, item: PlaylistItem, panel: Any) -> None:
@@ -82,8 +108,8 @@ def auto_mix_now(frame, playlist: PlaylistModel, item: PlaylistItem, panel: Any)
             )
             plan = frame._mix_plans.get(key)
     if expected_mix is not None:
-        current_abs = base_cue + (item.current_position or 0.0)
-        tolerance = 0.75
+        current_abs = _current_absolute_position(ctx, item, base_cue)
+        tolerance = MIX_NATIVE_EARLY_GUARD
         if expected_mix is not None and current_abs < expected_mix - tolerance:
             effective_override = None
             if length_seconds is not None:
@@ -135,12 +161,17 @@ def auto_mix_now(frame, playlist: PlaylistModel, item: PlaylistItem, panel: Any)
         if length_seconds is not None
         else (plan.effective_duration if plan else item.effective_duration_seconds)
     )
-    remaining = max(0.0, effective_total - item.current_position)
+    current_abs = _current_absolute_position(ctx, item, base_cue)
+    current_effective = max(0.0, current_abs - base_cue)
+    if current_effective > (item.current_position or 0.0):
+        item.current_position = min(effective_total, current_effective)
+    remaining = max(0.0, effective_total - current_effective)
     logger.debug(
-        "UI: auto_mix_now fired playlist=%s item=%s current_pos=%.3f remaining=%.3f",
+        "UI: auto_mix_now fired playlist=%s item=%s current_pos=%.3f backend_pos=%.3f remaining=%.3f",
         playlist.id,
         item.id,
         item.current_position,
+        current_abs,
         remaining,
     )
     started = frame._start_next_from_playlist(
@@ -159,7 +190,7 @@ def auto_mix_now(frame, playlist: PlaylistModel, item: PlaylistItem, panel: Any)
             fade_duration,
             fade_target,
             remaining,
-            item.current_position,
+            current_effective,
         )
         ctx = frame._playback.contexts.get(key)
         if ctx and fade_duration > 0.0:
@@ -173,4 +204,3 @@ def auto_mix_now(frame, playlist: PlaylistModel, item: PlaylistItem, panel: Any)
         if plan_obj:
             plan_obj.triggered = False
         frame._playback.auto_mix_state.pop(key, None)
-

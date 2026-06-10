@@ -115,3 +115,10 @@ class MixerSourceManager:
                 return
             source.on_progress = on_progress
             source.on_finished = on_finished
+
+    def get_position_seconds(self, source_id: str) -> float:
+        with self._lock:
+            source = self._sources.get(source_id)
+            if not source:
+                return 0.0
+            return float(source.position_frames) / float(source.samplerate or 1)

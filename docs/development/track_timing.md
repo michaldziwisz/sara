@@ -25,6 +25,7 @@ Wyjątki:
 ## Implementacja w kodzie
 
 - Kanoniczna logika: `src/sara/core/mix_planner.py` (`resolve_mix_timing`, `compute_air_duration_seconds`).
+- Pomocnicze przeliczenia osi czasu miksu: `mix_elapsed_seconds`, `remaining_after_mix_seconds`, `fade_duration_at_mix`.
 - Prezentacja w playlistach (kolumny Duration/Progress): `src/sara/ui/panels/playlist/panel.py`.
 - Komenda „pozostały czas utworu” i wyliczanie remaining: `src/sara/ui/controllers/playback/loop.py`.
 - Alert „koniec utworu” (w praktyce: koniec antenowy / punkt przejścia): `src/sara/ui/controllers/playback/alerts.py`.

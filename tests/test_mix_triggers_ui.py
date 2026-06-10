@@ -350,6 +350,7 @@ def test_pfl_mix_preview_uses_mix_timing(tmp_path):
             mix_at_seconds,
             pre_seconds,
             fade_seconds,
+            current_base_cue,
             current_effective_duration,
             next_cue_override,
         ):
@@ -359,6 +360,7 @@ def test_pfl_mix_preview_uses_mix_timing(tmp_path):
                 mix_at_seconds,
                 pre_seconds,
                 fade_seconds,
+                current_base_cue,
                 current_effective_duration,
                 next_cue_override,
             )
@@ -376,10 +378,11 @@ def test_pfl_mix_preview_uses_mix_timing(tmp_path):
     ok = frame._preview_mix_with_next(playlist, track_a, overrides=None)
     assert ok is True
     assert "args" in calls
-    _cur, _nxt, mix_at, pre_secs, fade_secs, eff, next_cue = calls["args"]
+    _cur, _nxt, mix_at, pre_secs, fade_secs, base_cue, eff, next_cue = calls["args"]
     assert abs(mix_at - 4.0) < 1e-6
     assert abs(pre_secs - 4.0) < 1e-6
     assert abs(fade_secs - 2.0) < 1e-6
+    assert abs(base_cue - 1.0) < 1e-6
     assert abs(eff - 9.0) < 1e-6
     assert abs(next_cue - 0.5) < 1e-6
 
@@ -413,6 +416,7 @@ def test_pfl_mix_preview_uses_measured_effective_duration(tmp_path):
             mix_at_seconds,
             pre_seconds,
             fade_seconds,
+            current_base_cue,
             current_effective_duration,
             next_cue_override,
         ):
@@ -422,6 +426,7 @@ def test_pfl_mix_preview_uses_measured_effective_duration(tmp_path):
                 mix_at_seconds,
                 pre_seconds,
                 fade_seconds,
+                current_base_cue,
                 current_effective_duration,
                 next_cue_override,
             )
@@ -439,8 +444,9 @@ def test_pfl_mix_preview_uses_measured_effective_duration(tmp_path):
 
     ok = frame._preview_mix_with_next(playlist, track_a, overrides=None)
     assert ok is True
-    _cur, _nxt, mix_at, pre_secs, _fade_secs, eff, _next_cue = captured["args"]
+    _cur, _nxt, mix_at, pre_secs, _fade_secs, base_cue, eff, _next_cue = captured["args"]
     assert abs(mix_at - 4.0) < 1e-6
+    assert abs(base_cue - 1.0) < 1e-6
     assert abs(eff - 5.0) < 1e-6
     assert abs(pre_secs - 4.0) < 1e-6
 

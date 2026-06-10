@@ -241,6 +241,12 @@ class SoundDevicePlayer:
         # sounddevice backend nie obsługuje natywnego triggera miksu; metoda dla kompatybilności.
         return
 
+    def get_position_seconds(self) -> float:
+        with self._lock:
+            if not self._samplerate:
+                return 0.0
+            return float(self._position) / float(self._samplerate)
+
     def set_gain_db(self, gain_db: Optional[float]) -> None:  # noqa: D401
         with self._lock:
             if gain_db is None:

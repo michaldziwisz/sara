@@ -356,6 +356,7 @@ class PlaybackController(PlaybackMixerSupportMixin):
         mix_at_seconds: float,
         pre_seconds: float = 4.0,
         fade_seconds: float = 0.0,
+        current_base_cue: float | None = None,
         current_effective_duration: float | None = None,
         next_cue_override: float | None = None,
     ) -> bool:
@@ -372,6 +373,7 @@ class PlaybackController(PlaybackMixerSupportMixin):
             mix_at_seconds=mix_at_seconds,
             pre_seconds=pre_seconds,
             fade_seconds=fade_seconds,
+            current_base_cue=current_base_cue,
             current_effective_duration=current_effective_duration,
             next_cue_override=next_cue_override,
         )

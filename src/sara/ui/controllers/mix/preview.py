@@ -118,6 +118,7 @@ def preview_mix_with_next(
         mix_at_seconds=mix_at,
         pre_seconds=pre_seconds,
         fade_seconds=fade_seconds,
+        current_base_cue=base_cue,
         current_effective_duration=effective_duration,
         next_cue_override=next_item.cue_in_seconds or 0.0,
     )
@@ -139,4 +140,3 @@ __all__ = [
     "measure_effective_duration",
     "preview_mix_with_next",
 ]
-

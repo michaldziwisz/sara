@@ -17,6 +17,10 @@ Preloading jest best-effort: jeśli kolejny utwór się zmieni (np. ręczny wyb�
 
 Podgląd miksu na PFL (`start_mix_preview`) również próbuje przygotować utwór B przed punktem miksu, żeby odsłuch przejścia był możliwie 1:1 z emisją (bez dodatkowego laga na starcie B).
 
+PFL i emisja muszą uzbrajać punkty miksu tą samą ścieżką: jeśli backend obsługuje natywny trigger, `mix_trigger_seconds` i callback są przekazywane już do `player.play(...)`, tak aby backend mógł uzbroić trigger przed startem strumienia. Nie należy dopinać triggera dopiero po rozpoczęciu odtwarzania, bo to wprowadza inną oś czasu niż na emisji.
+
+Runtime miksu może odczytać bieżącą pozycję z backendu (`get_position_seconds()`), żeby zabezpieczyć się przed dryftem wynikającym z opóźnionych callbacków postępu UI.
+
 ## Konfiguracja (env)
 
 - `SARA_ENABLE_PRELOAD` (domyślnie `1`) – wyłącz: `0`.

@@ -14,6 +14,7 @@ from threading import Event
 
 from sara.audio.engine import Player
 from sara.core.i18n import gettext as _
+from sara.core.mix_planner import fade_duration_at_mix
 from sara.core.playlist import PlaylistItem
 
 
@@ -164,6 +165,7 @@ def start_mix_preview(
     mix_at_seconds: float,
     pre_seconds: float = 4.0,
     fade_seconds: float = 0.0,
+    current_base_cue: float | None = None,
     current_effective_duration: float | None = None,
     next_cue_override: float | None = None,
 ) -> bool:
@@ -205,13 +207,17 @@ def start_mix_preview(
         pass
 
     start_a = max(0.0, mix_at_seconds - pre_seconds)
+    base_cue = (
+        max(0.0, float(current_base_cue))
+        if current_base_cue is not None
+        else (current_item.cue_in_seconds or 0.0)
+    )
     effective_duration = (
         max(0.0, current_effective_duration)
         if current_effective_duration is not None
-        else current_item.effective_duration_seconds
+        else max(0.0, (current_item.duration_seconds or 0.0) - base_cue)
     )
-    remaining_current = max(0.0, effective_duration - mix_at_seconds)
-    fade_len = min(max(0.0, fade_seconds), remaining_current) if remaining_current > 0 else 0.0
+    fade_len = fade_duration_at_mix(fade_seconds, mix_at_seconds, base_cue, effective_duration)
     next_start = next_cue_override if next_cue_override is not None else (next_item.cue_in_seconds or 0.0)
     delay_b = max(0.0, mix_at_seconds - start_a)
 
@@ -242,6 +248,7 @@ def start_mix_preview(
                     logger.debug("PFL mix preview: warm-up failed", exc_info=True)
 
     stop_event = Event()
+    fired_event = Event()
 
     # jeśli trigger w przeszłości, odpal B natychmiast i skróć pre-window
     if delay_b <= 0:
@@ -251,6 +258,9 @@ def start_mix_preview(
     def _fire_mix() -> None:
         if stop_event.is_set():
             return
+        if fired_event.is_set():
+            return
+        fired_event.set()
         try:
             player_b.play(next_item.id, str(next_item.path), start_seconds=next_start, allow_loop=False)
         except Exception:
@@ -261,33 +271,53 @@ def start_mix_preview(
             except Exception:
                 pass
 
-    def _schedule_mix_trigger() -> None:
+    supports_native_trigger = False
+    support_checker = getattr(controller, "supports_mix_trigger", None)
+    if callable(support_checker):
+        try:
+            supports_native_trigger = bool(support_checker(player_a))
+        except Exception:
+            supports_native_trigger = False
+    else:
+        support_attr = getattr(player_a, "supports_mix_trigger", None)
+        try:
+            supports_native_trigger = bool(support_attr()) if callable(support_attr) else bool(support_attr)
+        except Exception:
+            supports_native_trigger = False
+
+    def _schedule_mix_timer(*, guard_seconds: float = 0.0) -> None:
         if delay_b <= 0:
             _fire_mix()
             return
-        apply_trigger = getattr(player_a, "_apply_mix_trigger", None)
-        if callable(apply_trigger):
-            try:
-                apply_trigger(mix_at_seconds, _fire_mix)
-                return
-            except Exception:  # pragma: no cover - defensywne
-                logger.debug("PFL mix preview: failed to arm BASS trigger, falling back to timer", exc_info=True)
-
         def _fallback_wait() -> None:
-            stop_event.wait(timeout=delay_b)
+            stop_event.wait(timeout=max(0.0, delay_b + guard_seconds))
             if stop_event.is_set():
                 return
+            logger.debug(
+                "PFL mix preview: timer fallback fired mix_at=%.3f delay=%.3f guard=%.3f native=%s",
+                mix_at_seconds,
+                delay_b,
+                guard_seconds,
+                supports_native_trigger,
+            )
             _fire_mix()
 
         threading.Thread(target=_fallback_wait, daemon=True).start()
 
     try:
-        player_a.play(current_item.id, str(current_item.path), start_seconds=start_a, allow_loop=False)
+        play_kwargs = {"start_seconds": start_a, "allow_loop": False}
+        if supports_native_trigger:
+            play_kwargs["mix_trigger_seconds"] = mix_at_seconds
+            play_kwargs["on_mix_trigger"] = _fire_mix
+        player_a.play(current_item.id, str(current_item.path), **play_kwargs)
     except Exception as exc:  # pylint: disable=broad-except
         controller._announce("pfl", _("Failed to start mix preview: %s") % exc)
         return False
 
-    _schedule_mix_trigger()
+    if supports_native_trigger:
+        _schedule_mix_timer(guard_seconds=0.05)
+    else:
+        _schedule_mix_timer()
 
     # auto-stop po krótkim oknie odsłuchu (pre + fade + zapas)
     total_preview = pre_seconds + max(fade_len, 0.0) + 4.0
