@@ -107,6 +107,17 @@ def test_bass_loop_sets_marker_syncs_and_jumps_to_loop_start():
     assert player._loop_iteration == 1
 
 
+def test_bass_loop_enable_after_end_jumps_immediately():
+    player, manager = _player_with_stream(0.0)
+    manager.current_byte_position = 40000
+
+    player.set_loop(26.137, 34.335)
+
+    assert manager.sync_calls[-1:] == [34335]
+    assert manager.byte_positions[-1] == (player._stream, 26137)
+    assert player._loop_iteration == 1
+
+
 def test_bass_loop_clear_removes_marker_syncs():
     player, manager = _player_with_stream(0.0)
     player.set_loop(26.137, 34.335)
@@ -115,3 +126,35 @@ def test_bass_loop_clear_removes_marker_syncs():
 
     assert player._loop_active is False
     assert manager.removed_syncs[-1:] == [101]
+
+
+def test_bass_set_debug_loop_updates_concrete_player_module():
+    import sara.audio.bass.player_base as compat_player_base_mod
+    import sara.audio.bass_player_base as legacy_player_base_mod
+    from sara.audio.bass.player import base as player_base_mod
+
+    old_package_debug = bass._DEBUG_LOOP
+    old_player_debug = player_base_mod._DEBUG_LOOP
+    old_compat_debug = compat_player_base_mod._DEBUG_LOOP
+    old_legacy_debug = legacy_player_base_mod._DEBUG_LOOP
+    try:
+        bass.set_debug_loop(True)
+
+        assert bass._DEBUG_LOOP is True
+        assert player_base_mod._DEBUG_LOOP is True
+        assert compat_player_base_mod._DEBUG_LOOP is True
+        assert legacy_player_base_mod._DEBUG_LOOP is True
+        assert bass.BassPlayer(_StubManager(), 0)._debug_loop is True
+
+        bass.set_debug_loop(False)
+
+        assert bass._DEBUG_LOOP is False
+        assert player_base_mod._DEBUG_LOOP is False
+        assert compat_player_base_mod._DEBUG_LOOP is False
+        assert legacy_player_base_mod._DEBUG_LOOP is False
+        assert bass.BassPlayer(_StubManager(), 0)._debug_loop is False
+    finally:
+        bass._DEBUG_LOOP = old_package_debug
+        player_base_mod._DEBUG_LOOP = old_player_debug
+        compat_player_base_mod._DEBUG_LOOP = old_compat_debug
+        legacy_player_base_mod._DEBUG_LOOP = old_legacy_debug

@@ -106,10 +106,14 @@ def run() -> None:
         # ustawia debug loop przed tworzeniem playerów
         import sara.audio.bass as bass_mod  # pylint: disable=import-outside-toplevel
 
-        bass_mod._DEBUG_LOOP = bool(settings.get_diagnostics_loop_debug())
+        loop_debug = bool(settings.get_diagnostics_loop_debug())
+        if hasattr(bass_mod, "set_debug_loop"):
+            bass_mod.set_debug_loop(loop_debug)
+        else:
+            bass_mod._DEBUG_LOOP = loop_debug  # type: ignore[attr-defined]  # pylint: disable=protected-access
         logging.getLogger(__name__).debug(
             "Diagnostics: loop_debug=%s faulthandler=%s interval=%.1f log_level=%s env.LOGLEVEL=%s env.SARA_DEBUG_STACK=%s env.SARA_DEBUG_LOOP=%s",
-            settings.get_diagnostics_loop_debug(),
+            loop_debug,
             settings.get_diagnostics_faulthandler(),
             settings.get_diagnostics_faulthandler_interval(),
             settings.get_diagnostics_log_level(),

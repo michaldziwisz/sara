@@ -372,6 +372,13 @@ class BassPlayer:
             if self._debug_loop:
                 logger.debug("Loop debug: failed to set sync pos: %s", exc)
 
+        try:
+            current_pos = self._manager.channel_get_seconds(self._stream)
+        except Exception:
+            current_pos = None
+        if current_pos is not None and current_pos >= end:
+            self._jump_to_loop_start("enable-after-end", current_pos)
+
         if self._debug_loop:
             logger.debug("Loop debug: sync+guard active")
 
