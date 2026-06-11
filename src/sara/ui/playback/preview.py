@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
@@ -19,6 +20,16 @@ from sara.core.playlist import PlaylistItem
 
 
 logger = logging.getLogger(__name__)
+
+
+def _format_player_position(player: Player) -> str:
+    getter = getattr(player, "get_position_seconds", None)
+    if not callable(getter):
+        return "unknown"
+    try:
+        return f"{float(getter()):.3f}"
+    except Exception:  # pylint: disable=broad-except
+        return "unknown"
 
 
 @dataclass
@@ -249,26 +260,84 @@ def start_mix_preview(
 
     stop_event = Event()
     fired_event = Event()
+    preview_started_at = time.perf_counter()
 
     # jeśli trigger w przeszłości, odpal B natychmiast i skróć pre-window
     if delay_b <= 0:
         delay_b = 0.0
         start_a = max(0.0, mix_at_seconds - pre_seconds)
 
-    def _fire_mix() -> None:
+    def _fire_mix(source: str = "native") -> None:
         if stop_event.is_set():
+            logger.debug(
+                "PFL mix preview: fire ignored source=%s reason=stopped mix_at=%.3f a_pos=%s",
+                source,
+                mix_at_seconds,
+                _format_player_position(player_a),
+            )
             return
         if fired_event.is_set():
+            logger.debug(
+                "PFL mix preview: fire ignored source=%s reason=already_fired mix_at=%.3f a_pos=%s",
+                source,
+                mix_at_seconds,
+                _format_player_position(player_a),
+            )
             return
         fired_event.set()
+        elapsed = time.perf_counter() - preview_started_at
+        pos_a = _format_player_position(player_a)
+        logger.debug(
+            "PFL mix preview: fire source=%s mix_at=%.3f start_a=%.3f delay=%.3f elapsed=%.3f "
+            "a_pos=%s next_start=%.3f fade=%.3f native=%s",
+            source,
+            mix_at_seconds,
+            start_a,
+            delay_b,
+            elapsed,
+            pos_a,
+            next_start,
+            fade_len,
+            supports_native_trigger,
+        )
         try:
             player_b.play(next_item.id, str(next_item.path), start_seconds=next_start, allow_loop=False)
-        except Exception:
+        except Exception:  # pylint: disable=broad-except
+            logger.debug(
+                "PFL mix preview: next start failed source=%s mix_at=%.3f a_pos=%s next_start=%.3f",
+                source,
+                mix_at_seconds,
+                pos_a,
+                next_start,
+                exc_info=True,
+            )
             return
+        logger.debug(
+            "PFL mix preview: next started source=%s mix_at=%.3f a_pos=%s b_pos=%s next_start=%.3f",
+            source,
+            mix_at_seconds,
+            pos_a,
+            _format_player_position(player_b),
+            next_start,
+        )
         if fade_len > 0:
             try:
                 player_a.fade_out(fade_len)
-            except Exception:
+                logger.debug(
+                    "PFL mix preview: fade_out source=%s duration=%.3f mix_at=%.3f a_pos=%s",
+                    source,
+                    fade_len,
+                    mix_at_seconds,
+                    _format_player_position(player_a),
+                )
+            except Exception:  # pylint: disable=broad-except
+                logger.debug(
+                    "PFL mix preview: fade_out failed source=%s duration=%.3f mix_at=%.3f",
+                    source,
+                    fade_len,
+                    mix_at_seconds,
+                    exc_info=True,
+                )
                 pass
 
     supports_native_trigger = False
@@ -287,20 +356,33 @@ def start_mix_preview(
 
     def _schedule_mix_timer(*, guard_seconds: float = 0.0) -> None:
         if delay_b <= 0:
-            _fire_mix()
+            _fire_mix("immediate")
             return
+
         def _fallback_wait() -> None:
             stop_event.wait(timeout=max(0.0, delay_b + guard_seconds))
             if stop_event.is_set():
                 return
+            if fired_event.is_set():
+                logger.debug(
+                    "PFL mix preview: timer fallback skipped mix_at=%.3f delay=%.3f guard=%.3f "
+                    "native=%s reason=already_fired a_pos=%s",
+                    mix_at_seconds,
+                    delay_b,
+                    guard_seconds,
+                    supports_native_trigger,
+                    _format_player_position(player_a),
+                )
+                return
             logger.debug(
-                "PFL mix preview: timer fallback fired mix_at=%.3f delay=%.3f guard=%.3f native=%s",
+                "PFL mix preview: timer fallback firing mix_at=%.3f delay=%.3f guard=%.3f native=%s a_pos=%s",
                 mix_at_seconds,
                 delay_b,
                 guard_seconds,
                 supports_native_trigger,
+                _format_player_position(player_a),
             )
-            _fire_mix()
+            _fire_mix("timer")
 
         threading.Thread(target=_fallback_wait, daemon=True).start()
 
@@ -308,7 +390,18 @@ def start_mix_preview(
         play_kwargs = {"start_seconds": start_a, "allow_loop": False}
         if supports_native_trigger:
             play_kwargs["mix_trigger_seconds"] = mix_at_seconds
-            play_kwargs["on_mix_trigger"] = _fire_mix
+            play_kwargs["on_mix_trigger"] = lambda: _fire_mix("native")
+        logger.debug(
+            "PFL mix preview: arming trigger native=%s mix_at=%.3f start_a=%.3f delay=%.3f "
+            "fade=%.3f next_start=%.3f device=%s",
+            supports_native_trigger,
+            mix_at_seconds,
+            start_a,
+            delay_b,
+            fade_len,
+            next_start,
+            pfl_device_id,
+        )
         player_a.play(current_item.id, str(current_item.path), **play_kwargs)
     except Exception as exc:  # pylint: disable=broad-except
         controller._announce("pfl", _("Failed to start mix preview: %s") % exc)

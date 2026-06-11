@@ -21,6 +21,16 @@ PFL i emisja muszą uzbrajać punkty miksu tą samą ścieżką: jeśli backend 
 
 Runtime miksu może odczytać bieżącą pozycję z backendu (`get_position_seconds()`), żeby zabezpieczyć się przed dryftem wynikającym z opóźnionych callbacków postępu UI.
 
+## Diagnostyka PFL vs emisja
+
+Przy podglądzie miksu PFL logi `PFL mix preview` zapisują:
+
+- uzbrojenie triggera (`arming trigger`) z `native`, `mix_at`, `start_a`, `delay` i urządzeniem PFL,
+- faktyczne odpalenie B (`fire`) z `source=native|timer|immediate`, pozycją playera A (`a_pos`) i punktem startu B (`next_start`),
+- start B (`next started`) oraz ewentualne pominięcie timera fallback, jeśli natywny trigger zdążył już odpalić miks.
+
+Dzięki temu log PFL można porównać z logami BASS emisji (`BASS mix trigger set/fired`) bez zgadywania, czy przejście było zrobione przez natywny trigger czy awaryjny timer.
+
 ## Konfiguracja (env)
 
 - `SARA_ENABLE_PRELOAD` (domyślnie `1`) – wyłącz: `0`.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 
 from sara.core.playlist import PlaylistItem
@@ -34,6 +35,7 @@ class _DummyPlayer:
         self.play_calls: list[dict[str, object]] = []
         self.fade_calls: list[float] = []
         self.apply_mix_trigger_calls: list[tuple[float, object]] = []
+        self.position_seconds = 0.0
         self.stopped = 0
 
     def set_gain_db(self, _gain_db) -> None:
@@ -73,6 +75,9 @@ class _DummyPlayer:
 
     def set_loop(self, _start_seconds, _end_seconds) -> None:
         return None
+
+    def get_position_seconds(self) -> float:
+        return self.position_seconds
 
     def _apply_mix_trigger(self, _mix_at_seconds: float, _callback) -> None:
         self.apply_mix_trigger_calls.append((_mix_at_seconds, _callback))
@@ -163,7 +168,9 @@ def test_pfl_mix_preview_respects_preload_disable(tmp_path) -> None:
     assert player_b.preload_calls == []
 
 
-def test_pfl_mix_preview_arms_native_trigger_in_play_and_uses_cue_for_fade(tmp_path) -> None:
+def test_pfl_mix_preview_arms_native_trigger_in_play_and_uses_cue_for_fade(tmp_path, caplog) -> None:
+    caplog.set_level(logging.DEBUG, logger="sara.ui.playback.preview")
+
     device_id = "pfl-dev"
     path_a = tmp_path / "a.wav"
     path_a.write_text("a")
@@ -208,8 +215,13 @@ def test_pfl_mix_preview_arms_native_trigger_in_play_and_uses_cue_for_fade(tmp_p
     assert callable(play_a["on_mix_trigger"])
     assert player_a.apply_mix_trigger_calls == []
 
+    player_a.position_seconds = 4.001
     play_a["on_mix_trigger"]()
     assert player_b.play_calls[0]["start_seconds"] == 0.5
     assert player_a.fade_calls == [7.0]
+    assert "PFL mix preview: arming trigger native=True mix_at=4.000" in caplog.text
+    assert "PFL mix preview: fire source=native mix_at=4.000" in caplog.text
+    assert "a_pos=4.001" in caplog.text
+    assert "PFL mix preview: next started source=native mix_at=4.000" in caplog.text
 
     stop_preview(controller, wait=False)
