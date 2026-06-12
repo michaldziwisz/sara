@@ -15,21 +15,31 @@ from threading import Event
 
 from sara.audio.engine import Player
 from sara.core.i18n import gettext as _
-from sara.core.mix_planner import fade_duration_at_mix
+from sara.core.mix_planner import MIX_EXPLICIT_PROGRESS_GUARD, MIX_NATIVE_EARLY_GUARD, fade_duration_at_mix
 from sara.core.playlist import PlaylistItem
 
 
 logger = logging.getLogger(__name__)
 
 
-def _format_player_position(player: Player) -> str:
+def _player_position_seconds(player: Player) -> float | None:
     getter = getattr(player, "get_position_seconds", None)
     if not callable(getter):
-        return "unknown"
+        return None
     try:
-        return f"{float(getter()):.3f}"
+        position = float(getter())
     except Exception:  # pylint: disable=broad-except
+        return None
+    if position < 0.0:
+        return None
+    return position
+
+
+def _format_player_position(player: Player) -> str:
+    position = _player_position_seconds(player)
+    if position is None:
         return "unknown"
+    return f"{position:.3f}"
 
 
 @dataclass
@@ -260,12 +270,62 @@ def start_mix_preview(
 
     stop_event = Event()
     fired_event = Event()
+    deferred_native_event = Event()
     preview_started_at = time.perf_counter()
 
     # jeśli trigger w przeszłości, odpal B natychmiast i skróć pre-window
     if delay_b <= 0:
         delay_b = 0.0
         start_a = max(0.0, mix_at_seconds - pre_seconds)
+
+    def _schedule_native_position_wait(position: float) -> None:
+        if deferred_native_event.is_set():
+            logger.debug(
+                "PFL mix preview: native trigger early ignored reason=already_deferred "
+                "mix_at=%.3f a_pos=%.3f",
+                mix_at_seconds,
+                position,
+            )
+            return
+        deferred_native_event.set()
+        initial_remaining = max(0.0, mix_at_seconds - position)
+        logger.debug(
+            "PFL mix preview: native trigger early -> position wait mix_at=%.3f a_pos=%.3f "
+            "remaining=%.3f guard=%.3f",
+            mix_at_seconds,
+            position,
+            initial_remaining,
+            MIX_EXPLICIT_PROGRESS_GUARD,
+        )
+
+        def _wait_for_position() -> None:
+            deadline = time.perf_counter() + initial_remaining + 0.25
+            while not stop_event.is_set() and not fired_event.is_set():
+                if time.perf_counter() >= deadline:
+                    break
+                current = _player_position_seconds(player_a)
+                if current is None:
+                    stop_event.wait(timeout=0.01)
+                    continue
+                if current >= mix_at_seconds - MIX_EXPLICIT_PROGRESS_GUARD:
+                    logger.debug(
+                        "PFL mix preview: native position wait firing mix_at=%.3f a_pos=%.3f",
+                        mix_at_seconds,
+                        current,
+                    )
+                    _fire_mix("native_wait")
+                    return
+                remaining = max(0.0, mix_at_seconds - current)
+                stop_event.wait(timeout=min(0.01, remaining))
+            if not stop_event.is_set() and not fired_event.is_set():
+                logger.debug(
+                    "PFL mix preview: native position wait timeout mix_at=%.3f a_pos=%s",
+                    mix_at_seconds,
+                    _format_player_position(player_a),
+                )
+                _fire_mix("native_wait_timeout")
+
+        threading.Thread(target=_wait_for_position, daemon=True).start()
 
     def _fire_mix(source: str = "native") -> None:
         if stop_event.is_set():
@@ -284,9 +344,17 @@ def start_mix_preview(
                 _format_player_position(player_a),
             )
             return
+        pos_a_value = _player_position_seconds(player_a)
+        if (
+            source == "native"
+            and pos_a_value is not None
+            and pos_a_value < mix_at_seconds - MIX_NATIVE_EARLY_GUARD
+        ):
+            _schedule_native_position_wait(pos_a_value)
+            return
         fired_event.set()
         elapsed = time.perf_counter() - preview_started_at
-        pos_a = _format_player_position(player_a)
+        pos_a = f"{pos_a_value:.3f}" if pos_a_value is not None else _format_player_position(player_a)
         logger.debug(
             "PFL mix preview: fire source=%s mix_at=%.3f start_a=%.3f delay=%.3f elapsed=%.3f "
             "a_pos=%s next_start=%.3f fade=%.3f native=%s",

@@ -29,6 +29,8 @@ Przy podglądzie miksu PFL logi `PFL mix preview` zapisują:
 - faktyczne odpalenie B (`fire`) z `source=native|timer|immediate`, pozycją playera A (`a_pos`) i punktem startu B (`next_start`),
 - start B (`next started`) oraz ewentualne pominięcie timera fallback, jeśli natywny trigger zdążył już odpalić miks.
 
+Jeśli natywny callback BASS przyjdzie przedwcześnie względem pozycji A, PFL zapisze `native trigger early -> position wait` i odroczy start B do pozycji miksu. To odpowiada zabezpieczeniu emisji, gdzie zbyt wczesny backend trigger przechodzi na fallback progresowy.
+
 Dzięki temu log PFL można porównać z logami BASS emisji (`BASS mix trigger set/fired`) bez zgadywania, czy przejście było zrobione przez natywny trigger czy awaryjny timer.
 
 ## Konfiguracja (env)
