@@ -182,7 +182,7 @@ class BassAsioPlayer(BassPlayer):
                         except Exception:
                             pass
 
-        self._fade_thread = threading.Thread(target=_runner, daemon=True)
+        self._fade_thread = threading.Thread(target=_runner, daemon=True, name="bass-asio-fade")
         self._fade_thread.start()
 
     def set_loop(self, start_seconds: Optional[float], end_seconds: Optional[float]) -> None:

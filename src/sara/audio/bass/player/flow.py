@@ -235,5 +235,5 @@ def fade_out(player, duration: float) -> None:
                     except Exception:
                         pass
 
-    player._fade_thread = threading.Thread(target=_runner, args=(target_stream,), daemon=True)
+    player._fade_thread = threading.Thread(target=_runner, args=(target_stream,), daemon=True, name="bass-fade")
     player._fade_thread.start()

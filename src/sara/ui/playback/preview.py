@@ -352,6 +352,18 @@ def start_mix_preview(
             _format_player_position(player_b),
             next_start,
         )
+        # Rozbicie nazw żywych wątków — wskazuje KTÓRY typ przecieka, gdy threads
+        # rośnie (np. bass-monitor / fade / pfl-auto-stop / pfl-fallback-wait).
+        try:
+            from collections import Counter
+
+            names = Counter(
+                (t.name.split("-")[0] if t.name else "?") for t in threading.enumerate()
+            )
+            breakdown = " ".join(f"{name}={count}" for name, count in sorted(names.items()))
+            logger.debug("PFL mix preview: threads breakdown %s", breakdown)
+        except Exception:  # pragma: no cover - best-effort diagnostics
+            pass
         if fade_len > 0:
             try:
                 player_a.fade_out(fade_len)
@@ -416,7 +428,7 @@ def start_mix_preview(
             )
             _fire_mix("timer")
 
-        threading.Thread(target=_fallback_wait, daemon=True).start()
+        threading.Thread(target=_fallback_wait, daemon=True, name="pfl-fallback-wait").start()
 
     try:
         play_kwargs = {"start_seconds": start_a, "allow_loop": False}
@@ -451,7 +463,7 @@ def start_mix_preview(
         stop_event.wait(timeout=total_preview)
         stop_preview(controller, wait=False)
 
-    threading.Thread(target=_auto_stop, daemon=True).start()
+    threading.Thread(target=_auto_stop, daemon=True, name="pfl-auto-stop").start()
 
     controller._preview_context = PreviewContext(
         players=[player_a, player_b],
