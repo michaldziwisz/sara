@@ -20,6 +20,7 @@ from sara.core.mix_planner import (
     fade_duration_at_mix,
     mark_mix_triggered,
     mix_elapsed_seconds,
+    preview_window,
     register_mix_plan,
     remaining_after_mix_seconds,
     resolve_mix_timing,
@@ -398,6 +399,19 @@ def test_compute_native_guard_uses_fade_seconds_without_segue():
         has_segue=False,
     )
     assert guard.guard_window == pytest.approx(0.1)
+
+
+def test_preview_window_basic():
+    start_a, delay_b = preview_window(mix_at=4.0, pre_seconds=2.0)
+    assert start_a == pytest.approx(2.0)
+    assert delay_b == pytest.approx(2.0)
+
+
+def test_preview_window_clamps_negative_start():
+    # mix_at krótszy niż pre_seconds -> start od zera, delay = mix_at.
+    start_a, delay_b = preview_window(mix_at=1.0, pre_seconds=4.0)
+    assert start_a == pytest.approx(0.0)
+    assert delay_b == pytest.approx(1.0)
 
 
 class _MixHost:

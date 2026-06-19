@@ -15,7 +15,7 @@ from threading import Event
 
 from sara.audio.engine import Player
 from sara.core.i18n import gettext as _
-from sara.core.mix_planner import fade_duration_at_mix
+from sara.core.mix_planner import fade_duration_at_mix, preview_window
 from sara.core.playlist import PlaylistItem
 
 
@@ -227,7 +227,7 @@ def start_mix_preview(
     except Exception:  # pylint: disable=broad-except
         pass
 
-    start_a = max(0.0, mix_at_seconds - pre_seconds)
+    start_a, delay_b = preview_window(mix_at_seconds, pre_seconds)
     base_cue = (
         max(0.0, float(current_base_cue))
         if current_base_cue is not None
@@ -240,7 +240,6 @@ def start_mix_preview(
     )
     fade_len = fade_duration_at_mix(fade_seconds, mix_at_seconds, base_cue, effective_duration)
     next_start = next_cue_override if next_cue_override is not None else (next_item.cue_in_seconds or 0.0)
-    delay_b = max(0.0, mix_at_seconds - start_a)
 
     logger.debug(
         "PFL mix preview: current=%s next=%s mix_at=%.3f pre=%.3f fade=%.3f cue_next=%.3f",

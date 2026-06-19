@@ -236,3 +236,18 @@ def remaining_after_mix_seconds(mix_at: float, base_cue: float, effective_durati
 def fade_duration_at_mix(fade_seconds: float, mix_at: float, base_cue: float, effective_duration: float) -> float:
     """Clamp fade duration to the actual post-mix tail on the effective timeline."""
     return min(max(0.0, float(fade_seconds)), remaining_after_mix_seconds(mix_at, base_cue, effective_duration))
+
+
+def preview_window(mix_at: float, pre_seconds: float) -> tuple[float, float]:
+    """Policz okno podglądu miksu (PFL): start odtwarzania A oraz opóźnienie startu B.
+
+    - `start_a`: pozycja, od której startuje bieżący utwór w podglądzie (kilka sekund
+      przed punktem miksu), nigdy ujemna.
+    - `delay_b`: ile sekund po starcie A wpada następny utwór = długość pre-window.
+
+    Wspólna, czysta matematyka dla wszystkich podglądów — gwarantuje, że PFL i
+    ewentualne inne podglądy liczą okno identycznie (jedno źródło prawdy).
+    """
+    start_a = max(0.0, float(mix_at) - max(0.0, float(pre_seconds)))
+    delay_b = max(0.0, float(mix_at) - start_a)
+    return start_a, delay_b
