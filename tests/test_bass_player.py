@@ -244,6 +244,23 @@ def test_bass_loop_clamps_end_to_stream_length():
     assert player._loop_start_bytes == 5000
 
 
+def test_bass_mix_trigger_clamps_target_to_length_in_bytes():
+    """Target blisko/poza końcem przycinany do (length-0.01) i konwertowany raz na bajty."""
+    player, manager = _player_with_stream(0.0)
+    # _StubManager.channel_get_length_seconds zwraca 600.0; seconds_to_bytes = s*1000.
+    player._apply_mix_trigger(700.0, lambda: None)
+    # Przycięte do 600.0 - 0.01 = 599.99 s -> 599990 bajtów (NIE 700000).
+    assert manager.sync_calls[-1] == pytest.approx(599990)
+
+
+def test_bass_mix_trigger_offset_applied_once_near_end():
+    """Przy start_offset clamp i odjęcie offsetu zachodzą bez podwójnej konwersji."""
+    player, manager = _player_with_stream(10.0)
+    player._apply_mix_trigger(595.0, lambda: None)
+    # clamp do 599.99 nie zadziała (595<599.99); effective = 595 - 10 = 585 s -> 585000.
+    assert manager.sync_calls[-1] == pytest.approx(585000)
+
+
 def test_bass_set_debug_loop_updates_concrete_player_module():
     import sara.audio.bass.player_base as compat_player_base_mod
     import sara.audio.bass_player_base as legacy_player_base_mod
