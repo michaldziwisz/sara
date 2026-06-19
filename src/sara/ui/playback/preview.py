@@ -277,6 +277,11 @@ def start_mix_preview(
         start_a = max(0.0, mix_at_seconds - pre_seconds)
 
     def _fire_mix(source: str = "native") -> None:
+        # Pozycja A zmierzona NA SAMYM WEJŚCIU callbacku, przed jakąkolwiek pracą.
+        # To surowy moment dostarczenia natywnego mixtime-callbacku do Pythona —
+        # jego jitter (różnica między wywołaniami przy stałym mix_at) jest miarą
+        # szumu dostarczania pod GIL, niezależną od czasu wykonania play(B).
+        entry_pos_a = _player_position_seconds(player_a)
         if stop_event.is_set():
             logger.debug(
                 "PFL mix preview: fire ignored source=%s reason=stopped mix_at=%.3f a_pos=%s",
@@ -327,20 +332,34 @@ def start_mix_preview(
                 exc_info=True,
             )
             return
-        # Instrumentacja determinizmu: latencja faktycznego startu B oraz liczba
-        # żywych wątków procesu. Rosnący b_latency/threads przy stałym delay to
-        # sygnatura jitteru dyspozycji (kumulacja zasobów po dłuższej sesji) —
-        # ułatwia diagnozę, gdyby punkt miksu znów zaczął „pływać".
+        # Pozycja A PO starcie B: ile materiału A faktycznie uciekło, zanim B
+        # wszedł. To bezpośrednia, słyszalna miara rozjazdu w sekundach.
+        post_pos_a_value = _player_position_seconds(player_a)
+        # entry_pos_a (wejście callbacku) vs pos_a (po fired_event/logu) vs post:
+        # rozkłada jitter na: dostarczenie callbacku (entry) + narzut do play(B)
+        # (entry->post). Stały entry_pos_a między miksami = brak jitteru
+        # dostarczania; rosnący entry->post = ciężki start B w callbacku.
+        entry_str = f"{entry_pos_a:.3f}" if entry_pos_a is not None else "unknown"
+        post_str = f"{post_pos_a_value:.3f}" if post_pos_a_value is not None else "unknown"
+        a_advance = (
+            f"{post_pos_a_value - entry_pos_a:.4f}"
+            if (entry_pos_a is not None and post_pos_a_value is not None)
+            else "unknown"
+        )
         logger.debug(
             "PFL mix preview: timing source=%s mix_at=%.3f delay=%.3f elapsed=%.3f "
-            "b_latency=%.4f threads=%d a_pos=%s b_pos=%s next_start=%.3f",
+            "b_latency=%.4f threads=%d entry_a=%s a_pos=%s post_a=%s a_advance=%s "
+            "b_pos=%s next_start=%.3f",
             source,
             mix_at_seconds,
             delay_b,
             elapsed,
             b_start_latency,
             threading.active_count(),
+            entry_str,
             pos_a,
+            post_str,
+            a_advance,
             _format_player_position(player_b),
             next_start,
         )
