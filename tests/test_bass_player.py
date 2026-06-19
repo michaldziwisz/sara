@@ -261,6 +261,53 @@ def test_bass_mix_trigger_offset_applied_once_near_end():
     assert manager.sync_calls[-1] == pytest.approx(585000)
 
 
+def test_bass_fade_out_is_driven_by_stream_position():
+    """Krzywa fade odniesiona do PRZEBYTEJ pozycji strumienia, nie do liczby kroków sleep.
+
+    Determinizm: ta sama sekwencja pozycji daje tę samą sekwencję głośności i fade
+    kończy się dokładnie po przebyciu `duration` materiału.
+    """
+    import threading
+
+    player, manager = _player_with_stream(0.0)
+    player._gain_factor = 1.0
+
+    # Symulacja postępującej pozycji: kolejne odczyty rosną co 0.5 s od 10.0 s.
+    positions = [10.0, 10.5, 11.0, 11.5, 12.0, 12.5]
+    idx = {"i": 0}
+    volumes: list[float] = []
+
+    def _get_seconds(_stream):
+        i = min(idx["i"], len(positions) - 1)
+        val = positions[i]
+        idx["i"] += 1
+        return val
+
+    def _set_volume(_stream, vol):
+        volumes.append(vol)
+
+    manager.channel_get_seconds = _get_seconds
+    manager.channel_set_volume = _set_volume
+
+    finished: list[str] = []
+    player._current_item_id = "item-x"
+    player._finished_callback = lambda item_id: finished.append(item_id)
+
+    player.fade_out(2.0)  # duration 2 s -> progress 1.0 po przebyciu 2 s pozycji
+    player._fade_thread.join(timeout=2.0)
+
+    # Pierwsza ustawiona głośność <= pełnej (start_pos jest odczytem odniesienia).
+    # Krzywa monotonicznie malejąca, odniesiona do przebytej pozycji.
+    assert volumes[0] <= 1.0 + 1e-9
+    assert volumes[0] == pytest.approx(0.75)  # (10.5-10.0)/2 = 0.25 -> 0.75
+    for earlier, later in zip(volumes, volumes[1:]):
+        assert later <= earlier + 1e-9
+    # Ostatnia wartość = cisza (progress >= 1.0).
+    assert volumes[-1] == pytest.approx(0.0)
+    # Fade dobiegł końca -> zgłoszono zakończenie utworu.
+    assert finished == ["item-x"]
+
+
 def test_bass_set_debug_loop_updates_concrete_player_module():
     import sara.audio.bass.player_base as compat_player_base_mod
     import sara.audio.bass_player_base as legacy_player_base_mod

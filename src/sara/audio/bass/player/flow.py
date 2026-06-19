@@ -168,30 +168,49 @@ def fade_out(player, duration: float) -> None:
     target_stream = player._stream
     start_ts = time.perf_counter()
 
-    def _runner(target: int) -> None:
-        steps = max(4, int(duration / 0.05))
-        interrupted = False
+    def _position(target: int) -> float | None:
         try:
-            initial = player._gain_factor
-            logger.debug(
-                "BASS fade start stream=%s duration=%.3f gain=%.3f steps=%d",
-                target,
-                duration,
-                initial,
-                steps,
-            )
-            for i in range(steps):
+            return float(player._manager.channel_get_seconds(target))
+        except Exception:
+            return None
+
+    def _runner(target: int) -> None:
+        # Krok odpytywania (takt), NIE wyznacznik długości fade'u. Długość i kształt
+        # krzywej zależą od PRZEBYTEJ POZYCJI strumienia, więc fade jest powtarzalny
+        # niezależnie od obciążenia CPU / jittera schedulera.
+        poll_interval = 0.01
+        interrupted = False
+        initial = player._gain_factor
+        start_pos = _position(target)
+        logger.debug(
+            "BASS fade start stream=%s duration=%.3f gain=%.3f start_pos=%s",
+            target,
+            duration,
+            initial,
+            f"{start_pos:.3f}" if start_pos is not None else "unknown",
+        )
+        try:
+            while True:
                 if player._stream != target:
                     interrupted = True
                     break
-                factor = initial * (1.0 - float(i + 1) / steps)
+                pos = _position(target)
+                if pos is None or start_pos is None:
+                    # Brak wiarygodnej pozycji — wycisz natychmiast (degradacja bezpieczna).
+                    progress = 1.0
+                else:
+                    progress = (pos - start_pos) / duration
+                    progress = max(0.0, min(1.0, progress))
+                factor = initial * (1.0 - progress)
                 try:
                     player._manager.channel_set_volume(target, factor)
                 except Exception as exc:
                     logger.debug("BASS fade step failed: %s", exc)
                     interrupted = True
                     break
-                time.sleep(duration / steps)
+                if progress >= 1.0:
+                    break
+                time.sleep(poll_interval)
         finally:
             elapsed = time.perf_counter() - start_ts
             completed = not interrupted and player._stream == target
