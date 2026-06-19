@@ -8,7 +8,7 @@ from typing import Any
 from sara.core.mix_planner import (
     MIX_EXPLICIT_PROGRESS_GUARD,
     MIX_NATIVE_EARLY_GUARD,
-    MIX_NATIVE_LATE_GUARD,
+    compute_native_guard,
 )
 from sara.core.playlist import PlaylistItem, PlaylistKind
 
@@ -74,14 +74,17 @@ def auto_mix_state_process(
     if plan and plan.triggered:
         return
     if mix_at is not None and native_trigger:
-        track_end = base_cue + effective_duration
-        headroom_after_mix = max(0.0, track_end - mix_at)
-        fade_guard_source = frame._fade_duration if item.segue_seconds is not None else fade_seconds
-        fade_guard = min(MIX_NATIVE_LATE_GUARD, max(0.0, fade_guard_source))
-        guard_window = min(fade_guard, headroom_after_mix)
-        late_guard_shortfall = max(0.0, fade_guard - guard_window)
-        if late_guard_shortfall > 0.0 and guard_window > 0.0:
-            release_offset = min(guard_window, late_guard_shortfall / 2.0)
+        guard = compute_native_guard(
+            mix_at=mix_at,
+            base_cue=base_cue,
+            effective_duration=effective_duration,
+            fade_seconds=fade_seconds,
+            fade_duration=frame._fade_duration,
+            has_segue=item.segue_seconds is not None,
+        )
+        guard_window = guard.guard_window
+        late_guard_shortfall = guard.shortfall
+        release_offset = guard.release_offset
         if seconds < mix_at - MIX_NATIVE_EARLY_GUARD:
             return
         if seconds < mix_at + guard_window:

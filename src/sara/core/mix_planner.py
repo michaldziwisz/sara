@@ -24,6 +24,56 @@ MIX_EXPLICIT_PROGRESS_GUARD = 0.05
 # rażąco wczesne, błędne callbacki (np. zduplikat / zły sync) — patrz mix_runtime.now.
 MIX_NATIVE_TRUST_WINDOW = 0.75
 
+# Bazowy próg "siatki bezpieczeństwa" dla progresowego automixu pod natywnym
+# wyzwalaczem: ścieżka progresowa nie wyzwala miksu przed punktem, dopóki nie
+# wejdziemy w to okno wokół mix_at (poniżej i tak głównym źródłem jest native).
+MIX_NATIVE_SAFETY_NET = MIX_NATIVE_LATE_GUARD
+
+
+@dataclass
+class NativeGuard:
+    """Wynik wyliczenia okna strażnika dla progresowego automixu pod native.
+
+    - `guard_window`: ile sekund PO mix_at progres czeka, zanim sam wyzwoli miks
+      (siatka bezpieczeństwa, gdy native nie odpalił). Przycięte do zapasu po
+      miksie, by nie przegapić końca utworu.
+    - `release_offset`: dla utworów z malutkim zapasem po miksie — o ile PRZED
+      mix_at progres może awaryjnie zwolnić miks, by zdążyć z fade'em.
+    - `shortfall`: brakująca część pełnego guardu (gdy zapas < oczekiwany guard).
+    """
+
+    guard_window: float
+    release_offset: float
+    shortfall: float
+
+
+def compute_native_guard(
+    *,
+    mix_at: float,
+    base_cue: float,
+    effective_duration: float,
+    fade_seconds: float,
+    fade_duration: float,
+    has_segue: bool,
+) -> NativeGuard:
+    """Policz okno strażnika progresowego pod natywnym wyzwalaczem.
+
+    Wydzielone z mix_runtime.progress, żeby logika guardu żyła w JEDNYM,
+    testowalnym miejscu (bez wxPython). Zachowuje dotychczasowe zachowanie:
+    pełny guard = min(MIX_NATIVE_LATE_GUARD, źródłowy fade), przycięty do zapasu
+    po miksie; przy niedoborze zapasu wyznacza miękkie wcześniejsze zwolnienie.
+    """
+    track_end = base_cue + effective_duration
+    headroom_after_mix = max(0.0, track_end - mix_at)
+    fade_guard_source = fade_duration if has_segue else fade_seconds
+    fade_guard = min(MIX_NATIVE_SAFETY_NET, max(0.0, fade_guard_source))
+    guard_window = min(fade_guard, headroom_after_mix)
+    shortfall = max(0.0, fade_guard - guard_window)
+    release_offset = 0.0
+    if shortfall > 0.0 and guard_window > 0.0:
+        release_offset = min(guard_window, shortfall / 2.0)
+    return NativeGuard(guard_window=guard_window, release_offset=release_offset, shortfall=shortfall)
+
 MixKey = tuple[str, str]
 
 

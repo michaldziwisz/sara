@@ -16,6 +16,7 @@ from sara.core.mix_planner import (
     MixPlan,
     clear_mix_plan,
     compute_air_duration_seconds,
+    compute_native_guard,
     fade_duration_at_mix,
     mark_mix_triggered,
     mix_elapsed_seconds,
@@ -353,6 +354,50 @@ def test_mix_timeline_helpers_use_effective_post_cue_axis():
     assert mix_elapsed_seconds(4.0, 1.0) == pytest.approx(3.0)
     assert remaining_after_mix_seconds(4.0, 1.0, 10.0) == pytest.approx(7.0)
     assert fade_duration_at_mix(10.0, 4.0, 1.0, 10.0) == pytest.approx(7.0)
+
+
+def test_compute_native_guard_full_headroom():
+    # Duży zapas po miksie: guard = pełny (min(LATE_GUARD, fade)), brak shortfall/release.
+    guard = compute_native_guard(
+        mix_at=8.0,
+        base_cue=0.0,
+        effective_duration=12.0,
+        fade_seconds=2.0,
+        fade_duration=2.0,
+        has_segue=True,
+    )
+    assert guard.guard_window == pytest.approx(min(MIX_NATIVE_LATE_GUARD, 2.0))
+    assert guard.shortfall == pytest.approx(0.0)
+    assert guard.release_offset == pytest.approx(0.0)
+
+
+def test_compute_native_guard_tiny_headroom_yields_release_offset():
+    # Malutki zapas po miksie (0.1 s) < pełny guard -> shortfall>0, release_offset = shortfall/2.
+    guard = compute_native_guard(
+        mix_at=4.9,
+        base_cue=0.0,
+        effective_duration=5.0,
+        fade_seconds=1.0,
+        fade_duration=1.0,
+        has_segue=True,
+    )
+    expected_full = min(MIX_NATIVE_LATE_GUARD, 1.0)
+    assert guard.guard_window == pytest.approx(0.1)
+    assert guard.shortfall == pytest.approx(expected_full - 0.1)
+    assert guard.release_offset == pytest.approx(min(0.1, (expected_full - 0.1) / 2.0))
+
+
+def test_compute_native_guard_uses_fade_seconds_without_segue():
+    # Bez segue źródłem guardu jest fade_seconds, nie globalny fade_duration.
+    guard = compute_native_guard(
+        mix_at=8.0,
+        base_cue=0.0,
+        effective_duration=12.0,
+        fade_seconds=0.1,
+        fade_duration=2.0,
+        has_segue=False,
+    )
+    assert guard.guard_window == pytest.approx(0.1)
 
 
 class _MixHost:
