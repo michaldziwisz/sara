@@ -40,6 +40,26 @@ def loop_guard_reason(
     return None
 
 
+def python_guard_active(player: "BassPlayer") -> bool:
+    """Czy pythonowy strażnik pętli realnie odpowiada za zawijanie materiału.
+
+    Strażnik (a wraz z nim ciasny takt monitora) jest potrzebny TYLKO w trybie
+    marker-sync — gdy natywna pętla BASS jest niedostępna. Gdy pętla nie jest
+    aktywna albo zawija ją natywnie BASS, monitor nie musi odpytywać pozycji co
+    1 ms; wystarczy mu rozluźniony takt na postęp (i tak dławiony do 50 ms) oraz
+    wykrycie końca strumienia. Rozluźnienie taktu w tych przypadkach znacząco
+    zmniejsza presję na scheduler OS, a tym samym jitter dyspozycji natywnego
+    callbacku miksu (objaw: punkt miksu na PFL „pływa" po dłuższej sesji).
+    """
+    return bool(
+        player._loop_guard_enabled
+        and player._loop_active
+        and player._loop_start is not None
+        and player._loop_end is not None
+        and not player._loop_native_active
+    )
+
+
 def start_monitor(
     player: "BassPlayer",
     *,
@@ -47,13 +67,18 @@ def start_monitor(
     loop_guard_base_slack: float,
     loop_guard_fallback_slack: float,
     logger: logging.Logger,
+    monitor_idle_interval: float | None = None,
 ) -> None:
     if player._monitor_thread and player._monitor_thread.is_alive():
         return
     player._monitor_stop.clear()
+    # Takt rozluźniony, gdy pythonowy strażnik pętli nie jest potrzebny.
+    idle_interval = monitor_interval if monitor_idle_interval is None else max(monitor_interval, monitor_idle_interval)
 
     def _runner() -> None:
         while not player._monitor_stop.is_set():
+            # Dobierz takt tej iteracji: ciasny tylko, gdy odpowiada za to pętla.
+            effective_interval = monitor_interval if python_guard_active(player) else idle_interval
             try:
                 if player._stream:
                     now = time.time()
@@ -128,7 +153,7 @@ def start_monitor(
                                 if player._debug_loop:
                                     logger.debug("Loop debug: monitor restart failed: %s", exc)
                             # nawet jeśli się nie udało, nie zgłaszaj zakończenia – próbuj ponownie
-                            time.sleep(monitor_interval)
+                            time.sleep(effective_interval)
                             continue
                         if player._finished_callback and player._current_item_id:
                             try:
@@ -141,7 +166,7 @@ def start_monitor(
                         except Exception:
                             pass
                         break
-                time.sleep(monitor_interval)
+                time.sleep(effective_interval)
             except Exception:
                 break
 

@@ -25,7 +25,13 @@ class BassPlayer:
     """Implementacja Player korzystająca z BASS."""
 
     # Bardzo mały interwał, żeby zdarzenia miksu/pętli były możliwie precyzyjne.
+    # Ten ciasny takt jest jednak potrzebny TYLKO gdy pythonowy strażnik pętli
+    # realnie zawija materiał (tryb marker-sync). W pozostałych przypadkach
+    # monitor pracuje w takcie rozluźnionym (_MONITOR_IDLE_INTERVAL), żeby nie
+    # napierać bez potrzeby na scheduler OS i nie generować jitteru dyspozycji
+    # natywnego callbacku miksu przy wielu krótkich playerach (np. odsłuch PFL).
     _MONITOR_INTERVAL = 0.001
+    _MONITOR_IDLE_INTERVAL = 0.02
 
     play = _flow.play
     pause = _flow.pause
@@ -246,6 +252,7 @@ class BassPlayer:
             loop_guard_base_slack=_LOOP_GUARD_BASE_SLACK,
             loop_guard_fallback_slack=_LOOP_GUARD_FALLBACK_SLACK,
             logger=logger,
+            monitor_idle_interval=self._MONITOR_IDLE_INTERVAL,
         )
 
     def set_finished_callback(self, callback: Optional[Callable[[str], None]]) -> None:
