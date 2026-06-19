@@ -721,7 +721,7 @@ def test_auto_mix_now_uses_backend_position_instead_of_stale_ui_progress(tmp_pat
     assert player.fade_calls == [pytest.approx(2.0)]
 
 
-def test_auto_mix_now_reschedules_when_backend_position_is_too_early(tmp_path):
+def test_auto_mix_now_reschedules_when_backend_position_is_grossly_early(tmp_path):
     host = _MixHost(fade=2.0, auto_mix_enabled=True)
     key = ("pl-1", "item-1")
     host._mix_plans = {
@@ -742,7 +742,9 @@ def test_auto_mix_now_reschedules_when_backend_position_is_too_early(tmp_path):
             return 12.0
 
         def get_position_seconds(self):
-            return 7.60
+            # Rażąco wcześnie (1.5 s przed mix_at) — daleko poza buforem/oknem zaufania,
+            # więc to błędny callback i schodzimy na fallback progresowy.
+            return 6.5
 
     player = _EarlyPositionPlayer()
     host._supports_mix_trigger = lambda _p: True
@@ -758,7 +760,7 @@ def test_auto_mix_now_reschedules_when_backend_position_is_too_early(tmp_path):
         title="A",
         duration_seconds=12.0,
         segue_seconds=8.0,
-        current_position=7.95,
+        current_position=6.4,
     )
     panel = SimpleNamespace(model=playlist)
     host._start_next_from_playlist = lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("too early"))
@@ -768,6 +770,54 @@ def test_auto_mix_now_reschedules_when_backend_position_is_too_early(tmp_path):
     assert update_calls and update_calls[0][2] is None
     assert host._mix_plans[key].native_trigger is False
     assert host._playback.auto_mix_state == {}
+
+
+def test_auto_mix_now_trusts_native_within_buffer_window(tmp_path):
+    """Native callback nieco przed mix_at (w granicach bufora BASS) miksuje deterministycznie."""
+    host = _MixHost(fade=2.0, auto_mix_enabled=True)
+    key = ("pl-1", "item-1")
+    host._mix_plans = {
+        key: MixPlan(mix_at=8.0, fade_seconds=2.0, base_cue=0.0, effective_duration=12.0, native_trigger=True)
+    }
+    host._mix_trigger_points = {key: 8.0}
+
+    class _BufferedPositionPlayer(_AutoMixPlayer):
+        def __init__(self):
+            super().__init__("dev-1", supports_mix_trigger=True)
+
+        def get_length_seconds(self):
+            return 12.0
+
+        def get_position_seconds(self):
+            # 0.4 s przed mix_at — typowe opóźnienie bufora wyjściowego, NIE błąd.
+            return 7.60
+
+    player = _BufferedPositionPlayer()
+    host._supports_mix_trigger = lambda _p: True
+    host._playback = SimpleNamespace(
+        auto_mix_state={},
+        contexts={key: SimpleNamespace(player=player)},
+        update_mix_trigger=lambda *_args, **_kwargs: True,
+    )
+    playlist = PlaylistModel(id="pl-1", name="P", kind=PlaylistKind.MUSIC)
+    item = PlaylistItem(
+        id="item-1",
+        path=tmp_path / "a.wav",
+        title="A",
+        duration_seconds=12.0,
+        segue_seconds=8.0,
+        current_position=7.5,
+    )
+    panel = SimpleNamespace(model=playlist)
+    started: list[dict] = []
+    host._start_next_from_playlist = lambda *_args, **kwargs: started.append(kwargs) or True
+
+    host._auto_mix_now(playlist, item, panel)
+
+    assert started, "Native w granicach bufora powinien deterministycznie wyzwolić miks"
+    assert host._playback.auto_mix_state[key] is True
+
+
 
 
 def test_manual_selection_triggers_mix_when_auto_mix_disabled(tmp_path):

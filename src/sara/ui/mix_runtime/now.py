@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from sara.core.mix_planner import MIX_NATIVE_EARLY_GUARD
+from sara.core.mix_planner import MIX_NATIVE_EARLY_GUARD, MIX_NATIVE_TRUST_WINDOW
 from sara.core.playlist import PlaylistItem, PlaylistKind, PlaylistModel
 
 
@@ -37,8 +37,16 @@ def _current_absolute_position(ctx: Any | None, item: PlaylistItem, base_cue: fl
     return backend_abs
 
 
-def auto_mix_now(frame, playlist: PlaylistModel, item: PlaylistItem, panel: Any) -> None:
-    """Wyzwól miks natychmiast z precyzyjnego punktu (segue/overlap/fade sync z BASS)."""
+def auto_mix_now(frame, playlist: PlaylistModel, item: PlaylistItem, panel: Any, *, source: str = "native") -> None:
+    """Wyzwól miks natychmiast z precyzyjnego punktu (segue/overlap/fade sync z BASS).
+
+    `source` rozróżnia pochodzenie wyzwolenia:
+    - "native": wywołanie z natywnego callbacku BASS (SYNC_POS w mixtime). Ufamy mu
+      w szerokim oknie (MIX_NATIVE_TRUST_WINDOW), bo `get_position` jest opóźniony o
+      bufor wyjściowy — porównywanie go z `mix_at` z wąskim guardem dawało fałszywe
+      "fired early" i niedeterministyczne przełączanie na fallback progresowy.
+    - inne (np. "manual"): zachowujemy ostrożny early-guard.
+    """
     key = (playlist.id, item.id)
     plan = frame._mix_plans.get(key)
     if plan and plan.triggered:
@@ -109,7 +117,10 @@ def auto_mix_now(frame, playlist: PlaylistModel, item: PlaylistItem, panel: Any)
             plan = frame._mix_plans.get(key)
     if expected_mix is not None:
         current_abs = _current_absolute_position(ctx, item, base_cue)
-        tolerance = MIX_NATIVE_EARLY_GUARD
+        # Native callback (mixtime) jest autorytetem: ufamy mu w szerokim oknie, bo
+        # `current_abs` pochodzi z osi odtwarzania, opóźnionej o bufor BASS. Tylko
+        # rażąco wczesny callback (błędny sync) schodzi na fallback progresowy.
+        tolerance = MIX_NATIVE_TRUST_WINDOW if source == "native" else MIX_NATIVE_EARLY_GUARD
         if expected_mix is not None and current_abs < expected_mix - tolerance:
             effective_override = None
             if length_seconds is not None:

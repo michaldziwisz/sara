@@ -15,6 +15,15 @@ MIX_NATIVE_EARLY_GUARD = 0.25
 MIX_NATIVE_LATE_GUARD = 0.35
 MIX_EXPLICIT_PROGRESS_GUARD = 0.05
 
+# Okno zaufania dla natywnego wyzwalacza (mixtime). Natywny SYNC odpala dokładnie
+# w punkcie miksu na osi mixtime, ale `get_position` zwraca pozycję ODTWARZANĄ —
+# opóźnioną o bufor wyjściowy BASS (domyślnie 250 ms) plus jitter odpytania. Gdy
+# native callback przychodzi, `current_abs` może więc legalnie być nieco przed
+# `mix_at`. Okno musi być wyraźnie szersze niż bufor+jitter, żeby normalny przypadek
+# ZAWSZE ufał native (powtarzalność), a na fallback progresowy schodziły tylko
+# rażąco wczesne, błędne callbacki (np. zduplikat / zły sync) — patrz mix_runtime.now.
+MIX_NATIVE_TRUST_WINDOW = 0.75
+
 MixKey = tuple[str, str]
 
 
