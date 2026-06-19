@@ -19,7 +19,7 @@ Podgląd miksu na PFL (`start_mix_preview`) również próbuje przygotować utw�
 
 PFL i emisja muszą uzbrajać punkty miksu tą samą ścieżką: jeśli backend obsługuje natywny trigger, `mix_trigger_seconds` i callback są przekazywane już do `player.play(...)`, tak aby backend mógł uzbroić trigger przed startem strumienia. Nie należy dopinać triggera dopiero po rozpoczęciu odtwarzania, bo to wprowadza inną oś czasu niż na emisji.
 
-Runtime miksu może odczytać bieżącą pozycję z backendu (`get_position_seconds()`), żeby zabezpieczyć się przed dryftem wynikającym z opóźnionych callbacków postępu UI.
+Okno podglądu (od kiedy startuje utwór A i z jakim opóźnieniem wpada B) liczy wspólna, czysta funkcja `mix_planner.preview_window(mix_at, pre_seconds)` — to samo źródło prawdy dla wszystkich podglądów.
 
 ## Diagnostyka PFL vs emisja
 
@@ -29,7 +29,7 @@ Przy podglądzie miksu PFL logi `PFL mix preview` zapisują:
 - faktyczne odpalenie B (`fire`) z `source=native|timer|immediate`, pozycją playera A (`a_pos`) i punktem startu B (`next_start`),
 - start B (`next started`) oraz ewentualne pominięcie timera fallback, jeśli natywny trigger zdążył już odpalić miks.
 
-Jeśli natywny callback BASS przyjdzie przedwcześnie względem pozycji A, PFL zapisze `native trigger early -> position wait` i odroczy start B do pozycji miksu. To odpowiada zabezpieczeniu emisji, gdzie zbyt wczesny backend trigger przechodzi na fallback progresowy.
+PFL ma DOKŁADNIE jedną ścieżkę wyzwalania: natywny callback (mixtime) jest autorytetem i odpala miks od razu; timer fallback działa tylko gdy backend nie obsługuje natywnego triggera albo native nie odpalił w oknie `delay + guard`. Nie ma już odraczania „native trigger early -> position wait" — porównywanie natywnego mixtime z `get_position` (osią odtwarzania, opóźnioną o bufor) wprowadzało niedeterminizm. Szczegóły modelu: `docs/development/deterministic_mix_loop.md`.
 
 Dzięki temu log PFL można porównać z logami BASS emisji (`BASS mix trigger set/fired`) bez zgadywania, czy przejście było zrobione przez natywny trigger czy awaryjny timer.
 

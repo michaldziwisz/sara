@@ -33,3 +33,7 @@ Wyjątki:
 ## Testy
 
 - Testy logiki czasu antenowego są w `tests/test_mix_triggers.py` i powinny być rozszerzane razem ze zmianami w `mix_planner`.
+
+## Powtarzalność miksu i pętli
+
+Model deterministycznego wyzwalania miksu oraz zawijania pętli (jedna autorytatywna ścieżka, rozdział osi mixtime vs odtwarzania, fade sterowany pozycją) opisuje osobny dokument: `docs/development/deterministic_mix_loop.md`.
