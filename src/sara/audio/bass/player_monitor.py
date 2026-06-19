@@ -14,6 +14,32 @@ if TYPE_CHECKING:
     from .player_base import BassPlayer
 
 
+def loop_guard_reason(
+    *,
+    native_active: bool,
+    pos: float,
+    loop_end: float,
+    guard_slack: float,
+    clamp_slack: float = 0.05,
+) -> str | None:
+    """Zdecyduj, czy pythonowy strażnik pętli ma wymusić skok na początek.
+
+    Strażnik jest WYŁĄCZNIE siatką awaryjną dla trybu marker-sync (gdy natywna
+    pętla BASS jest niedostępna). Gdy pętla natywna jest aktywna, BASS zawija
+    materiał próbka-w-próbkę w mixtime i pythonowy skok tylko by dublował tę
+    pracę (ryzyko podwójnego skoku/kliknięcia/dryfu) — wtedy zwracamy None.
+
+    Zwraca: "guard", "clamp" albo None.
+    """
+    if native_active:
+        return None
+    if pos > (loop_end + clamp_slack):
+        return "clamp"
+    if pos > (loop_end + guard_slack):
+        return "guard"
+    return None
+
+
 def start_monitor(
     player: "BassPlayer",
     *,
@@ -64,19 +90,22 @@ def start_monitor(
                                     player._stream,
                                 )
                                 player._last_loop_debug_log = now
-                            # strażnik awaryjny: pozwól syncowi zadziałać, a reaguj dopiero PO końcu
+                            # strażnik awaryjny: pozwól syncowi zadziałać, a reaguj dopiero PO końcu.
+                            # Aktywny tylko w trybie marker-sync; przy natywnej pętli BASS zawija sam.
                             if (now - player._last_loop_jump_ts) > 0.004:
                                 guard_slack = (
                                     loop_guard_base_slack
                                     if player._loop_guard_armed
                                     else loop_guard_fallback_slack
                                 )
-                                if pos > (loop_end + guard_slack):
-                                    player._jump_to_loop_start("guard", pos)
-                                    continue
-                                # twardy clamp tylko przy dużym odjechaniu
-                                if pos > (loop_end + 0.05):
-                                    player._jump_to_loop_start("clamp", pos)
+                                reason = loop_guard_reason(
+                                    native_active=player._loop_native_active,
+                                    pos=pos,
+                                    loop_end=loop_end,
+                                    guard_slack=guard_slack,
+                                )
+                                if reason is not None:
+                                    player._jump_to_loop_start(reason, pos)
                                     continue
                         except Exception as exc:
                             if player._debug_loop:

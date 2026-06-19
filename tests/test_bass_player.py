@@ -261,3 +261,33 @@ def test_bass_set_debug_loop_updates_concrete_player_module():
         player_base_mod._DEBUG_LOOP = old_player_debug
         compat_player_base_mod._DEBUG_LOOP = old_compat_debug
         legacy_player_base_mod._DEBUG_LOOP = old_legacy_debug
+
+
+def test_loop_guard_reason_skips_when_native_active():
+    from sara.audio.bass.player_monitor import loop_guard_reason
+
+    # Pętla natywna aktywna: BASS zawija sam, strażnik ma milczeć nawet daleko za końcem.
+    assert (
+        loop_guard_reason(native_active=True, pos=100.0, loop_end=34.0, guard_slack=0.001)
+        is None
+    )
+
+
+def test_loop_guard_reason_fires_in_marker_mode():
+    from sara.audio.bass.player_monitor import loop_guard_reason
+
+    # Tryb marker-sync (fallback): tuż za końcem -> "guard".
+    assert (
+        loop_guard_reason(native_active=False, pos=34.0021, loop_end=34.0, guard_slack=0.001)
+        == "guard"
+    )
+    # Duże odjechanie -> twardy "clamp".
+    assert (
+        loop_guard_reason(native_active=False, pos=34.2, loop_end=34.0, guard_slack=0.001)
+        == "clamp"
+    )
+    # Przed końcem -> brak akcji.
+    assert (
+        loop_guard_reason(native_active=False, pos=33.5, loop_end=34.0, guard_slack=0.001)
+        is None
+    )
