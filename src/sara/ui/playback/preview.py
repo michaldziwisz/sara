@@ -314,7 +314,9 @@ def start_mix_preview(
             supports_native_trigger,
         )
         try:
+            b_start_ts = time.perf_counter()
             player_b.play(next_item.id, str(next_item.path), start_seconds=next_start, allow_loop=False)
+            b_start_latency = time.perf_counter() - b_start_ts
         except Exception:  # pylint: disable=broad-except
             logger.debug(
                 "PFL mix preview: next start failed source=%s mix_at=%.3f a_pos=%s next_start=%.3f",
@@ -325,6 +327,23 @@ def start_mix_preview(
                 exc_info=True,
             )
             return
+        # Instrumentacja determinizmu: latencja faktycznego startu B oraz liczba
+        # żywych wątków procesu. Rosnący b_latency/threads przy stałym delay to
+        # sygnatura jitteru dyspozycji (kumulacja zasobów po dłuższej sesji) —
+        # ułatwia diagnozę, gdyby punkt miksu znów zaczął „pływać".
+        logger.debug(
+            "PFL mix preview: timing source=%s mix_at=%.3f delay=%.3f elapsed=%.3f "
+            "b_latency=%.4f threads=%d a_pos=%s b_pos=%s next_start=%.3f",
+            source,
+            mix_at_seconds,
+            delay_b,
+            elapsed,
+            b_start_latency,
+            threading.active_count(),
+            pos_a,
+            _format_player_position(player_b),
+            next_start,
+        )
         logger.debug(
             "PFL mix preview: next started source=%s mix_at=%.3f a_pos=%s b_pos=%s next_start=%.3f",
             source,

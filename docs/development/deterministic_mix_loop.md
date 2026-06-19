@@ -97,6 +97,7 @@ niedostępna, fade degraduje bezpiecznie do natychmiastowego wyciszenia.
 - Natywny wyzwalacz miksu (mixtime, fire-once): `src/sara/audio/bass/player/mix_trigger.py`.
 - Pętla (native + fallback, clamp do długości): `src/sara/audio/bass/player/base.py`.
 - Strażnik pętli (tylko fallback): `src/sara/audio/bass/player_monitor.py` (`loop_guard_reason`).
+- Adaptacyjny takt monitora: `src/sara/audio/bass/player_monitor.py` (`python_guard_active`).
 - Fade pozycyjny: `src/sara/audio/bass/player/flow.py` (`fade_out`).
 - Automix natychmiastowy (native): `src/sara/ui/mix_runtime/now.py`.
 - Automix progresowy (siatka): `src/sara/ui/mix_runtime/progress.py`.
@@ -110,6 +111,36 @@ niedostępna, fade degraduje bezpiecznie do natychmiastowego wyciszenia.
   zaufanie do native w oknie bufora, fallback przy rażąco wczesnym callbacku.
 - `tests/test_pfl_mix_preview_preloading.py` — jedna ścieżka PFL.
 - `tests/test_mix_end_to_end.py` — integracja: miks raz w punkcie, brak podwójnego wyzwolenia.
+
+## Adaptacyjny takt monitora (jitter dyspozycji po dłuższej sesji)
+
+Objaw (zaobserwowany 19.06.2026 na odsłuchu PFL Alt+V): na świeżym procesie
+punkt miksu jest powtarzalny co do milisekund, a po ~2 h pracy zaczyna „pływać"
+(raz szybciej, raz wolniej). W logach: przy stałym `delay=1.400` realny czas od
+startu A do odpalenia (`elapsed`) jest na starcie ~0.979–0.985 s (rozrzut ~6 ms),
+a po 2 h ~0.917–0.978 s (rozrzut ~60 ms). Wszystkie odpalenia idą jedną ścieżką
+(`source=native`, `via=pos`) — to NIE wyścig ścieżek, lecz rosnący jitter
+dyspozycji pythonowego callbacku miksu pod GIL.
+
+Przyczyna: monitor każdego `BassPlayer` kręcił się w `time.sleep(0.001)`
+(busy-loop 1 ms). Ten ciasny takt jest potrzebny WYŁĄCZNIE pythonowemu
+strażnikowi pętli w trybie marker-sync (gdy natywna pętla BASS niedostępna).
+W odsłuchu PFL każde przezbrojenie tworzy dwa nowe playery grające bez pętli —
+ich monitory 1 ms tylko niepotrzebnie napierały na scheduler OS. Przy
+dziesiątkach przezbrojeń presja kumuluje się i rośnie jitter.
+
+Poprawka: czysta funkcja `python_guard_active(player)` decyduje, czy ciasny takt
+jest realnie potrzebny (pętla aktywna ORAZ marker-sync ORAZ strażnik włączony).
+Gdy nie — monitor pracuje w takcie `_MONITOR_IDLE_INTERVAL` (20 ms). Postęp i tak
+jest dławiony do 50 ms, a koniec strumienia wykrywany z zapasem, więc luźniejszy
+takt niczego nie psuje, a usuwa źródło jittera. Decyzja jest podejmowana co
+iterację, więc włączenie pętli w locie natychmiast wraca do taktu 1 ms.
+
+Diagnostyka na przyszłość: `_fire_mix` w `preview.py` loguje teraz wiersz
+`PFL mix preview: timing ... b_latency=... threads=...`. Rosnący `b_latency`
+(latencja faktycznego startu playera B) lub `threads` (liczba żywych wątków
+procesu) przy stałym `delay` to sygnatura jitteru z kumulacji zasobów — pierwszy
+sygnał, gdzie szukać, gdyby punkt miksu znów zaczął „pływać".
 
 ## Strojenie bufora
 
