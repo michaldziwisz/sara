@@ -368,3 +368,26 @@ def test_loop_guard_reason_fires_in_marker_mode():
         loop_guard_reason(native_active=False, pos=33.5, loop_end=34.0, guard_slack=0.001)
         is None
     )
+
+
+def test_stop_from_fade_keeps_monitor_stop_signal_set():
+    """Regresja: stop(_from_fade=True) NIE może czyścić _monitor_stop.
+
+    W ścieżce fade monitor nie jest joinowany; jeśli stop wyczyści event,
+    śpiący monitor po przebudzeniu zobaczy is_set()==False i będzie się kręcił
+    jako zombie na stream==0 (wyciek wątków bass-monitor -> narastający jitter
+    dyspozycji callbacku miksu). Po stop(_from_fade=True) sygnał musi pozostać
+    ustawiony, by pętla monitora dobiła na warunku `while not is_set()`.
+    """
+    player, _manager = _player_with_stream(0.0)
+    player._monitor_stop.set()
+    player.stop(_from_fade=True)
+    assert player._monitor_stop.is_set() is True
+
+
+def test_stop_normal_path_does_not_resurrect_monitor_signal():
+    """Zwykły stop() również zostawia event ustawiony (monitor joinowany)."""
+    player, _manager = _player_with_stream(0.0)
+    player._monitor_stop.set()
+    player.stop()
+    assert player._monitor_stop.is_set() is True

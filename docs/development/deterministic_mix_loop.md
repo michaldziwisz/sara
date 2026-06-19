@@ -111,34 +111,41 @@ niedostępna, fade degraduje bezpiecznie do natychmiastowego wyciszenia.
 - `tests/test_pfl_mix_preview_preloading.py` — jedna ścieżka PFL.
 - `tests/test_mix_end_to_end.py` — integracja: miks raz w punkcie, brak podwójnego wyzwolenia.
 
-## Jitter punktu miksu po dłuższej sesji (w toku — diagnostyka)
+## Wyciek wątków monitora i jitter punktu miksu (naprawione 19.06.2026)
 
-Objaw (PFL Alt+V, 19.06.2026): na świeżym procesie punkt miksu jest powtarzalny
-co do milisekund, a po kilkunastu minutach zaczyna „pływać" (raz szybciej, raz
-wolniej). W logach, przy stałym `delay=1.400`: świeżo `elapsed` ~0.979–0.985 s
-(rozrzut ~6 ms), po ~35 min ~0.919–0.958 s (rozrzut ~40 ms, średnio wcześniej).
-Wszystkie odpalenia idą jedną ścieżką (`source=native`, `via=pos`) — to NIE
-wyścig ścieżek.
+Objaw (PFL Alt+V): na świeżym procesie punkt miksu powtarzalny co do milisekund,
+po kilkunastu minutach zaczyna „pływać". Przy stałym `delay=1.400`: świeżo
+`elapsed` ~0.978–0.983 s (rozrzut ~5 ms), po ~24 min ~0.917–0.980 s, a dla
+`delay=4.000` schodzi do ~3.49 s. Wszystkie odpalenia jedną ścieżką
+(`source=native`) — to NIE wyścig ścieżek.
 
-Co odrzucono (dowód z metryk): hipoteza, że winny jest busy-loop monitora 1 ms,
-okazała się błędna. Po instrumentacji widać, że `b_latency` (czas startu playera
-B) jest STAŁE ~0.0009 s niezależnie od czasu sesji — rozjazd siedzi w `elapsed`
-i `a_pos`, nie w starcie B. Próba rozluźnienia taktu monitora (commit cofnięty)
-nie zmieniła objawu.
+Ślepy zaułek (odrzucony dowodem): hipoteza busy-loop monitora 1 ms. `b_latency`
+(start playera B) jest płaskie ~0.9 ms niezależnie od czasu sesji; rozluźnienie
+taktu monitora nie zmieniło objawu (commit cofnięty).
 
-Aktualny trop: jedyną wielkością rosnącą RAZEM z rozjazdem jest liczba żywych
-wątków procesu (`threads` w logu: 6 → 24, potem plateau). Mechanizm: natywny
-mixtime-sync BASS jest sample-accurate, ale jego pythonowy callback (`_fire_mix`)
-dociera przez wątek BASS pod GIL; przy narastającej presji wątków dostarczenie
-callbacku jitteruje względem mixtime → start B przesuwa się względem materiału A.
-Plateau na 24 sugeruje stały zestaw długożyjących wątków, których nie powinno
-być (kandydaci do namierzenia: monitory playerów, wątki fade/auto-stop/fallback).
+Przyczyna (potwierdzona instrumentacją): rozbicie żywych wątków
+(`PFL mix preview: threads breakdown`) pokazało, że grupa `bass=` rośnie w rytm
+miksów (2 → 8). To wątki `bass-monitor`, które przeciekają. Mechanizm: gdy miks
+odpala, player A robi `fade_out`, a wątek fade na końcu woła
+`stop(_from_fade=True)`. W tej ścieżce monitor NIE jest joinowany (warunek
+`and not _from_fade`), a `stop()` na końcu robił `_monitor_stop.clear()` —
+kasował sygnał stop, zanim śpiący monitor zdążył go odczytać. Po przebudzeniu
+monitor widział `is_set()==False`, stream==0 i kręcił się w nieskończoność jako
+zombie. Każdy miks = jeden osierocony `bass-monitor`. Rosnąca liczba żywych
+wątków zwiększa presję pod GIL → callback natywnego mixtime BASS jest
+dostarczany z rosnącym jitterem względem dźwięku.
 
-Diagnostyka: `_fire_mix` w `preview.py` loguje `PFL mix preview: timing ...
-b_latency=... threads=...`. Dodatkowo (build diagnostyczny) logowane jest
-rozbicie nazw żywych wątków, by wskazać który typ przecieka. Następny krok:
-namierzyć źródło akumulacji wątków i je usunąć (celowana naprawa cyklu życia),
-nie zaś dokładać guardy.
+Naprawa (`player/flow.py::stop`): usunięto `_monitor_stop.clear()` ze `stop()`.
+Event pozostaje ustawiony, więc zombie kończy pętlę na `while not is_set()`.
+Nowy monitor i tak czyści event w `start_monitor()` tuż przed startem świeżego
+wątku, więc kolejne odtwarzanie działa bez zmian. Regresja pilnowana testami
+`test_stop_from_fade_keeps_monitor_stop_signal_set` i
+`test_stop_normal_path_does_not_resurrect_monitor_signal`.
+
+Uwaga o `Dummy=`: w rozbiciu wątków rośnie też grupa `Dummy=` — to pythonowe
+`_DummyThread` (rekordy, nie żywe wątki) tworzone przy natywnych callbackach
+BASS; CPython ich nie sprząta z `enumerate()`, ale nie zużywają CPU i nie
+napędzają jitteru. Realnym sprawcą były żywe zombie `bass-monitor`.
 
 ## Strojenie bufora
 

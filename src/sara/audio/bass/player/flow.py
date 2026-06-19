@@ -111,7 +111,12 @@ def stop(player, *, _from_fade: bool = False) -> None:
     if player._monitor_thread and player._monitor_thread.is_alive() and not _from_fade:
         player._monitor_thread.join(timeout=0.5)
     player._monitor_thread = None
-    player._monitor_stop.clear()
+    # NIE czyść tu _monitor_stop: w ścieżce _from_fade monitor NIE jest joinowany,
+    # a wcześniejszy clear() kasował sygnał stop, zanim śpiący monitor zdążył go
+    # odczytać -> wątek-zombie kręcący się na stream==0 (wyciek bass-monitor,
+    # narastający jitter dyspozycji callbacku miksu). Event pozostaje ustawiony,
+    # więc zombie kończy pętlę na warunku `while not is_set()`. Nowe odtwarzanie
+    # i tak czyści event w start_monitor() tuż przed uruchomieniem świeżego wątku.
     if _from_fade:
         player._fade_thread = None
     if not _from_fade:
