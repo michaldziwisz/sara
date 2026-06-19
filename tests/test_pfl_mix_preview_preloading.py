@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from types import SimpleNamespace
 
 from sara.core.playlist import PlaylistItem
@@ -228,7 +227,9 @@ def test_pfl_mix_preview_arms_native_trigger_in_play_and_uses_cue_for_fade(tmp_p
     stop_preview(controller, wait=False)
 
 
-def test_pfl_mix_preview_defers_early_native_trigger_until_mix_position(tmp_path, caplog) -> None:
+def test_pfl_mix_preview_native_fires_immediately_regardless_of_position(tmp_path, caplog) -> None:
+    """Nowy kontrakt: native callback (mixtime) odpala miks od razu — jedna ścieżka,
+    bez odraczania position-wait. get_position może być przed mix_at (bufor) i to OK."""
     caplog.set_level(logging.DEBUG, logger="sara.ui.playback.preview")
 
     device_id = "pfl-dev"
@@ -268,19 +269,17 @@ def test_pfl_mix_preview_defers_early_native_trigger_until_mix_position(tmp_path
     )
 
     play_a = player_a.play_calls[0]
+    # Native callback przychodzi gdy get_position pokazuje 3.50 (przed mix_at o bufor):
+    # mimo to miks odpala NATYCHMIAST, bez position-wait.
     player_a.position_seconds = 3.50
     play_a["on_mix_trigger"]()
-    assert player_b.play_calls == []
-    assert "PFL mix preview: native trigger early -> position wait mix_at=4.000 a_pos=3.500" in caplog.text
 
-    player_a.position_seconds = 3.96
-    deadline = time.time() + 1.0
-    while not player_b.play_calls and time.time() < deadline:
-        time.sleep(0.01)
-
+    assert player_b.play_calls, "Native powinien wyzwolić miks od razu"
     assert player_b.play_calls[0]["start_seconds"] == 0.5
     assert player_a.fade_calls == [1.4]
-    assert "PFL mix preview: native position wait firing mix_at=4.000 a_pos=3.960" in caplog.text
-    assert "PFL mix preview: fire source=native_wait mix_at=4.000" in caplog.text
+    assert "PFL mix preview: fire source=native mix_at=4.000" in caplog.text
+    # Brak ścieżki position-wait w logach.
+    assert "position wait" not in caplog.text
+    assert "native_wait" not in caplog.text
 
     stop_preview(controller, wait=False)
