@@ -388,6 +388,15 @@ class BassPlayer:
 
         start = max(0.0, self._loop_start)
         end = max(start + 0.001, self._loop_end)
+        # Clamp końca pętli do długości materiału — punkt pętli poza plikiem powoduje,
+        # że BASS ignoruje pętlę lub zawija chaotycznie.
+        try:
+            length_seconds = self._manager.channel_get_length_seconds(self._stream)
+        except Exception:
+            length_seconds = 0.0
+        if length_seconds and length_seconds > 0.0:
+            end = min(end, length_seconds - 0.001)
+            end = max(start + 0.001, end)
         self._loop_start = start
         self._loop_end = end
         self._loop_iteration = 0

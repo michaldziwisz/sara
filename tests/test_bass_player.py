@@ -231,6 +231,19 @@ def test_bass_play_arms_loop_and_mix_before_channel_play(tmp_path):
     assert manager.sequence.index("sync_pos") < play_index
 
 
+def test_bass_loop_clamps_end_to_stream_length():
+    player, manager = _player_with_stream(0.0)
+    # Strumień krótszy (10 s) niż zadany koniec pętli (34.335 s).
+    manager.channel_get_length_seconds = lambda _stream: 10.0
+
+    player.set_loop(5.0, 34.335)
+
+    # Koniec pętli przycięty do długości - epsilon (10.0 - 0.001 = 9.999 s -> 9999 bajtów).
+    assert player._loop_end == pytest.approx(9.999)
+    assert player._loop_end_bytes == 9999
+    assert player._loop_start_bytes == 5000
+
+
 def test_bass_set_debug_loop_updates_concrete_player_module():
     import sara.audio.bass.player_base as compat_player_base_mod
     import sara.audio.bass_player_base as legacy_player_base_mod
