@@ -11,6 +11,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "general": {
         "language": "en",
     },
+    "remote": {
+        "enabled": True,
+        "port": 51443,
+    },
     "news": {
         "line_length": 30,
     },

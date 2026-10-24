@@ -14,6 +14,27 @@ msgstr ""
 "Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 "Generated-By: Babel 2.17.0\n"
 
+#: src/sara/ui/dialogs/options/remote_tab.py
+msgid "Enable local TCP control (127.0.0.1)"
+msgstr "Włącz lokalne sterowanie TCP (127.0.0.1)"
+
+#: src/sara/ui/dialogs/options/remote_tab.py
+msgid "TCP control port:"
+msgstr "Port sterowania TCP:"
+
+#: src/sara/ui/dialogs/options/remote_tab.py
+msgid "Only programs on this computer can connect. Changes apply after pressing OK."
+msgstr "Połączenie jest dostępne tylko dla programów na tym komputerze. Zmiany obowiązują po naciśnięciu OK."
+
+#: src/sara/ui/dialogs/options/dialog.py
+msgid "Remote control"
+msgstr "Zdalne sterowanie"
+
+#: src/sara/ui/services/remote_control.py
+#, python-format
+msgid "Remote control unavailable on port %d"
+msgstr "Sterowanie zdalne niedostępne na porcie %d"
+
 #: src/sara/news_editor_app.py:25
 msgid "SARA News Editor"
 msgstr "Edytor serwisów SARA"

@@ -45,6 +45,34 @@ class SettingsManager:
         with self.config_path.open("w", encoding="utf-8") as file:
             yaml.safe_dump(self._data, file, allow_unicode=False, sort_keys=True)
 
+    def get_remote_enabled(self) -> bool:
+        remote = self._data.get("remote", {})
+        value = remote.get("enabled", True) if isinstance(remote, dict) else True
+        return value if isinstance(value, bool) else True
+
+    def set_remote_enabled(self, enabled: bool) -> None:
+        if not isinstance(self._data.get("remote"), dict):
+            self._data["remote"] = {}
+        self._data["remote"]["enabled"] = bool(enabled)
+
+    def get_remote_port(self) -> int:
+        remote = self._data.get("remote", {})
+        value = remote.get("port", 51443) if isinstance(remote, dict) else 51443
+        if isinstance(value, bool) or not isinstance(value, (int, str)):
+            return 51443
+        try:
+            port = int(value)
+        except ValueError:
+            return 51443
+        return port if 1 <= port <= 65535 else 51443
+
+    def set_remote_port(self, port: int) -> None:
+        if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+            raise ValueError("TCP port must be between 1 and 65535")
+        if not isinstance(self._data.get("remote"), dict):
+            self._data["remote"] = {}
+        self._data["remote"]["port"] = port
+
     def get_global_shortcut(self, action: str) -> str:
         return self.get_shortcut("global", action)
 

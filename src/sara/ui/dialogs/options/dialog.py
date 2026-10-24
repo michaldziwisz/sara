@@ -16,6 +16,7 @@ from sara.ui.dialogs.options.accessibility_tab import build_accessibility_tab
 from sara.ui.dialogs.options.diagnostics_tab import build_diagnostics_tab
 from sara.ui.dialogs.options.general_tab import build_general_tab
 from sara.ui.dialogs.options.logging_tab import build_logging_tab
+from sara.ui.dialogs.options.remote_tab import build_remote_tab
 from sara.ui.dialogs.options.startup_playlist_dialog import StartupPlaylistDialog
 
 
@@ -64,6 +65,9 @@ class OptionsDialog(wx.Dialog):
 
         logging_panel = build_logging_tab(self, notebook)
         notebook.AddPage(logging_panel, _("Logging"))
+
+        remote_panel = build_remote_tab(self, notebook)
+        notebook.AddPage(remote_panel, _("Remote control"))
 
         button_sizer = self.CreateSeparatedButtonSizer(wx.OK | wx.CANCEL)
         if button_sizer:
@@ -151,6 +155,8 @@ class OptionsDialog(wx.Dialog):
         self._refresh_list()
 
     def _on_accept(self, _event: wx.Event) -> None:
+        self._settings.set_remote_enabled(self._remote_enabled_checkbox.GetValue())
+        self._settings.set_remote_port(self._remote_port_ctrl.GetValue())
         self._settings.set_playback_fade_seconds(self._fade_ctrl.GetValue())
         self._settings.set_alternate_play_next(self._alternate_checkbox.GetValue())
         self._settings.set_swap_play_select(self._swap_play_select_checkbox.GetValue())

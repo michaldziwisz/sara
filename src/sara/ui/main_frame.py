@@ -43,6 +43,7 @@ from sara.ui.controllers import playlists_management as _playlists_management
 from sara.ui.controllers import playlists_ui as _playlists_ui
 from sara.ui.controllers import tools_dialogs as _tools_dialogs
 from sara.ui.controllers.playlists import item_types as _item_types
+from sara.ui.services.remote_control import configure_remote_control, stop_remote_control
 
 
 class MainFrame(wx.Frame):
@@ -207,6 +208,7 @@ class MainFrame(wx.Frame):
         self._init_runtime_state()
         self._ensure_legacy_hooks()
         self._init_ui()
+        configure_remote_control(self)
 
     def _ensure_legacy_hooks(self) -> None:
         if not hasattr(self, "_on_new_playlist"):
@@ -266,6 +268,7 @@ class MainFrame(wx.Frame):
             self.Close()
 
     def _on_close(self, event: wx.CloseEvent) -> None:
+        stop_remote_control(self)
         try:
             self._jingles.stop_all()
         except Exception:

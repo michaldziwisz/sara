@@ -10,6 +10,7 @@ from sara.ui.jingles_dialog import JinglesDialog
 from sara.ui.options_dialog import OptionsDialog
 from sara.ui.shortcut_editor_dialog import ShortcutEditorDialog
 from sara.ui.dialogs.feedback.dialog import FeedbackDialog
+from sara.ui.services.remote_control import configure_remote_control
 
 
 def on_options(frame, _event: wx.CommandEvent) -> None:
@@ -17,6 +18,7 @@ def on_options(frame, _event: wx.CommandEvent) -> None:
     dialog = OptionsDialog(frame, settings=frame._settings, audio_engine=frame._audio_engine)
     if dialog.ShowModal() == wx.ID_OK:
         frame._settings.save()
+        configure_remote_control(frame)
         frame._fade_duration = max(frame._settings.get_playback_fade_seconds(), 0.0)
         for panel in frame._playlists.values():
             refresh = getattr(panel, "refresh", None)
