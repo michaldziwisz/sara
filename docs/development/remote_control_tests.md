@@ -1,5 +1,77 @@
 # Weryfikacja lokalnego sterowania TCP
 
+## Główna playlista i Hold: t_03246905
+
+Punkt bazowy: `5207cf0`. Commit kodu i testów: `50c08333d3f3814fea413d595caec945c79bf455`. Zakres obejmuje etapy A i B zatwierdzonego planu. Nie obejmuje mostka MR18, edycji punktów miksu, budowania EXE ani wdrożenia.
+
+### Wyniki
+
+| Przebieg | Wynik |
+| --- | --- |
+| Nowe testy przed implementacją | 33 failed, w tym rzeczywiste naciśnięcie przycisku „Zapisz” w wx przez stare zdalne Play |
+| Końcowy pełny pytest pod nice i Xvfb | 333 passed, 8 skipped; bez wyłączania testu głośności |
+| Wszystkie testy remote z włączonym GUI wx | 132 passed |
+| Kontrakt klawiatury na kodzie bazowym i po wydzieleniu wspólnych funkcji | 12/12 passed w obu przebiegach |
+| Kontrola dodatnia testów mutacyjnych | 9 passed |
+| Mutanty | 9/9 zabitych błędem asercji, nie błędem importu |
+| Hold=1 przez prawdziwy socket, 20 cykli Hold=1/Hold=0 | minimum 0,997 ms, mediana 1,424 ms, maksimum 5,110 ms |
+| Nowy utwór uruchomiony przez handler Spacji podczas Hold | przerwa po 100,989 ms od wywołania; limit testu 150 ms |
+
+Pomiar TCP obejmuje czas od `sendall` do odczytania odpowiedzi, z prawdziwym `MainThreadDispatcher(wx.CallAfter)` i pompowaniem pustej kolejki wx co 1 ms. Test kontroluje również wykonanie zmiany wyzwalacza w głównym wątku. To pomiar WSL/Xvfb, nie opóźnienia od fizycznego mikrofonu ani gwarancja dla obciążonej pętli GUI.
+
+Pełny zestaw pomija trzy moduły Windows wymagające pywinauto, moduł okna plików opt-in, dwa moduły GUI remote opt-in oraz dwa testy wymagające `logs/saramix.m3u`. Oba moduły GUI remote są osobno włączone w zestawie 132 testów.
+
+Pierwszy pełny przebieg tej karty miał 311 passed, 8 skipped i jeden błąd `WSL UtilAcceptVsock:281` w bs1770gain, taki jak w poprzedniej karcie. Naprawiono wyłącznie środowisko testowe: pakiet Ubuntu `bs1770gain 0.8.8-1build1` rozpakowano w `.venv/system/root`, a jego `usr/bin` dodano do PATH. Analizator Linuksa rzeczywiście odczytał `beep.wav`; nie podmieniano odpowiedzi analizatora, testu ani kodu audio. Końcowy pełny zestaw jest zielony z tym natywnym programem.
+
+### Pokrycie i wspólne mechanizmy
+
+* `test_remote_main_playlist.py`: domyślna i skonfigurowana główna, usunięty identyfikator, panel tekstowy jako aktywny, ograniczenie Stat/This/czasów do głównej, nawigacja i kolejka, Stop/Pause na drugiej muzycznej, AutoOn uruchamiające główną, naprzemienne odtwarzanie bez zmiany aktywnego panelu, zapis i odczyt ustawienia.
+* `test_remote_hold.py`: rzeczywiste kontrolery końca utworu i przywracania wyzwalacza, automiks oraz ręczna kolejka, przywrócenie segue 118 s, ręczne przerwy, przejście dwóch kontekstów, wspólny stan klientów, idempotencja, sprawdzanie każdego polecenia, ręczny start od zachowanego `break_resume_index`, zmiana głównej podczas Hold.
+* `test_remote_main_hold_gui.py`: rzeczywisty przycisk wx „Zapisz” i handler paska newsów, rzeczywisty PlaylistPanel z obsługą aktywacji po zaznaczeniu, zachowanie fokusu również podczas Hold, zegar 100 ms, zakończenie usługi i handler zamknięcia MainFrame, Opcje i polska etykieta pola wyboru, prawdziwy socket i pomiar czasu.
+* `test_remote_keyboard_regression.py`: Spacja, F1–F4 i Ctrl+B na aktywnej playliście, także automiks i mieszane przerwy przy wielokrotnym zaznaczeniu. Ten sam plik testów uruchomiono po załadowaniu bazowych `hotkeys.py` i `navigation.py` z Git do pamięci osobnego procesu, a potem na aktualnym kodzie.
+
+Wydzielono `run_playlist_action`, `toggle_playlist_breaks` i muzyczną część `play_next_for_panel`. Klawiatura nadal przekazuje aktywny panel. Serwer przekazuje główną, a podczas zmian ListCtrl blokuje wyłącznie synchroniczne zdarzenie zaznaczenia aktywujące panel. Nie wykonuje przeniesienia fokusu tam i z powrotem. AutoOn otrzymało jawny opcjonalny panel; brak parametru zachowuje dotychczasowy wybór klawiatury. Tryb naprzemienny ma opcję pominięcia aktywacji panelu, bez zmiany kolejności odtwarzania.
+
+Właścicielem Hold jest ramka, nie połączenie TCP. Zbiór własnych przerw znajduje się w `remote/hold.py`; zegar należy do usługi sterowania. Wspólna funkcja Ctrl+B jest wywoływana z konkretnym wchodzącym kontekstem, bez zmiany zaznaczenia. Zwolnienie nie wywołuje startu i nie usuwa pozycji wznowienia po zakończonym utworze.
+
+### Mutanty
+
+Skrypt `scripts/check_remote_mutations.py` najpierw uruchamia kontrolę dodatnią, następnie osobne procesy z mutantami ładowanymi tylko do pamięci:
+
+1. Nasłuch na 0.0.0.0.
+2. Wykonanie w wątku klienta.
+3. Zwolnienie także ręcznych przerw.
+4. Wyłączony zegar Hold.
+5. Przerwa bez zdjęcia wyzwalacza segue.
+6. Bieżąca playlista zamiast głównej.
+7. Zdalne Play przez handler obsługujący przyciski newsów.
+8. Zaznaczenie wiersza aktywuje główną playlistę.
+9. AutoOn uruchamia aktywną zamiast głównej.
+
+### Odtworzenie
+
+```sh
+cd /home/ubuntu/emisja
+source .venv/bin/activate
+export LD_LIBRARY_PATH="$PWD/.venv/system/root/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export TMPDIR="$PWD/.venv/tmp"
+export PATH="$PWD/.venv/system/root/usr/bin:$PATH"
+nice -n 10 xvfb-run -a python3 -m pytest -q tests -p no:cacheprovider -rs
+WX_RUN_GUI_TESTS=1 xvfb-run -a python3 -m pytest -q tests/test_remote_*.py -p no:cacheprovider
+xvfb-run -a python3 scripts/check_remote_mutations.py
+WX_RUN_GUI_TESTS=1 xvfb-run -a python3 -m pytest -q -s tests/test_remote_main_hold_gui.py::test_hold_socket_latency_and_main_thread tests/test_remote_main_hold_gui.py::test_timer_protects_keyboard_started_track_within_150ms -p no:cacheprovider
+```
+
+Surowe wyniki: `.venv/tmp/remote-red.log`, `remote-full.log` (pierwszy przebieg z błędem WSL), `remote-full-native.log`, `remote-targeted.log`, `remote-mutations.log`, `remote-latency.log`.
+
+Porównanie z `5207cf0` jest puste dla `src/sara/audio`, `src/sara/ui/playback` i `src/sara/ui/mix_runtime`. Zmiany kontrolerów są w osobnym katalogu `src/sara/ui/controllers`. Nie zmieniano bibliotek audio, punktów cue, timingu rdzenia ani PFL. Dwa nowe tłumaczenia dodano do PO i MO; wcześniejsze tłumaczenia pozostały bez zmian. Trzy nieśledzone pliki Michała zachowały hashe zapisane w archiwalnej tabeli poniżej.
+
+Niesprawdzone: prawdziwy BASS, Windows, NVDA, fizyczny X-TOUCH/MR18 i odsłuch. Nie wykonano pushu, buildu EXE ani wdrożenia. Test fokusu wx nie jest dowodem zachowania kursora NVDA na Windows.
+
+## Archiwum: odbiór wcześniejszego protokołu bez głównej playlisty i Hold
+
+Poniższe wyniki i opis aktywnej playlisty dotyczą wyłącznie poprzedniej implementacji, nie obecnego kontraktu.
+
 Zadanie: `t_9082ea5d`. Punkt bazowy: `00927d5`. Implementacja: `e6356184deef867b5294698582fd44414fc87a78`.
 
 ## Wynik
