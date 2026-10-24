@@ -32,7 +32,10 @@ def preferred_auto_mix_index(panel: PlaylistPanel, item_count: int) -> int:
     return idx
 
 
-def set_auto_mix_enabled(frame, enabled: bool, *, reason: str | None = None) -> None:
+_CURRENT_PANEL = object()
+
+
+def set_auto_mix_enabled(frame, enabled: bool, *, reason: str | None = None, panel=_CURRENT_PANEL) -> None:
     if frame._auto_mix_enabled == enabled:
         return
     frame._auto_mix_enabled = enabled
@@ -56,7 +59,8 @@ def set_auto_mix_enabled(frame, enabled: bool, *, reason: str | None = None) -> 
                     frame._playback.schedule_next_preload(playlist, current_item_id=item_id)
             except Exception:
                 pass
-        panel = frame._get_current_music_panel()
+        if panel is _CURRENT_PANEL:
+            panel = frame._get_current_music_panel()
         if panel is not None:
             playlist = getattr(panel, "model", None)
             if playlist and frame._get_playback_context(playlist.id) is None:

@@ -6,11 +6,13 @@ import copy
 import csv
 import io
 import re
-from dataclasses import dataclass, fields
+from dataclasses import fields
 from sara import __version__
 
 from sara.core.playlist import PlaylistItemStatus, PlaylistItemType, PlaylistKind
 from sara.ui.controllers.playback.next_item import decide_next_item
+from sara.remote.main_playlist import main_panel, background_selection
+from sara.remote.hold import get_hold_controller
 
 
 def app_version() -> str:
@@ -29,16 +31,6 @@ def milliseconds(seconds: float | None) -> str:
     return str(round(max(0.0, seconds or 0.0) * 1000))
 
 
-@dataclass(frozen=True)
-class CommandEvent:
-    """Minimalny kontrakt zdarzenia istniejącego kontrolera skrótów."""
-
-    command_id: int
-
-    def GetId(self) -> int:
-        return self.command_id
-
-
 class CommandSession:
     """Stan pojedynczego klienta (niezależny znacznik zmiany playlisty)."""
 
@@ -55,26 +47,27 @@ class CommandSession:
             result.extend(self.execute(command.strip()))
         return result
 
-    def _panel(self):
-        return self.frame._get_current_music_panel()
+    def _main_panel(self):
+        return main_panel(self.frame)
 
     def _current(self):
-        # NowPlaying wskazuje najnowszy start, także przy miksie dwóch playlist.
+        panel = self._main_panel()
+        if panel is None:
+            return None
         contexts = self.frame._playback.contexts
         writer = getattr(self.frame, "_now_playing_writer", None)
         key = getattr(writer, "_current_key", None)
         keys = [key] if key is not None and key in contexts else []
         keys.extend(k for k in reversed(contexts) if k != key)
         for candidate in keys:
-            panel = self.frame._playlists.get(candidate[0])
-            if panel and panel.model.kind is PlaylistKind.MUSIC:
+            if candidate[0] == panel.model.id:
                 item = panel.model.get_item(candidate[1])
                 if item:
                     return panel.model, item
         return None
 
     def _snapshot(self):
-        panel = self._panel()
+        panel = self._main_panel()
         if panel is None:
             return ()
         model = panel.model
@@ -88,9 +81,9 @@ class CommandSession:
 
     def _status(self, *, acknowledge: bool = False) -> str:
         active = []
+        panel = self._main_panel()
         for playlist_id, item_id in self.frame._playback.contexts:
-            panel = self.frame._playlists.get(playlist_id)
-            if panel and panel.model.kind is PlaylistKind.MUSIC:
+            if panel and playlist_id == panel.model.id:
                 item = panel.model.get_item(item_id)
                 if item:
                     active.append(item)
@@ -156,7 +149,7 @@ class CommandSession:
             start = self.frame._current_index % len(order)
             panels = [self.frame._playlists[order[(start + offset) % len(order)]] for offset in range(len(order))]
         else:
-            panel = self._panel()
+            panel = self._main_panel()
             panels = [panel] if panel else []
         for panel in panels:
             if panel.model.kind is PlaylistKind.MUSIC:
@@ -175,25 +168,44 @@ class CommandSession:
         return index if 0 <= index < len(panel.model.items) else -1
 
     def _hotkey(self, action: str) -> None:
-        command_id = next(key for key, value in self.frame._action_by_id.items() if value == action)
-        self.frame._on_playlist_hotkey(CommandEvent(command_id))
+        from sara.ui.controllers.playlists.hotkeys import run_playlist_action
+        panel = self._main_panel()
+        if panel is not None:
+            run_playlist_action(self.frame, panel, action)
 
     def execute(self, command: str) -> list[str]:
+        hold = get_hold_controller(self.frame)
+        with background_selection(self.frame):
+            hold.sync()
+            try:
+                return self._execute(command)
+            finally:
+                hold.sync()
+
+    def _execute(self, command: str) -> list[str]:
         name, equals, value = command.partition("=")
         name = name.strip().casefold()
         value = value.strip()
-        if equals and name not in {"selectindex", "trackinfo", "trackinfoex"}:
+        if equals and name not in {"selectindex", "trackinfo", "trackinfoex", "hold"}:
             return ["ERR unknown"]
+        if name == "hold":
+            hold = get_hold_controller(self.frame)
+            if equals:
+                if value not in {"0", "1"}:
+                    return ["ERR syntax"]
+                hold.set_enabled(value == "1")
+            return [hold.response()]
         if name == "helo":
             return [f"SARA v{self.version}"]
         if name == "stat":
             return [self._status(acknowledge=True)]
         if name in {"play", "skip"}:
-            self.frame._on_global_play_next(None)
+            from sara.ui.controllers.playback.navigation import play_next_for_panel
+            play_next_for_panel(self.frame, self._main_panel(), activate_alternate=False)
             return [self._status()]
         if name in {"stop", "instant stop", "pause"}:
             if name == "pause":
-                panel = self._panel()
+                panel = self._main_panel()
                 entry = self.frame._get_playback_context(panel.model.id) if panel else None
                 item = panel.model.get_item(entry[0][1]) if entry else None
                 if item and item.status is PlaylistItemStatus.PAUSED:
@@ -202,14 +214,14 @@ class CommandSession:
             return [self._status()]
         if name in {"autoon", "autooff", "auto"}:
             enabled = not self.frame._auto_mix_enabled if name == "auto" else name == "autoon"
-            self.frame._set_auto_mix_enabled(enabled)
+            self.frame._set_auto_mix_enabled(enabled, panel=self._main_panel())
             return [self._status()]
         if name in {"this", "rem", "elap", "currindex"}:
             current = self._current()
             if name == "this":
                 return [self._name(current[1] if current else None)]
             if name == "currindex":
-                panel = self._panel()
+                panel = self._main_panel()
                 return [str(panel.model.index_of(current[1].id)) if current and panel and panel.model.id == current[0].id else "-1"]
             if not current:
                 return ["0"]
@@ -219,10 +231,10 @@ class CommandSession:
         if name == "next":
             return [self._name(self._next())]
         if name == "lastindex":
-            panel = self._panel()
+            panel = self._main_panel()
             return [str(len(panel.model.items) - 1) if panel else "-1"]
         if name == "selectindex":
-            panel = self._panel()
+            panel = self._main_panel()
             index = self._selected_index(panel)
             if equals:
                 if not panel or not panel.model.items:
@@ -241,7 +253,7 @@ class CommandSession:
                 panel.select_index(index)
             return [str(index)]
         if name == "checktoggle":
-            panel = self._panel()
+            panel = self._main_panel()
             if panel is None:
                 return ["-1"]
             index = panel.get_focused_index()
@@ -257,7 +269,7 @@ class CommandSession:
             if not match:
                 return ["ERR syntax"]
             start, end = map(int, match.groups())
-            panel = self._panel()
+            panel = self._main_panel()
             if not panel or not 0 <= start <= end < len(panel.model.items):
                 return ["ERR range"]
             rows = []

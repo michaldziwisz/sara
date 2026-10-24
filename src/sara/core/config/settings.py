@@ -73,6 +73,18 @@ class SettingsManager:
             self._data["remote"] = {}
         self._data["remote"]["port"] = port
 
+    def get_remote_main_playlist(self) -> str:
+        remote = self._data.get("remote", {})
+        value = remote.get("main_playlist", "") if isinstance(remote, dict) else ""
+        return value if isinstance(value, str) else ""
+
+    def set_remote_main_playlist(self, playlist_id: str) -> None:
+        if not isinstance(playlist_id, str):
+            raise ValueError("Playlist id must be a string")
+        if not isinstance(self._data.get("remote"), dict):
+            self._data["remote"] = {}
+        self._data["remote"]["main_playlist"] = playlist_id
+
     def get_global_shortcut(self, action: str) -> str:
         return self.get_shortcut("global", action)
 

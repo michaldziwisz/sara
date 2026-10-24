@@ -157,6 +157,9 @@ class OptionsDialog(wx.Dialog):
     def _on_accept(self, _event: wx.Event) -> None:
         self._settings.set_remote_enabled(self._remote_enabled_checkbox.GetValue())
         self._settings.set_remote_port(self._remote_port_ctrl.GetValue())
+        self._settings.set_remote_main_playlist(
+            self._remote_main_playlist_ids[self._remote_main_playlist_choice.GetSelection()]
+        )
         self._settings.set_playback_fade_seconds(self._fade_ctrl.GetValue())
         self._settings.set_alternate_play_next(self._alternate_checkbox.GetValue())
         self._settings.set_swap_play_select(self._swap_play_select_checkbox.GetValue())

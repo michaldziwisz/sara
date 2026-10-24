@@ -58,7 +58,7 @@ def test_socket_bind_is_loopback_and_other_local_address_cannot_connect(remote):
 def test_real_socket_commands_run_on_main_thread(remote):
     frame, callbacks, _, server = remote
     threads = []
-    frame._on_global_play_next = lambda event: threads.append(threading.current_thread())
+    frame._start_next_from_playlist = lambda panel: threads.append(threading.current_thread()) or True
     with ThreadPoolExecutor(max_workers=1) as pool:
         request = pool.submit(exchange, server.address, b"Play\r\nSkip\n", 2)
         result = pump_until([request], callbacks)[0]
@@ -97,7 +97,7 @@ def test_main_thread_timeout_does_not_execute_late(remote):
     frame, callbacks, _, server = remote
     assert exchange(server.address, b"Play\n", 1) == [b"ERR timeout\r\n"]
     callbacks.get(timeout=1)()
-    frame._on_global_play_next.assert_not_called()
+    frame._start_next_from_playlist.assert_not_called()
 
 
 def test_close_cancels_queued_command_and_closes_clients(remote):
@@ -108,7 +108,7 @@ def test_close_cancels_queued_command_and_closes_clients(remote):
         server.stop()
         callback()
         assert request.result(timeout=2) in ([b"ERR closed\r\n"], [b""])
-    frame._on_global_play_next.assert_not_called()
+    frame._start_next_from_playlist.assert_not_called()
     with pytest.raises(OSError):
         socket.create_connection(server.address, timeout=0.2)
     server.stop()
@@ -138,7 +138,7 @@ def test_dispatcher_error_and_closed_state():
 def test_malformed_transport(remote, payload, reply):
     frame, _, _, server = remote
     assert exchange(server.address, payload, 1) == [reply]
-    frame._on_global_play_next.assert_not_called()
+    frame._start_next_from_playlist.assert_not_called()
 
 
 def test_restart_same_port_after_closing_connected_client():

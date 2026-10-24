@@ -36,6 +36,11 @@ def handle_playlist_hotkey(frame, event: wx.CommandEvent) -> None:
         frame._announce_event("playlist", _("Select a playlist first"))
         return
 
+    run_playlist_action(frame, panel, action)
+
+
+def run_playlist_action(frame, panel, action: str) -> None:
+    """Ta sama akcja klawiatury dla jawnie wskazanego panelu."""
     playlist = panel.model
     if action == "play":
         if frame._auto_mix_enabled and playlist.kind is PlaylistKind.MUSIC:
@@ -56,47 +61,7 @@ def handle_playlist_hotkey(frame, event: wx.CommandEvent) -> None:
         if not indices:
             frame._announce_event("playlist", _("Select a track to toggle break"))
             return
-        last_state = None
-        toggled_ids: list[str] = []
-        for idx in indices:
-            if 0 <= idx < len(playlist.items):
-                track = playlist.items[idx]
-                track.break_after = not track.break_after
-                last_state = track.break_after
-                toggled_ids.append(track.id)
-                if track.break_after:
-                    frame._playback.auto_mix_state[(playlist.id, track.id)] = "break_halt"
-                else:
-                    frame._playback.auto_mix_state.pop((playlist.id, track.id), None)
-        panel.refresh(indices, focus=True)
-        if last_state is not None:
-            message = _("Break enabled after track") if last_state else _("Break cleared")
-            frame._announce_event("playlist", message)
-        if last_state and indices:
-            frame._active_break_item[playlist.id] = playlist.items[indices[0]].id
-        elif not last_state:
-            frame._active_break_item.pop(playlist.id, None)
-
-        context_entry = frame._get_playback_context(playlist.id)
-        if context_entry:
-            key, ctx = context_entry
-            if key[1] in toggled_ids:
-                current_item = playlist.get_item(key[1])
-                if current_item:
-                    if last_state:
-                        frame._clear_mix_plan(playlist.id, current_item.id)
-                        frame._playback.update_mix_trigger(
-                            playlist.id,
-                            current_item.id,
-                            mix_trigger_seconds=None,
-                            on_mix_trigger=None,
-                        )
-                    else:
-                        frame._apply_mix_trigger_to_playback(
-                            playlist_id=playlist.id,
-                            item=current_item,
-                            panel=panel,
-                        )
+        toggle_playlist_breaks(frame, panel, indices)
         return
 
     context_entry = frame._get_playback_context(playlist.id)
@@ -141,3 +106,54 @@ def handle_playlist_hotkey(frame, event: wx.CommandEvent) -> None:
             _("Playlist %s finished track with fade out") % playlist.name,
         )
         frame._set_auto_mix_enabled(False, reason=_("Auto mix disabled (manual stop)"))
+
+
+def toggle_playlist_breaks(frame, panel, indices, *, focus=True, announce=True, context_entry=None) -> None:
+    """Przerwa Ctrl+B; stół podaje konkretny utwór, bez ruszania kursora."""
+    playlist = panel.model
+    last_state = None
+    toggled_ids: list[str] = []
+    for idx in indices:
+        if 0 <= idx < len(playlist.items):
+            track = playlist.items[idx]
+            track.break_after = not track.break_after
+            last_state = track.break_after
+            toggled_ids.append(track.id)
+            if track.break_after:
+                frame._playback.auto_mix_state[(playlist.id, track.id)] = "break_halt"
+            else:
+                frame._playback.auto_mix_state.pop((playlist.id, track.id), None)
+    if focus:
+        panel.refresh(indices, focus=True)
+    else:
+        for item_id in toggled_ids:
+            panel.update_item_display(item_id)
+    if announce and last_state is not None:
+        message = _("Break enabled after track") if last_state else _("Break cleared")
+        frame._announce_event("playlist", message)
+    if last_state and indices:
+        frame._active_break_item[playlist.id] = playlist.items[indices[0]].id
+    elif not last_state:
+        frame._active_break_item.pop(playlist.id, None)
+
+    if context_entry is None:
+        context_entry = frame._get_playback_context(playlist.id)
+    if context_entry:
+        key, ctx = context_entry
+        if key[1] in toggled_ids:
+            current_item = playlist.get_item(key[1])
+            if current_item:
+                if last_state:
+                    frame._clear_mix_plan(playlist.id, current_item.id)
+                    frame._playback.update_mix_trigger(
+                        playlist.id,
+                        current_item.id,
+                        mix_trigger_seconds=None,
+                        on_mix_trigger=None,
+                    )
+                else:
+                    frame._apply_mix_trigger_to_playback(
+                        playlist_id=playlist.id,
+                        item=current_item,
+                        panel=panel,
+                    )

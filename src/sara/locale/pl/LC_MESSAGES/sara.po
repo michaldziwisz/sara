@@ -23,6 +23,14 @@ msgid "TCP control port:"
 msgstr "Port sterowania TCP:"
 
 #: src/sara/ui/dialogs/options/remote_tab.py
+msgid "Main music playlist:"
+msgstr "Główna playlista muzyczna:"
+
+#: src/sara/ui/dialogs/options/remote_tab.py
+msgid "First music playlist"
+msgstr "Pierwsza muzyczna"
+
+#: src/sara/ui/dialogs/options/remote_tab.py
 msgid "Only programs on this computer can connect. Changes apply after pressing OK."
 msgstr "Połączenie jest dostępne tylko dla programów na tym komputerze. Zmiany obowiązują po naciśnięciu OK."
 

@@ -47,6 +47,9 @@ class Frame:
         self._playback = SimpleNamespace(contexts={}, auto_mix_state={})
         self._action_by_id = {10: "pause", 11: "stop", 12: "fade"}
         self._on_global_play_next = Mock()
+        self._start_next_from_playlist = Mock(return_value=True)
+        self._auto_mix_play_next = Mock(return_value=True)
+        self._play_next_alternate = Mock(return_value=True)
         self._on_playlist_hotkey = Mock()
         self._announce_event = Mock()
         self._jingles = SimpleNamespace(_main_player=None, _overlay_players=[])
@@ -58,7 +61,7 @@ class Frame:
         matches = [(key, ctx) for key, ctx in self._playback.contexts.items() if key[0] == playlist_id]
         return matches[-1] if matches else None
 
-    def _set_auto_mix_enabled(self, enabled):
+    def _set_auto_mix_enabled(self, enabled, **kwargs):
         self._auto_mix_enabled = enabled
 
     def _on_toggle_selection(self, playlist_id, item_id):
@@ -87,12 +90,14 @@ def test_helo_and_batch_case_insensitive():
 
 
 @pytest.mark.parametrize("command,action", [("Stop", "fade"), ("Instant Stop", "stop"), ("Pause", "pause")])
-def test_control_uses_hotkey_path(command, action):
+def test_control_uses_hotkey_path(command, action, monkeypatch):
     frame = Frame()
+    from sara.ui.controllers.playlists import hotkeys
+    run = Mock()
+    monkeypatch.setattr(hotkeys, "run_playlist_action", run)
     session = CommandSession(frame)
     assert len(session.execute_line(command)[0]) == 7
-    event = frame._on_playlist_hotkey.call_args.args[0]
-    assert frame._action_by_id[event.GetId()] == action
+    run.assert_called_once_with(frame, frame.panel, action)
     frame._announce_event.assert_not_called()
 
 
@@ -102,7 +107,9 @@ def test_play_and_skip_delegate_without_changing_mode(command, alternate, automi
     frame = Frame()
     frame._alternate_play_next, frame._auto_mix_enabled = alternate, automix
     CommandSession(frame).execute_line(command)
-    frame._on_global_play_next.assert_called_once_with(None)
+    expected = frame._auto_mix_play_next if automix and not alternate else frame._start_next_from_playlist
+    expected.assert_called_once_with(frame.panel)
+    frame._on_global_play_next.assert_not_called()
     assert (frame._alternate_play_next, frame._auto_mix_enabled) == (alternate, automix)
 
 
@@ -135,14 +142,14 @@ def test_now_playing_times_and_indices():
     assert session.execute_line("Rem,Elap") == ["107500", "12500"]
 
 
-def test_now_playing_prefers_writer_key_over_active_playlist_and_old_context():
+def test_now_playing_ignores_writer_key_of_other_playlist():
     frame = Frame()
     other = Panel(PlaylistModel("other", "Inna", items=[PlaylistItem("c", Path("c.wav"), "Najnowszy", 10)]))
     frame._playlists["other"] = other
     frame._playback.contexts[("other", "c")] = SimpleNamespace()
     frame._playback.contexts[("music", "a")] = SimpleNamespace()
     frame._now_playing_writer = SimpleNamespace(_current_key=("other", "c"))
-    assert CommandSession(frame).execute_line("This,CurrIndex") == ["Najnowszy", "-1"]
+    assert CommandSession(frame).execute_line("This,CurrIndex") == ["Żółw - Tytuł", "0"]
 
 
 def test_select_and_checktoggle_are_distinct_and_do_not_play():
@@ -210,7 +217,8 @@ def test_empty_and_absent_playlist():
     session = CommandSession(frame)
     assert session.execute_line("This,Next,LastIndex,CurrIndex,SelectIndex,CheckToggle") == ["", "", "-1", "-1", "-1", "-1"]
     session.execute_line("Play")
-    frame._on_global_play_next.assert_called_once_with(None)
+    frame._on_global_play_next.assert_not_called()
+    frame._start_next_from_playlist.assert_not_called()
     assert session.execute_line("TrackInfoEx=0-0") == ["ERR range"]
     assert session.execute_line("SelectIndex=+") == ["-1"]
 

@@ -95,7 +95,7 @@ def test_remote_uses_real_navigation_controller(gui_frame, command, mode):
     frame._auto_mix_enabled = mode == "auto"
     CommandSession(frame).execute_line(command)
     expected = {"manual": frame._start_next_from_playlist, "auto": frame._auto_mix_play_next,
-                "alternate": frame._play_next_alternate}[mode]
+                "alternate": frame._start_next_from_playlist}[mode]
     assert expected.call_count == 1
 
 
@@ -146,7 +146,7 @@ def test_pause_is_existing_f2_and_repeated_pause_has_no_new_announcement(gui_fra
 def test_real_wx_callafter_delivers_socket_commands_on_gui_thread(app):
     frame = Frame()
     thread_ids = []
-    frame._on_global_play_next = lambda event: thread_ids.append(threading.get_ident())
+    frame._start_next_from_playlist = lambda panel: thread_ids.append(threading.get_ident()) or True
     dispatcher = MainThreadDispatcher(wx.CallAfter)
     server = RemoteServer(dispatcher, lambda: CommandSession(frame), port=0)
     server.start()

@@ -16,7 +16,7 @@ def test_remote_defaults_and_roundtrip(tmp_path):
     restored = SettingsManager(path)
     assert restored.get_remote_enabled() is False
     assert restored.get_remote_port() == 52345
-    assert restored.get_raw()["remote"] == {"enabled": False, "port": 52345}
+    assert restored.get_raw()["remote"] == {"enabled": False, "port": 52345, "main_playlist": ""}
 
 
 @pytest.mark.parametrize("value", [0, -1, 65536, None, [], True, 12.5, "invalid"])

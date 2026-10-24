@@ -14,6 +14,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "remote": {
         "enabled": True,
         "port": 51443,
+        "main_playlist": "",
     },
     "news": {
         "line_length": 30,

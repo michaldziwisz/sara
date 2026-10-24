@@ -35,7 +35,7 @@ def index_of_item(playlist: PlaylistModel, item_id: str | None) -> int | None:
     return None
 
 
-def play_next_alternate(frame) -> bool:
+def play_next_alternate(frame, *, activate: bool = True) -> bool:
     ordered_ids = [playlist_id for playlist_id in frame._layout.state.order if playlist_id in frame._playlists]
     if not ordered_ids:
         return False
@@ -54,9 +54,10 @@ def play_next_alternate(frame) -> bool:
             except ValueError:
                 index = 0
             frame._current_index = (index + 1) % page_count
-            frame._layout.set_current(playlist_id)
-            frame._update_active_playlist_styles()
-            frame._announce_event("playlist", f"Aktywna playlista {panel.model.name}")
+            if activate:
+                frame._layout.set_current(playlist_id)
+                frame._update_active_playlist_styles()
+                frame._announce_event("playlist", f"Aktywna playlista {panel.model.name}")
             return True
 
     return False
@@ -77,16 +78,25 @@ def on_global_play_next(frame, _event: wx.CommandEvent) -> None:
             return
         return
 
+    panel = None if frame._alternate_play_next else frame._get_current_music_panel()
+    play_next_for_panel(frame, panel)
+
+
+def play_next_for_panel(frame, panel, *, activate_alternate: bool = True) -> None:
+    """Muzyczna część Spacji, niezależna od fokusu w wiadomościach."""
+    if not frame._playlists:
+        frame._announce_event("playlist", _("No playlists available"))
+        return
     if frame._alternate_play_next:
         try:
             notify_nvda_play_next()
         except Exception as exc:  # pylint: disable=broad-except
             logger.warning("NVDA play-next notify failed: %s", exc)
-        if not frame._play_next_alternate():
+        started = frame._play_next_alternate() if activate_alternate else play_next_alternate(frame, activate=False)
+        if not started:
             frame._announce_event("playback_events", _("No scheduled tracks available"))
         return
 
-    panel = frame._get_current_music_panel()
     if panel is None:
         frame._announce_event("playlist", _("Select a playlist first"))
         return
