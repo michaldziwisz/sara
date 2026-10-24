@@ -1,5 +1,82 @@
 # Weryfikacja lokalnego sterowania TCP
 
+## Sesja punktów miksu: t_8a48f531
+
+Punkt bazowy: `0a5d98f`. Implementacja: `312a4ecd6205806094095f76e14a09a762b3d1a5`. Zakres: etap D, czyli strona SARY dla protokołu Mix*. Bez mostka, buildu i wdrożenia. Kontrakt uwzględnia zatwierdzony w komentarzu rodzica czwarty wynik `MixSave`: `OK|brak_przejscia`, gdy utwór gra, lecz nie ma planu przejścia, np. podczas Hold.
+
+### Wyniki
+
+| Przebieg | Wynik |
+| --- | --- |
+| Nowe testy przed implementacją | 35 failed na bazowym kodzie, głównie `ERR unknown`; brak nowej sesji i wspólnej funkcji zapisu |
+| Końcowe nowe testy sesji i okna | 45 passed |
+| Pełny pytest, nice, Xvfb | 387 passed, 8 skipped |
+| Wszystkie testy remote z `WX_RUN_GUI_TESTS=1` | 186 passed |
+| Sesja porównana z bazowymi mixinami okna z `0a5d98f` | 14 passed: osiem punktów i sześć sekwencji ustawiania, wyłączania i korekt |
+| Kontrola dodatnia mutacji | 15 passed |
+| Mutanty | 15/15 zabitych błędem asercji, w tym cztery nowe dotyczące Mix* |
+| Import `sara.remote.mix_session` bez wx | Potwierdzony w osobnym procesie |
+| Ruff nowych modułów i testów, `git diff --check` | Poprawne |
+
+Osiem pominięć pełnego zestawu to te same warunki środowiska: trzy moduły Windows z pywinauto, trzy moduły GUI opt-in oraz dwa testy bez `logs/saramix.m3u`. Moduły GUI remote uruchomiono osobno. Nowy test prawdziwego dialogu punktów wymaga wyświetlacza, ale nie jest opt-in, więc działa w pełnym przebiegu pod Xvfb.
+
+Jeden pośredni pełny przebieg bez natywnego bs1770gain na PATH zakończył się `386 passed, 8 skipped, 1 failed`, z istniejącym błędem WSL `UtilAcceptVsock:281` przy Windows EXE analizatora. Końcowy przebieg używa istniejącego `.venv/system/root/usr/bin/bs1770gain`, sprawdzonego przez `command -v` oraz `find_bs1770gain()`. Nie wyłączano testu głośności i nie modyfikowano analizatora ani kodu audio.
+
+### Wspólne mechanizmy i pokrycie
+
+* `core/mix_editing.py`: wydzielone z okna czyste przeliczenia przypisania, korekty, granicy overlap, względnego segue, spójności końca pętli i okna odsłuchu segue. Korzystają z nich okno oraz sesja; istniejące zachowanie okna nie zostało rozszerzone o walidację TCP.
+* `remote/mix_session.py`: stan roboczy, nieustawione punkty, zachowane wartości wyłączonych pól jak w kontrolkach okna, stos cofania, walidacja i wynik zgodny z `dialog.get_result()`. Bez wx i bez zapisu plików.
+* `remote/mix_control.py`: adapter istniejących akcji PFL i zapisu. Nie tworzy nowej ścieżki emisji. Efekt zapisu odczytuje z planu po przeliczeniu oraz pozycji istniejącego odtwarzacza.
+* `controllers/mix/points.py:apply_mix_point_result`: przeniesiona druga połowa dotychczasowego handlera okna, wspólna dla GUI i TCP. Zachowuje model, APEv2, propagację miksu, odświeżenie, wyzwalacze oraz zapis pętli.
+* `tests/test_remote_mix.py`: główna playlista mimo aktywnego panelu tekstowego, kursor, właściciel sesji, komplet poleceń, składnia, przycinanie pozycji, stos Undo, spójność pętli, walidacja bez zmiany MD5/modelu, Cancel bez zapisu, cztery skutki MixSave, Hold bez zdejmowania przerwy, start anteny podczas edycji, PFL bez zmiany kontekstów anteny, brak urządzenia, okno segue, prawdziwe TCP i opóźnione sprzątanie rozłączenia.
+* `tests/test_remote_mix_gui.py`: rzeczywiste kontrolki wx i `get_result()`, porównanie zapisanych tagów APEv2 w WAV oraz wszystkich pól modelu, również duplikatu pliku w drugiej playliście; osiem rodzajów punktów i sekwencje z usuwaniem, zmniejszeniem dostępnej końcówki i ponownym ustawianiem. Kontroler okna zgłasza busy podczas ShowModal, nie tworzy drugiego edytora przy sesji TCP, a wyłączenie usługi porzuca sesję.
+
+Porównanie sekwencji wykryło nadmiarowe przycinanie fade przez pierwszą wersję sesji przy przesuwaniu innego punktu. Usunięto je z sesji zamiast zmieniać działanie okna. Po korekcie obie ścieżki oraz bazowe mixiny dają identyczne wyniki. Testy Windows i rzeczywistego BASS pozostają osobnym etapem odbioru.
+
+### Nowe mutanty
+
+Skrypt `scripts/check_remote_mutations.py` obejmuje dodatkowo:
+
+1. Zapis bez propagacji do innych wystąpień pliku.
+2. Zapis bez ponownego przeliczenia planu i wyzwalacza grającego utworu.
+3. Wyłączoną walidację kolejności.
+4. MixCancel zapisujący punkty.
+
+Wszystkie dotychczasowe mutanty nadal są sprawdzane. Selektor mutanta pomijającego wątek GUI został doprecyzowany do wywołania zwykłego polecenia, ponieważ doszło drugie `CallAfter` przeznaczone wyłącznie do sprzątania. Mutanty wciąż powstają tylko w pamięci osobnych procesów i wymagają `AssertionError`, nie błędu importu czy modyfikacji źródła.
+
+### Prawdziwe gniazdo TCP
+
+Odczyt z testu `test_socket_save_transcript_runs_on_gui`, bez ręcznego generowania odpowiedzi:
+
+```text
+MixOpen -> OK|0|1|125000|Żółw|Tytuł
+MixPoint=segue -> 5000|segue|123000|0|brak
+MixPos=@55 -> 55000|segue|123000|0|brak
+MixSet -> 55000|segue|55000|1|brak
+MixSave -> OK|przejscie_za=5000
+MixInfo -> ERR nosession
+```
+
+Gniazdo i `MainThreadDispatcher` są rzeczywiste, pętla testu wykonuje callbacki w głównym wątku, a odtwarzacz anteny jest atrapą z pozycją 50 s. Tag jest zapisywany do rzeczywistego pliku WAV fixture. Osobny test odłącza klienta po edycji i odsłuchu, zwleka ze sprzątaniem dłużej niż testowy timeout dispatchera, a następnie sprawdza zatrzymanie PFL, brak zmian modelu i identyczne MD5 pliku.
+
+### Odtworzenie i ograniczenia
+
+Uruchomienie pełnego zestawu musi zapewnić natywny analizator w tym samym środowisku procesu:
+
+```sh
+source .venv/bin/activate
+export LD_LIBRARY_PATH="$PWD/.venv/system/root/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export TMPDIR="$PWD/.venv/tmp"
+PATH="$PWD/.venv/system/root/usr/bin:$PATH" nice -n 10 xvfb-run -a python3 -m pytest -q tests -p no:cacheprovider -rs
+WX_RUN_GUI_TESTS=1 nice -n 10 xvfb-run -a python3 -m pytest -q tests/test_remote_*.py -p no:cacheprovider
+nice -n 10 xvfb-run -a python3 scripts/check_remote_mutations.py
+xvfb-run -a python3 -m pytest -q -s tests/test_remote_mix.py::test_socket_save_transcript_runs_on_gui -p no:cacheprovider
+```
+
+Surowe wyniki lokalne: `.venv/tmp/mix-red.txt`, `mix-full.log`, `mix-full-no-native-path.log`, `mix-remote.log`, `mix-mutations.log`, `mix-socket.log`. Bazowe mixiny były ładowane z `git show 0a5d98f:<ścieżka>` tylko do pamięci procesu; źródeł nie podmieniano.
+
+Diff względem `0a5d98f` jest pusty dla `src/sara/audio`, `src/sara/ui/playback`, `src/sara/ui/mix_runtime`. Trzy nieśledzone pliki Michała mają identyczne SHA-256 jak w tabeli archiwalnej poniżej. Nie zmieniono Hold ani mechanizmu wyzwalania przejść. Nie było pushu, buildu EXE ani wdrożenia. Niesprawdzone: rzeczywisty BASS, Windows, NVDA, odsłuch i fizyczny stół. Testy z atrapami nie są dowodem jakości dźwięku ani dokładności przejścia na antenie.
+
 ## Główna playlista i Hold: t_03246905
 
 Punkt bazowy: `5207cf0`. Commit kodu i testów: `50c08333d3f3814fea413d595caec945c79bf455`. Zakres obejmuje etapy A i B zatwierdzonego planu. Nie obejmuje mostka MR18, edycji punktów miksu, budowania EXE ani wdrożenia.

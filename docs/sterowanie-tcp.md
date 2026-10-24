@@ -121,6 +121,67 @@ Stan Hold jest wspólny dla wszystkich klientów. Rozłączenie samego klienta n
 
 Inna wartość, np. `Hold=2`, daje `ERR syntax`. Nie wolno łączyć `Hold=1` ani `Hold=0` z innymi poleceniami przecinkiem. Sam odczyt można połączyć, np. `Hold,This`.
 
+## Punkty miksu bez okna: Mix*
+
+Polecenia `Mix*` są rozszerzeniem SARY, nie SPL. Przed ich użyciem klient musi rozpoznać `SARA` w odpowiedzi `Helo`. Edycja dotyczy utworu pod kursorem głównej playlisty w chwili `MixOpen`, również gdy aktywny jest panel wiadomości. Późniejsze przesunięcie kursora nie zmienia edytowanego utworu. Nie otwiera się okno i nie zmienia się fokus.
+
+Jednocześnie może istnieć jedna sesja punktów, należąca do połączenia, które ją otworzyło. Zmiany są robocze do `MixSave`. `MixCancel`, rozłączenie właściciela, wyłączenie serwera lub zamknięcie SARY porzucają je i zatrzymują odsłuch tej sesji. Inny klient nie może jej zapisać ani anulować. Rozłączenie po 30 sekundach bez danych również anuluje sesję, więc podczas pracy należy odpytywać np. `MixInfo`. Rozpoczęcie emisji edytowanego utworu nie kończy sesji. Okno punktów i sesja TCP wzajemnie wykluczają równoczesną edycję.
+
+Każde polecenie zwraca jedną linię. Pola rozdziela `|`. Argumenty czasu są w sekundach z kropką, odpowiedzi w całkowitych milisekundach. `STAN` oznacza:
+
+```text
+pozycja_ms|punkt|wartosc_ms albo -|zmiany 0 lub 1|odsluch
+5000|cue|5000|0|brak
+```
+
+`odsluch` to `brak`, `pozycja`, `punkt` albo `przejscie`. `zmiany` porównuje punkty z początkiem sesji; sam ruch kursora lub odsłuch nie oznacza zmian. `-` oznacza punkt wyłączony. Kolejność punktów: `cue`, `intro`, `outro`, `segue`, `segue_fade`, `overlap`, `loop_start`, `loop_end`. Wszystkie poza `segue_fade` i `overlap` są czasami bezwzględnymi od początku pliku. `segue` również jest bezwzględne na stole, a dopiero przy zapisie przeliczane na odległość od cue. Fade i overlap są długościami.
+
+| Polecenie | Odpowiedź i działanie |
+| --- | --- |
+| `MixOpen` | `OK\|indeks\|gra\|dlugosc_ms\|artysta\|tytul`. Pełna długość pliku, indeks od 0, `gra` równe 0 lub 1. Pozycja początkowa to cue albo 0; wybrany punkt to cue. Znaki separatorów i końca linii w metadanych zastępują spacje. |
+| `MixInfo` | STAN. |
+| `MixPos=+0.1`, `MixPos=-5`, `MixPos=@83.4` | Ruch względny lub pozycja bezwzględna, przycięta do długości pliku. Trwający odsłuch jest uruchamiany od nowej pozycji. STAN. |
+| `MixPoint=next`, `MixPoint=prev`, `MixPoint=intro` | Wybór kolejnego, poprzedniego lub nazwanego punktu; next/prev zawijają listę. Nazwy punktów nie rozróżniają wielkości liter. STAN. |
+| `MixSet` | Ustawienie punktu na bieżącej pozycji. Overlap to długość pliku minus pozycja, segue_fade to sama pozycja ograniczona do dostępnej końcówki. Jak w oknie zachowywana jest spójność pętli. STAN. |
+| `MixNudge=+0.1`, `MixNudge=-0.1` | Korekta wybranego punktu, także nieustawionego. Kursor idzie za punktem. Jak Z/C w oknie: trwający odsłuch startuje od poprawionej pozycji, a dla segue i segue_fade uruchamiane jest krótkie okno przejścia. STAN. |
+| `MixClear` | Wyłączenie wybranego punktu jak odznaczenie jego pola. Usunięcie początku pętli wyłącza też koniec. STAN. |
+| `MixPlay` | Włączenie/wyłączenie odsłuchu PFL jak D w oknie. Przy zdefiniowanej pętli odsłuch zaczyna od jej początku i ją powtarza. STAN. |
+| `MixPlayPoint` | Odsłuch wybranego punktu jak V. Segue i segue_fade używają okna przejścia, overlap oznacza początek końcówki. Nieustawiony punkt niczego nie uruchamia. STAN. |
+| `MixPlayMix` | Odsłuch przejścia do następnego utworu na PFL. STAN. |
+| `MixStop` | Zatrzymanie odsłuchu sesji, bez zatrzymania anteny. STAN. |
+| `MixUndo` | Cofnięcie ostatniej zmiany punktów, łącznie z jej skutkami dla pętli i długości. Pusty stos niczego nie zmienia. STAN. |
+| `MixSave` | Walidacja i wspólny zapis okna punktów: model, tagi APEv2, propagacja punktów miksu do innych wystąpień pliku, odświeżenie i przeliczenie wyzwalacza. Po powodzeniu kończy sesję i zwraca skutek opisany poniżej. |
+| `MixCancel` | Porzucenie zmian bez zapisu, zakończenie sesji. `OK`. |
+
+Edycja grającego utworu jest dozwolona. Zapis działa od razu tak jak OK w oknie punktów; nie opóźnia przejścia, nie zdejmuje Hold i nie zmienia zasad wyzwalania. Odpowiedź obliczana jest z planu pozostałego po zapisie i bieżącej pozycji odtwarzacza:
+
+* `OK|przejscie_za=5000`: punkt przejścia jest za 5 sekund.
+* `OK|przejscie_teraz`: punkt już minął lub wypada teraz. Obowiązują zwykłe warunki przejścia SARY, nie jest to dodatkowe polecenie startu.
+* `OK|brak_przejscia`: utwór gra, ale nie ma zaplanowanego wyzwalacza, np. przy Hold, ręcznej przerwie lub braku punktów i domyślnym fade równym zero. Punkty zapisano, lecz nie należy zapowiadać czasu przejścia.
+* `OK|nie_gra`: edytowany utwór nie gra, także gdy jest zapauzowany.
+
+Błędy sesji:
+
+* `ERR session`: sesja jest już otwarta; `ERR busy`: otwarte jest okno punktów.
+* `ERR empty`: brak głównej playlisty lub utworu pod jej kursorem przy otwieraniu.
+* `ERR nosession`: polecenie inne niż MixOpen bez sesji należącej do tego klienta.
+* `ERR invalid|kolejnosc`: ustawione cue, intro, outro nie zachowują ścisłej kolejności. `ERR invalid|petla`: początek pętli nie jest wcześniejszy od końca. Sesja pozostaje otwarta, model i plik są nietknięte. Zbyt długi overlap jest przycinany jak w oknie, a nie odrzucany.
+* `ERR pfl`: nie udało się uruchomić odsłuchu. SARA podaje dotychczasowy komunikat, np. „Configure a PFL device in Options” przy braku urządzenia PFL. Zmiana punktu wykonana przez Nudge pozostaje robocza nawet wtedy, gdy jego odsłuch się nie udał.
+* `ERR syntax`: niewłaściwy argument. Nie są przyjmowane NaN, nieskończoność ani zapis wykładniczy.
+
+Przykład osobnych linii na tym samym połączeniu, dla utworu o długości 125 s, cue 5 s i bieżącej pozycji anteny 50 s:
+
+```text
+MixOpen          -> OK|0|1|125000|Żółw|Tytuł
+MixPoint=segue   -> 5000|segue|123000|0|brak
+MixPos=@55       -> 55000|segue|123000|0|brak
+MixSet           -> 55000|segue|55000|1|brak
+MixSave          -> OK|przejscie_za=5000
+MixInfo          -> ERR nosession
+```
+
+Odsłuch korzysta z istniejącego odtwarzacza PFL, osobno od kontekstów anteny. Obsługa i sprzątanie odbywają się w wątku GUI. Opóźnione sprzątanie rozłączonego klienta nie przepada po dwusekundowym limicie zwykłego polecenia. Krótkie okno segue kontroluje zegar usługi; obciążone GUI może opóźnić jego zatrzymanie, tak jak zegar okna punktów.
+
 ## TrackInfo i TrackInfoEx
 
 `TrackInfo` ma dziesięć kolumn:
