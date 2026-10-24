@@ -63,6 +63,18 @@ MUTATIONS = (
         "self.frame._set_auto_mix_enabled(enabled)",
         "tests/test_remote_main_playlist.py::test_auto_on_starts_main_not_active_playlist",
     ),
+    (
+        "play-bez-entera", "sara.remote.commands",
+        'if name == "play" and self._play_focused():',
+        "if False:",
+        "tests/test_remote_play_focused.py::test_manual_play_starts_highlighted_track_like_enter",
+    ),
+    (
+        "play-restartuje-grajacy", "sara.remote.commands",
+        "                return True\n        try:\n            from sara.ui.services.nvda_sleep",
+        "                pass\n        try:\n            from sara.ui.services.nvda_sleep",
+        "tests/test_remote_play_focused.py::test_manual_play_does_not_restart_highlighted_playing_track",
+    ),
 )
 
 

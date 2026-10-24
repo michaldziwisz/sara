@@ -173,6 +173,41 @@ class CommandSession:
         if panel is not None:
             run_playlist_action(self.frame, panel, action)
 
+    def _play_focused(self) -> bool:
+        """Play w trybie ręcznym działa jak Enter na głównej playliście.
+
+        Enter (swap_play_select) woła play_item_direct: kolejka zaznaczonych ma
+        pierwszeństwo i gra po kolei, bez kolejki gra podświetlony utwór.
+        Automiks i naprzemienne playlisty zostają przy „Odtwórz następny”.
+        Podświetlony utwór, który już gra, nie jest uruchamiany od nowa: Enter
+        by go zrestartował, a z klawisza stołu łatwo nacisnąć dwa razy.
+        Zwraca False, gdy obsługę ma przejąć „Odtwórz następny”.
+        """
+        frame = self.frame
+        if frame._auto_mix_enabled or frame._alternate_play_next:
+            return False
+        panel = self._main_panel()
+        if panel is None:
+            return False
+        model = panel.model
+        has_queue = any(item.is_selected for item in model.items)
+        index = panel.get_focused_index()
+        if not has_queue and not 0 <= index < len(model.items):
+            return False
+        if has_queue:
+            item = next(item for item in model.items if item.is_selected)
+        else:
+            item = model.items[index]
+            if item.status is PlaylistItemStatus.PLAYING and (model.id, item.id) in frame._playback.contexts:
+                return True
+        try:
+            from sara.ui.services.nvda_sleep import notify_nvda_play_next
+            notify_nvda_play_next()
+        except Exception:  # pylint: disable=broad-except
+            pass
+        frame._play_item_direct(model.id, item.id)
+        return True
+
     def execute(self, command: str) -> list[str]:
         hold = get_hold_controller(self.frame)
         with background_selection(self.frame):
@@ -201,6 +236,8 @@ class CommandSession:
             return [self._status(acknowledge=True)]
         if name in {"play", "skip"}:
             from sara.ui.controllers.playback.navigation import play_next_for_panel
+            if name == "play" and self._play_focused():
+                return [self._status()]
             play_next_for_panel(self.frame, self._main_panel(), activate_alternate=False)
             return [self._status()]
         if name in {"stop", "instant stop", "pause"}:
