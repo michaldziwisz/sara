@@ -38,6 +38,12 @@ MUTATIONS = (
         "tests/test_remote_mix.py::test_cancel_does_not_write_and_stops_preview",
     ),
     (
+        "mix-bez-zawijania", "sara.remote.mix_session",
+        "if delta < 0 and current <= 0.0 and target < 0.0:  # MIX_ZAWIJANIE",
+        "if False:  # mutant: kółko staje na początku",
+        "tests/test_remote_mix.py::test_navigation_clamp_set_clear_and_undo",
+    ),
+    (
         "bind-wszystkie-interfejsy", "sara.remote.server",
         'super().__init__(("127.0.0.1", port), _ClientHandler)',
         'super().__init__(("0.0.0.0", port), _ClientHandler)',

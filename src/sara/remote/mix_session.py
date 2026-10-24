@@ -45,6 +45,18 @@ class MixSession:
     def move(self, position: float) -> None:
         self.position = max(0.0, min(self.duration, position))
 
+    def shift(self, current: float, delta: float) -> None:
+        """Ruch względny kółkiem: najpierw zatrzymanie na brzegu utworu, a dalszy
+        ruch w tę samą stronę przeskakuje na drugi koniec (decyzja Michała
+        z 25.10.2026: z początku szybko na koniec, np. do ustawienia miksu)."""
+        current = max(0.0, min(self.duration, current))
+        target = current + delta
+        if delta < 0 and current <= 0.0 and target < 0.0:  # MIX_ZAWIJANIE
+            target = self.duration + delta
+        elif delta > 0 and current >= self.duration and target > self.duration:
+            target = delta
+        self.move(target)
+
     def maximum_overlap(self) -> float:
         cue = self.values["cue"]
         cue = self.cue_base if cue is None else cue

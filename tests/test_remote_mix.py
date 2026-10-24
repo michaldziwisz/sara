@@ -115,6 +115,15 @@ def test_navigation_clamp_set_clear_and_undo(mix_frame):
     assert request(session, "MixPoint=next") == "5000|cue|5000|0|brak"
     assert request(session, "MixPos=-99") == "0|cue|5000|0|brak"
     assert request(session, "MixPos=+999") == "125000|cue|5000|0|brak"
+    # Na brzegu dalszy ruch w tę samą stronę przeskakuje na drugi koniec.
+    assert request(session, "MixPos=+0.1") == "100|cue|5000|0|brak"
+    assert request(session, "MixPos=-0.1") == "0|cue|5000|0|brak"
+    assert request(session, "MixPos=-0.1") == "124900|cue|5000|0|brak"
+    assert request(session, "MixPos=-1") == "123900|cue|5000|0|brak"
+    assert request(session, "MixPos=@0") == "0|cue|5000|0|brak"
+    assert request(session, "MixPos=-5") == "120000|cue|5000|0|brak"
+    assert request(session, "MixPos=@3") == "3000|cue|5000|0|brak"
+    assert request(session, "MixPos=-5") == "0|cue|5000|0|brak"  # najpierw stop na początku
     set_point(session, "intro", 10)
     set_point(session, "outro", 100)
     assert request(session, "MixClear") == "100000|outro|-|1|brak"

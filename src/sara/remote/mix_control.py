@@ -135,9 +135,11 @@ class MixControl:
             if not math.isfinite(amount):
                 return "ERR syntax"
             if name == "mixpos":
-                position = amount if value.startswith("@") else self.current_position() + amount
                 active = self.preview != "brak"
-                self.state.move(position)
+                if value.startswith("@"):
+                    self.state.move(amount)
+                else:
+                    self.state.shift(self.current_position(), amount)
                 if active and not self.play_from(self.state.position, "pozycja"):
                     return "ERR pfl"
             else:
