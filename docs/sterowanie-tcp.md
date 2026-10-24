@@ -140,7 +140,7 @@ pozycja_ms|punkt|wartosc_ms albo -|zmiany 0 lub 1|odsluch
 | --- | --- |
 | `MixOpen` | `OK\|indeks\|gra\|dlugosc_ms\|artysta\|tytul`. Pełna długość pliku, indeks od 0, `gra` równe 0 lub 1. Pozycja początkowa to cue albo 0; wybrany punkt to cue. Znaki separatorów i końca linii w metadanych zastępują spacje. |
 | `MixInfo` | STAN. |
-| `MixPos=+0.1`, `MixPos=-5`, `MixPos=@83.4` | Ruch względny lub pozycja bezwzględna, przycięta do długości pliku. Trwający odsłuch jest uruchamiany od nowej pozycji. STAN. |
+| `MixPos=+0.1`, `MixPos=-5`, `MixPos=@83.4` | Ruch względny lub pozycja bezwzględna, przycięta do długości pliku. Ruch względny najpierw zatrzymuje się na brzegu utworu, a dalszy ruch w tę samą stronę przeskakuje na drugi koniec: z początku `MixPos=-0.1` daje koniec minus 0,1 s, z końca `MixPos=+0.1` daje 0,1 s. Pozycja bezwzględna `@` nie zawija. Trwający odsłuch jest uruchamiany od nowej pozycji. STAN. |
 | `MixPoint=next`, `MixPoint=prev`, `MixPoint=intro` | Wybór kolejnego, poprzedniego lub nazwanego punktu; next/prev zawijają listę. Nazwy punktów nie rozróżniają wielkości liter. STAN. |
 | `MixSet` | Ustawienie punktu na bieżącej pozycji. Overlap to długość pliku minus pozycja, segue_fade to sama pozycja ograniczona do dostępnej końcówki. Jak w oknie zachowywana jest spójność pętli. STAN. |
 | `MixNudge=+0.1`, `MixNudge=-0.1` | Korekta wybranego punktu, także nieustawionego. Kursor idzie za punktem. Jak Z/C w oknie: trwający odsłuch startuje od poprawionej pozycji, a dla segue i segue_fade uruchamiane jest krótkie okno przejścia. STAN. |
