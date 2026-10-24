@@ -7,7 +7,6 @@ import csv
 import io
 import re
 from dataclasses import dataclass, fields
-from importlib.metadata import PackageNotFoundError, version
 from sara import __version__
 
 from sara.core.playlist import PlaylistItemStatus, PlaylistItemType, PlaylistKind
@@ -15,11 +14,10 @@ from sara.ui.controllers.playback.next_item import decide_next_item
 
 
 def app_version() -> str:
-    try:
-        return version("sara")
-    except PackageNotFoundError:
-        # Zamrożony program może nie zawierać metadanych dystrybucji.
-        return __version__
+    # Wersja zawsze z kodu: metadane instalacji bywają przestarzałe
+    # (na głównej `pip show sara` podawał 0.0.11 przy kodzie 0.0.37),
+    # a zamrożony program może ich nie mieć wcale.
+    return __version__
 
 
 def clean_text(value: object, *, separator: str = "") -> str:

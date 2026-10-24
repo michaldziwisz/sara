@@ -67,14 +67,16 @@ class Frame:
 
 
 def test_version_fallback_matches_project(monkeypatch):
+    import importlib.metadata
     import tomllib
-    from importlib.metadata import PackageNotFoundError
     from sara import __version__
     from sara.remote import commands
 
     with (Path(__file__).parents[1] / "pyproject.toml").open("rb") as stream:
         assert __version__ == tomllib.load(stream)["project"]["version"]
-    monkeypatch.setattr(commands, "version", Mock(side_effect=PackageNotFoundError("sara")))
+    # Przestarzałe metadane instalacji (tak było na głównej: 0.0.11) nie
+    # mogą zmienić wersji podawanej w Helo.
+    monkeypatch.setattr(importlib.metadata, "version", Mock(return_value="0.0.11"))
     assert commands.app_version() == __version__
 
 
