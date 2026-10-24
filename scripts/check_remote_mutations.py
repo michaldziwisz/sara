@@ -39,9 +39,15 @@ MUTATIONS = (
     ),
     (
         "mix-bez-zawijania", "sara.remote.mix_session",
-        "if delta < 0 and current <= 0.0 and target < 0.0:  # MIX_ZAWIJANIE",
+        "if delta < 0 and at_start and target < 0.0:  # MIX_ZAWIJANIE",
         "if False:  # mutant: kółko staje na początku",
         "tests/test_remote_mix.py::test_navigation_clamp_set_clear_and_undo",
+    ),
+    (
+        "mix-zawijanie-bez-odsluchu", "sara.remote.mix_session",
+        "at_start = current <= 0.0 or (self._edge == -1 and current < self.EDGE_WINDOW)",
+        "at_start = current <= 0.0  # mutant: odsłuch przesuwa pozycję",
+        "tests/test_remote_mix.py::test_wrap_left_while_preview_is_playing",
     ),
     (
         "bind-wszystkie-interfejsy", "sara.remote.server",

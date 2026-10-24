@@ -19,6 +19,7 @@ class MixSession:
             self._stored["loop_end"] = max(self._stored["loop_start"] + 0.1, 0.1)
         self.loop_auto_enabled = loop_auto_enabled
         self.point = "cue"
+        self._edge = 0
         self.position = min(self.duration, max(0.0, self.cue_base))
         self._initial = self.values.copy()
         self._undo = []
@@ -42,8 +43,13 @@ class MixSession:
         else:
             self.point = point
 
+    EDGE_WINDOW = 1.0
+
     def move(self, position: float) -> None:
-        self.position = max(0.0, min(self.duration, position))
+        position = max(0.0, min(self.duration, position))
+        if position != self.position:  # play_from po shift() podaje tę samą pozycję
+            self._edge = 0
+        self.position = position
 
     def shift(self, current: float, delta: float) -> None:
         """Ruch względny kółkiem: najpierw zatrzymanie na brzegu utworu, a dalszy
@@ -51,11 +57,20 @@ class MixSession:
         z 25.10.2026: z początku szybko na koniec, np. do ustawienia miksu)."""
         current = max(0.0, min(self.duration, current))
         target = current + delta
-        if delta < 0 and current <= 0.0 and target < 0.0:  # MIX_ZAWIJANIE
+        # Przy trwającym odsłuchu pozycja zdąży urosnąć o czas między ząbkami
+        # (u Michała ok. 50 ms), więc „jestem na początku” to: poprzedni ruch
+        # uderzył w brzeg i od tego czasu minęło mniej niż EDGE_WINDOW.
+        at_start = current <= 0.0 or (self._edge == -1 and current < self.EDGE_WINDOW)
+        at_end = current >= self.duration or (self._edge == 1 and current > self.duration - self.EDGE_WINDOW)
+        if delta < 0 and at_start and target < 0.0:  # MIX_ZAWIJANIE
             target = self.duration + delta
-        elif delta > 0 and current >= self.duration and target > self.duration:
+            self._edge = 0
+        elif delta > 0 and at_end and target > self.duration:
             target = delta
-        self.move(target)
+            self._edge = 0
+        else:
+            self._edge = -1 if target < 0.0 else 1 if target > self.duration else 0
+        self.position = max(0.0, min(self.duration, target))
 
     def maximum_overlap(self) -> float:
         cue = self.values["cue"]

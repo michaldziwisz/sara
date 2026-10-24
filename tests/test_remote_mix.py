@@ -229,6 +229,29 @@ def test_nudge_overlap_and_loop_semantics(mix_frame):
     assert request(session, "MixInfo").split("|")[2] == "-"
 
 
+def test_wrap_left_while_preview_is_playing(mix_frame, monkeypatch):
+    # Zgłoszenie Michała 25.10.2026: przy odsłuchu kółko w lewo nie zawijało,
+    # bo między ząbkami (ok. 50 ms) odsłuch przesuwa pozycję ponad zero.
+    frame, _, _ = mix_frame
+    clock = [1000.0]
+    monkeypatch.setattr("sara.remote.mix_control.time.perf_counter", lambda: clock[0])
+    frame._playback._preview_context = None
+    session = open_mix(frame)
+    assert request(session, "MixPos=@0") == "0|cue|5000|0|brak"
+    assert request(session, "MixPlay").endswith("|pozycja")
+    clock[0] += 0.05
+    assert request(session, "MixPos=-0.1").startswith("0|")  # najpierw stop na początku
+    clock[0] += 0.05  # odsłuch zdążył przesunąć pozycję na 0,05 s
+    assert request(session, "MixPos=-0.1").startswith("124900|")
+    # W prawo z końca przy odsłuchu: wraca na początek.
+    request(session, "MixPos=@125")
+    clock[0] += 0.05
+    request(session, "MixPos=+0.1")
+    clock[0] += 0.05
+    request(session, "MixPos=+0.1")
+    assert session.mix.state.position < 1.0
+
+
 def test_preview_calls_existing_paths_without_touching_air(mix_frame):
     frame, item, ctx = mix_frame
     contexts = frame._playback.contexts.copy()
