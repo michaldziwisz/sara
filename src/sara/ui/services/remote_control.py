@@ -42,7 +42,12 @@ def configure_remote_control(frame) -> None:
     owner = wx.EvtHandler()
     timer = wx.Timer(owner)
     hold = get_hold_controller(frame)
-    owner.Bind(wx.EVT_TIMER, lambda event: hold.sync(), timer)
+    def sync(event):
+        hold.sync()
+        owner = getattr(frame, "_remote_mix_owner", None)
+        if owner is not None and owner.mix is not None:
+            owner.mix.tick()
+    owner.Bind(wx.EVT_TIMER, sync, timer)
     frame._remote_hold_timer_owner = owner
     frame._remote_hold_timer = timer
     timer.Start(100)
@@ -50,6 +55,9 @@ def configure_remote_control(frame) -> None:
 
 
 def stop_remote_control(frame) -> None:
+    owner = getattr(frame, "_remote_mix_owner", None)
+    if owner is not None:
+        owner.close()
     server = getattr(frame, "_remote_server", None)
     frame._remote_server = None
     if server:

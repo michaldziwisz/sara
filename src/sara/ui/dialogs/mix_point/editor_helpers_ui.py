@@ -8,6 +8,9 @@ from typing import Dict, Optional
 import wx
 
 from sara.core.i18n import gettext as _
+from sara.core.mix_editing import (
+    assigned_value, collect_mix_values, consistent_loop_end, max_allowed_overlap,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -18,14 +21,7 @@ class MixPointEditorHelpersMixin:
         if position is None:
             position = self._current_position()
         row = self._rows[key]
-        if key == "segue_fade":
-            value = max(0.0, position)
-        elif row.mode == "duration":
-            value = max(0.0, self._duration - position)
-        else:
-            value = position
-        if key in {"overlap", "segue_fade"}:
-            value = min(value, self._max_allowed_overlap())
+        value = assigned_value(key, position, self._duration, self._max_allowed_overlap())
         row.spin.SetValue(value)
         if not row.checkbox.GetValue():
             row.checkbox.SetValue(True)
@@ -130,7 +126,7 @@ class MixPointEditorHelpersMixin:
     def _max_allowed_overlap(self) -> float:
         cue_val = max(0.0, self._current_cue_value() or 0.0)
         segue_val = self._current_segue_value()
-        return max(0.0, (self._duration or 0.0) - cue_val - max(0.0, segue_val))
+        return max_allowed_overlap(self._duration, cue_val, segue_val)
 
     def _clamp_overlap_spin(self) -> None:
         overlap_row = self._rows.get("overlap")
@@ -209,7 +205,7 @@ class MixPointEditorHelpersMixin:
         start_val = float(start_row.spin.GetValue())
         end_val = float(end_row.spin.GetValue())
         if end_val <= start_val:
-            adjusted = start_val + self._FINE_STEP
+            adjusted = consistent_loop_end(start_val, end_val, self._FINE_STEP)
             end_row.spin.SetValue(adjusted)
             self._update_point_label("loop_end")
 
@@ -284,30 +280,8 @@ class MixPointEditorHelpersMixin:
             self._active_row_key = key
 
     def _collect_mix_values(self) -> Dict[str, Optional[float]]:
-        results: Dict[str, Optional[float]] = {}
-        final_cue = None
-
-        for key in ("cue", "intro", "outro", "segue", "segue_fade", "overlap"):
-            row = self._rows[key]
-            if not row.checkbox.GetValue():
-                results[key] = None
-                if key == "cue":
-                    final_cue = 0.0
-                continue
-            value = float(row.spin.GetValue())
-            if key == "overlap":
-                value = min(value, self._max_allowed_overlap())
-            if row.mode == "absolute":
-                results[key] = value
-                if key == "cue":
-                    final_cue = value
-            elif row.mode == "relative":
-                cue_base = final_cue
-                if cue_base is None:
-                    cue_row = self._rows["cue"]
-                    cue_base = cue_row.spin.GetValue() if cue_row.checkbox.GetValue() else self._cue_base
-                results[key] = max(0.0, value - (cue_base or 0.0))
-            elif row.mode == "duration":
-                results[key] = max(0.0, value)
-
-        return results
+        values = {
+            key: float(self._rows[key].spin.GetValue()) if self._rows[key].checkbox.GetValue() else None
+            for key in ("cue", "intro", "outro", "segue", "segue_fade", "overlap")
+        }
+        return collect_mix_values(values, self._max_allowed_overlap())

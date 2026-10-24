@@ -13,6 +13,7 @@ from sara.core.playlist import PlaylistItemStatus, PlaylistItemType, PlaylistKin
 from sara.ui.controllers.playback.next_item import decide_next_item
 from sara.remote.main_playlist import main_panel, background_selection
 from sara.remote.hold import get_hold_controller
+from sara.remote.mix_control import MIX_COMMANDS, execute_mix
 
 
 def app_version() -> str:
@@ -38,6 +39,15 @@ class CommandSession:
         self.frame = frame
         self.version = program_version if program_version is not None else app_version()
         self._last_snapshot = None
+        self.mix = None
+
+    def close(self) -> None:
+        """Rozłączenie klienta porzuca tylko jego własną sesję punktów."""
+        if self.mix is not None:
+            self.mix.stop()
+            self.mix = None
+        if getattr(self.frame, "_remote_mix_owner", None) is self:
+            self.frame._remote_mix_owner = None
 
     def execute_line(self, line: str) -> list[str]:
         if "=" in line and "," in line:
@@ -221,6 +231,8 @@ class CommandSession:
         name, equals, value = command.partition("=")
         name = name.strip().casefold()
         value = value.strip()
+        if name in MIX_COMMANDS:
+            return [execute_mix(self, name, equals, value)]
         if equals and name not in {"selectindex", "trackinfo", "trackinfoex", "hold"}:
             return ["ERR unknown"]
         if name == "hold":

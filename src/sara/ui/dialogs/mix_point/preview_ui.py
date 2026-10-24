@@ -7,6 +7,8 @@ import time
 
 import wx
 
+from sara.core.mix_editing import segue_preview_window
+
 
 logger = logging.getLogger(__name__)
 
@@ -87,15 +89,11 @@ class MixPointPreviewMixin:
         fade_len = None
         if fade_row and fade_row.checkbox.GetValue():
             fade_len = max(0.0, float(fade_row.spin.GetValue()))
-        if fade_len is None or fade_len <= 0.0:
-            fade_len = self._default_fade_duration
-        max_window = self._max_allowed_overlap()
-        if max_window > 0.0:
-            fade_len = min(fade_len, max_window)
-        if fade_len <= 0.0:
-            logger.debug("Mix dialog: skipping segue preview (fade_len=%.3f)", fade_len)
+        window = segue_preview_window(fade_len, self._default_fade_duration, self._max_allowed_overlap())
+        if window is None:
+            logger.debug("Mix dialog: skipping segue preview (no fade)")
             return
-        pre_window = min(4.0, max(0.5, fade_len))
+        pre_window, fade_len = window
         values = self._collect_mix_values()
         values["_preview_pre_seconds"] = pre_window
         self._stop_preview()

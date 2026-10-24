@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import time
 
+from sara.core.mix_editing import nudge_target
+
 
 class MixPointPositionMixin:
     def _current_position(self) -> float:
@@ -49,10 +51,7 @@ class MixPointPositionMixin:
             if not row.checkbox.GetValue():
                 row.checkbox.SetValue(True)
                 self._toggle_point(key)
-            reference = row.spin.GetValue()
-            if row.mode == "duration" and key != "segue_fade":
-                reference = max(0.0, (self._duration or 0.0) - reference)
-            target = reference + delta
+            target = nudge_target(key, row.spin.GetValue(), self._duration, delta)
             # ruch punktu kończy bieżący podgląd
             self._stop_preview()
             self._set_position(target, restart_preview=False)

@@ -59,6 +59,19 @@ class MainThreadDispatcher:
             with self._lock:
                 self._pending.discard(future)
 
+    def post_cleanup(self, function: Callable) -> None:
+        """Sprzątanie po rozłączeniu nie wygasa, gdy GUI jest chwilowo zajęte."""
+        def invoke() -> None:
+            if self._closed:
+                return  # Usługa ramki sprząta przed zamknięciem dispatchera.
+            if threading.current_thread() is not threading.main_thread():
+                raise RuntimeError("Remote cleanup outside main thread")
+            try:
+                function()
+            except Exception:
+                logger.exception("Remote cleanup failed")
+        self._call_after(invoke)
+
     def close(self) -> None:
         with self._lock:
             self._closed = True
@@ -91,6 +104,10 @@ class _ClientHandler(socketserver.StreamRequestHandler):
                 self.wfile.write(("\r\n".join(responses) + "\r\n").encode("utf-8"))
         except (OSError, TimeoutError):
             return
+        finally:
+            close = getattr(session, "close", None)
+            if close is not None:
+                server.dispatcher.post_cleanup(close)
 
 
 class _LoopbackServer(socketserver.ThreadingTCPServer):

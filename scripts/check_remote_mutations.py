@@ -15,6 +15,29 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 MUTATIONS = (
     (
+        "mix-zapis-bez-propagacji", "sara.ui.controllers.mix.points",
+        "        frame._propagate_mix_points_for_path(\n",
+        "        (lambda **kwargs: None)(\n",
+        "tests/test_remote_mix_gui.py::test_window_and_session_write_identical_tags_model_and_propagation",
+    ),
+    (
+        "mix-zapis-bez-przeliczenia", "sara.ui.controllers.mix.points",
+        "    frame._apply_mix_trigger_to_playback(playlist_id=playlist_id, item=item, panel=panel)",
+        "    pass  # mutant: stary plan pozostaje",
+        "tests/test_remote_mix.py::test_save_reschedules_playing_track_and_reports_actual_plan",
+    ),
+    (
+        "mix-bez-walidacji", "sara.remote.mix_control",
+        "error = mix.state.validation_error()", "error = None",
+        "tests/test_remote_mix.py::test_invalid_order_keeps_file_model_and_session",
+    ),
+    (
+        "mix-cancel-zapisuje", "sara.remote.mix_control",
+        '    if name == "mixcancel":\n        session.close()',
+        '    if name == "mixcancel":\n        from sara.ui.controllers.mix.points import apply_mix_point_result\n        apply_mix_point_result(frame, mix.panel.model.id, mix.item, mix.state.get_result())\n        session.close()',
+        "tests/test_remote_mix.py::test_cancel_does_not_write_and_stops_preview",
+    ),
+    (
         "bind-wszystkie-interfejsy", "sara.remote.server",
         'super().__init__(("127.0.0.1", port), _ClientHandler)',
         'super().__init__(("0.0.0.0", port), _ClientHandler)',
@@ -22,7 +45,8 @@ MUTATIONS = (
     ),
     (
         "wykonanie-w-watku-klienta", "sara.remote.server",
-        "self._call_after(invoke)", "return function(*args)",
+        "            self._call_after(invoke)\n            return future.result(timeout=self.timeout)",
+        "            return function(*args)",
         "tests/test_remote_server.py::test_real_socket_commands_run_on_main_thread",
     ),
     (

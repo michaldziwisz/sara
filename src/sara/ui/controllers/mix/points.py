@@ -13,6 +13,17 @@ from sara.ui.dialogs.mix_point_dialog import MixPointEditorDialog
 
 
 def on_mix_points_configure(frame, playlist_id: str, item_id: str) -> None:
+    if getattr(frame, "_remote_mix_owner", None) is not None or getattr(frame, "_mix_points_dialog_open", False):
+        wx.Bell()
+        return
+    frame._mix_points_dialog_open = True
+    try:
+        _configure_mix_points(frame, playlist_id, item_id)
+    finally:
+        frame._mix_points_dialog_open = False
+
+
+def _configure_mix_points(frame, playlist_id: str, item_id: str) -> None:
     panel = frame._playlists.get(playlist_id)
     if panel is None:
         return
@@ -55,6 +66,14 @@ def on_mix_points_configure(frame, playlist_id: str, item_id: str) -> None:
         dialog.Destroy()
         frame._stop_preview()
 
+    apply_mix_point_result(frame, playlist_id, item, result)
+
+
+def apply_mix_point_result(frame, playlist_id: str, item, result: dict) -> None:
+    """Wspólny zapis wyniku okna i sesji TCP, bez zmiany ścieżki emisji."""
+    panel = frame._playlists.get(playlist_id)
+    if panel is None:
+        return
     mix_values = {
         "cue_in": result.get("cue"),
         "intro": result.get("intro"),
