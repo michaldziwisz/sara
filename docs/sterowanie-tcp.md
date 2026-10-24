@@ -49,7 +49,8 @@ Skróty klawiaturowe w SARZE pozostają bez zmian: działają na aktywnym panelu
 | --- | --- |
 | `Helo` | `SARA vX.Y.Z`, np. `SARA v0.0.37`. |
 | `Stat` | Siedem cyfr opisanych poniżej. |
-| `Play`, `Skip` | Muzyczna część akcji „Odtwórz następny” na głównej playliście, z zachowaniem automiksu, kolejki i naprzemiennego wyboru playlist. Odpowiedź: siedmiocyfrowy stan. |
+| `Play` | W trybie ręcznym działa jak Enter na głównej playliście: gdy są zaznaczone utwory, gra pierwszy z kolejki (kolejne po nim, po kolei), a bez kolejki gra podświetlony utwór. Podświetlony utwór, który już gra, nie jest uruchamiany od nowa. Bez podświetlenia, w automiksie i przy naprzemiennych playlistach: muzyczna część akcji „Odtwórz następny”. Odpowiedź: siedmiocyfrowy stan. |
+| `Skip` | Muzyczna część akcji „Odtwórz następny” na głównej playliście, z zachowaniem automiksu, kolejki i naprzemiennego wyboru playlist. Odpowiedź: siedmiocyfrowy stan. |
 | `Stop` | Dotychczasowa akcja zakończenia utworu z wyciszeniem, domyślnie F4. Czas wyciszenia oblicza istniejący kontroler. Odpowiedź: stan. |
 | `Instant Stop` | Dotychczasowa akcja zatrzymania bez wyciszenia, domyślnie F3. Odpowiedź: stan. |
 | `Pause` | Wstrzymanie jak F2. Kolejne Pause nie wznawia utworu i nie ogłasza ponownie pauzy. Odpowiedź: stan. |
