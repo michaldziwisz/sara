@@ -158,6 +158,7 @@ def test_service_shutdown_releases_without_start(service, shutdown):
         frame._jingles.stop_all = Mock()
         event = Mock()
         MainFrame._on_close(frame, event)
+        frame._playback.close_preloads.assert_called_once_with()
         event.Skip.assert_called_once()
     else:
         stop_remote_control(frame)

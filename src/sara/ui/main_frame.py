@@ -271,6 +271,7 @@ class MainFrame(wx.Frame):
     def _on_close(self, event: wx.CloseEvent) -> None:
         stop_remote_control(self)
         stop_auto_loudness(self)
+        self._playback.close_preloads()
         try:
             self._jingles.stop_all()
         except Exception:

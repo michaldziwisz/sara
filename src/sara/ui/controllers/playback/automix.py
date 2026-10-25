@@ -46,19 +46,20 @@ def set_auto_mix_enabled(frame, enabled: bool, *, reason: str | None = None, pan
     else:
         status = _("enabled") if enabled else _("disabled")
         frame._announce_event("auto_mix", f"{ANNOUNCEMENT_PREFIX}{_('Auto mix %s') % status}")
-    if enabled:
-        # jeśli automix włączamy podczas odtwarzania, ustaw tracker na bieżące utwory
-        for (pl_id, item_id) in list(getattr(frame._playback, "contexts", {}).keys()):
+    # Przy włączeniu i wyłączeniu zmienia się źródło następnego kandydata.
+    for (pl_id, item_id) in list(getattr(frame._playback, "contexts", {}).keys()):
+        if enabled:
             try:
                 frame._auto_mix_tracker.set_last_started(pl_id, item_id)
             except Exception:
                 pass
-            try:
-                playlist = frame._get_playlist_model(pl_id)
-                if playlist:
-                    frame._playback.schedule_next_preload(playlist, current_item_id=item_id)
-            except Exception:
-                pass
+        try:
+            playlist = frame._get_playlist_model(pl_id)
+            if playlist:
+                frame._playback.schedule_next_preload(playlist, current_item_id=item_id, sequence=enabled)
+        except Exception:
+            pass
+    if enabled:
         if panel is _CURRENT_PANEL:
             panel = frame._get_current_music_panel()
         if panel is not None:

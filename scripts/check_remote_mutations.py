@@ -15,6 +15,30 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 MUTATIONS = (
     (
+        "preload-nie-wraca-do-kolejki", "sara.ui.controllers.playback.automix",
+        'sequence=enabled',
+        'sequence=True',
+        "tests/test_playback_preload_handoff.py::test_disabling_automix_prepares_manual_candidate",
+    ),
+    (
+        "preload-gubienie-playera", "sara.ui.playback.device_selection",
+        'prepared = take_preloaded(playlist.id, device_id) if take_preloaded else None',
+        'prepared = None',
+        "tests/test_playback_preload_handoff.py::test_mix_start_reuses_prepared_factory_player_without_slow_open[True]",
+    ),
+    (
+        "preload-tylko-automiks", "sara.ui.controllers.playback.start",
+        '    if playlist.kind is PlaylistKind.MUSIC:\n        try:\n            frame._playback.schedule_next_preload',
+        '    if frame._auto_mix_enabled and playlist.kind is PlaylistKind.MUSIC:\n        try:\n            frame._playback.schedule_next_preload',
+        "tests/test_playback_preload_handoff.py::test_mix_start_reuses_prepared_factory_player_without_slow_open[False]",
+    ),
+    (
+        "preload-ebu-zapisuje-przygotowany", "sara.ui.services.auto_loudness",
+        'if any(path_key(path) == key for path in preloaded_paths()):',
+        'if False:',
+        "tests/test_auto_loudness.py::test_playing_gain_unchanged_and_save_deferred[prepared_controller]",
+    ),
+    (
         "loudness-bez-ogranicznika-tp", "sara.core.loudness",
         "gain = min(target - integrated, -1.0 - peak)  # LOUDNESS_TRUE_PEAK",
         "gain = target - integrated  # mutant: brak ogranicznika TP",

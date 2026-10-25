@@ -202,6 +202,9 @@ class AutoLoudnessService:
         # Odsłuch miksu może mieć dwa pliki, w tym czekający na start B.
         if playback.preview_context is not None:
             return True
+        preloaded_paths = getattr(playback, "preloaded_paths", lambda: [])
+        if any(path_key(path) == key for path in preloaded_paths()):
+            return True
         known_players = {id(context.player) for context in contexts}
         players = getattr(self.frame._audio_engine, "_players", {}).values()
         for player in players:

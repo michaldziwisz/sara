@@ -267,9 +267,12 @@ def start_playback(
     frame._maybe_focus_playing_item(panel, item.id)
     if item.has_loop() and item.loop_enabled:
         frame._announce_event("loop", _("Loop playing"))
-    if frame._auto_mix_enabled and playlist.kind is PlaylistKind.MUSIC:
+    # Ręczna kolejka również przechodzi po natywnym punkcie miksu.
+    if playlist.kind is PlaylistKind.MUSIC:
         try:
-            frame._playback.schedule_next_preload(playlist, current_item_id=item.id)
+            frame._playback.schedule_next_preload(
+                playlist, current_item_id=item.id, sequence=frame._auto_mix_enabled,
+            )
         except Exception:
             pass
     return True

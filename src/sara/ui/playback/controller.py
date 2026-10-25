@@ -7,6 +7,7 @@ import os
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, TYPE_CHECKING
 
@@ -26,6 +27,13 @@ if TYPE_CHECKING:  # pragma: no cover - tylko dla typowania
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _NextPreload:
+    signature: tuple[str | None, Path, float, bool]
+    player: Player
+    future: Future[bool]
 
 
 class PlaybackController(PlaybackMixerSupportMixin):
@@ -52,6 +60,8 @@ class PlaybackController(PlaybackMixerSupportMixin):
         self._preload_refetch_seconds = float(os.environ.get("SARA_PRELOAD_REFETCH_SECONDS", "60"))
         self._preload_executor: ThreadPoolExecutor | None = None
         self._preload_lock = threading.RLock()
+        self._next_preloads: dict[str, _NextPreload] = {}
+        self._preloads_closed = False
         self._warm_inflight: dict[Path, Future[int]] = {}
         self._warm_last: dict[Path, float] = {}
         # upewnij się, że cache playerów jest świeży po zmianach backendu
@@ -94,6 +104,7 @@ class PlaybackController(PlaybackMixerSupportMixin):
         return {context.device_id for context in self._playback_contexts.values()}
 
     def stop_playlist(self, playlist_id: str, *, fade_duration: float = 0.0) -> list[tuple[tuple[str, str], PlaybackContext]]:
+        self._discard_next_preload(playlist_id)
         keys_to_remove = [key for key in self._playback_contexts if key[0] == playlist_id]
         removed: list[tuple[tuple[str, str], PlaybackContext]] = []
         for key in keys_to_remove:
@@ -214,47 +225,96 @@ class PlaybackController(PlaybackMixerSupportMixin):
         self._auto_mix_state.clear()
 
     def clear_playlist_entries(self, playlist_id: str) -> None:
+        self._discard_next_preload(playlist_id)
         keys_to_remove = [key for key in self._playback_contexts if key[0] == playlist_id]
         for key in keys_to_remove:
             self._playback_contexts.pop(key, None)
             self._auto_mix_state.pop(key, None)
         self._cleanup_unused_mixers()
 
-    def schedule_next_preload(self, playlist: PlaylistModel, *, current_item_id: str | None) -> None:
+    def schedule_next_preload(
+        self, playlist: PlaylistModel, *, current_item_id: str | None, sequence: bool = False,
+    ) -> None:
         """Best-effort preload of the most likely next track in a playlist.
 
         This is intended to reduce start latency around mix points on slower storage.
         """
-        if not self._preload_enabled:
+        if not self._preload_enabled or self._preloads_closed:
+            self._discard_next_preload(playlist.id)
             return
-        next_item = self._resolve_next_preload_item(playlist, current_item_id=current_item_id)
-        if next_item is None:
-            return
-        if not next_item.path.exists():
+        next_item = self._resolve_next_preload_item(playlist, current_item_id=current_item_id, sequence=sequence)
+        if next_item is None or not next_item.path.exists():
+            self._discard_next_preload(playlist.id)
             return
 
         start_seconds = float(getattr(next_item, "cue_in_seconds", 0.0) or 0.0)
         allow_loop = bool(getattr(next_item, "loop_enabled", False) and getattr(next_item, "has_loop", lambda: False)())
         device_id = self._resolve_preload_device_id(playlist)
 
+        signature = (device_id, next_item.path, start_seconds, allow_loop)
+        pending = self._next_preloads.get(playlist.id)
+        if pending is not None and pending.signature == signature:
+            return
+        self._discard_next_preload(playlist.id)
         if device_id:
             try:
-                player = self._audio_engine.create_player(device_id)
+                # Osobny player: nie zastępuj grającego/PFL w cache silnika.
+                player = self._audio_engine.create_player_instance(device_id)
             except Exception:
                 player = None
             if player is not None:
                 preloader = getattr(player, "preload", None)
                 if callable(preloader):
-                    self._ensure_preload_executor().submit(
+                    logger.debug("Preload scheduled playlist=%s device=%s path=%s cue=%.3f loop=%s",
+                                 playlist.id, device_id, next_item.path, start_seconds, allow_loop)
+                    future = self._ensure_preload_executor().submit(
                         self._safe_preload_call,
                         preloader,
                         str(next_item.path),
                         start_seconds=start_seconds,
                         allow_loop=allow_loop,
                     )
+                    self._next_preloads[playlist.id] = _NextPreload(signature, player, future)
                     return
 
+        logger.debug("Preload file warmup playlist=%s path=%s", playlist.id, next_item.path)
         self._schedule_file_warmup(next_item.path)
+
+    def _discard_next_preload(self, playlist_id: str) -> None:
+        pending = self._next_preloads.pop(playlist_id, None)
+        if pending is not None:
+            pending.future.cancel()
+            # Jeden executor: zwolnienie zawsze PO ewentualnym trwającym otwarciu,
+            # nigdy join/future.result w GUI. Bariera EBU obejmuje też sprzątanie.
+            self._ensure_preload_executor().submit(pending.player.stop)
+            logger.debug("Preload discarded playlist=%s path=%s", playlist_id, pending.signature[1])
+
+    def _take_preloaded_player(self, playlist_id: str, device_id: str) -> Player | None:
+        pending = self._next_preloads.get(playlist_id)
+        if (pending is not None and pending.signature[0] == device_id
+                and pending.future.done() and not pending.future.cancelled()
+                and pending.future.result()):
+            self._next_preloads.pop(playlist_id)
+            # create_player() jest fabryką, NIE odczytem cache. Przekaż dokładnie
+            # tę instancję, która ma gotowy strumień; play sprawdzi path/cue/loop.
+            self._audio_engine._players[device_id] = pending.player
+            logger.debug("Preload handed off playlist=%s device=%s path=%s",
+                         playlist_id, device_id, pending.signature[1])
+            return pending.player
+        self._discard_next_preload(playlist_id)
+        logger.debug("Preload miss playlist=%s device=%s", playlist_id, device_id)
+        return None
+
+    def preloaded_paths(self) -> list[Path]:
+        """Ścieżki chronione przed zapisem tagów także przed publikacją uchwytu."""
+        return [pending.signature[1] for pending in self._next_preloads.values()]
+
+    def close_preloads(self) -> None:
+        self._preloads_closed = True
+        for playlist_id in list(self._next_preloads):
+            self._discard_next_preload(playlist_id)
+        if self._preload_executor is not None:
+            self._preload_executor.shutdown(wait=False)
 
     def _ensure_preload_executor(self) -> ThreadPoolExecutor:
         with self._preload_lock:
@@ -262,11 +322,16 @@ class PlaybackController(PlaybackMixerSupportMixin):
                 self._preload_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sara-preload")
             return self._preload_executor
 
-    def _safe_preload_call(self, preloader, source_path: str, *, start_seconds: float, allow_loop: bool) -> None:
+    def _safe_preload_call(self, preloader, source_path: str, *, start_seconds: float, allow_loop: bool) -> bool:
+        started = time.perf_counter()
         try:
-            preloader(source_path, start_seconds=start_seconds, allow_loop=allow_loop)
+            ready = bool(preloader(source_path, start_seconds=start_seconds, allow_loop=allow_loop))
         except Exception as exc:  # pylint: disable=broad-except
             logger.debug("Preload failed for %s: %s", source_path, exc)
+            ready = False
+        logger.debug("Preload finished path=%s ready=%s elapsed_ms=%.3f",
+                     source_path, ready, (time.perf_counter() - started) * 1000)
+        return ready
 
     def _schedule_file_warmup(self, path: Path) -> None:
         max_bytes = int(self._preload_warm_bytes)
@@ -295,7 +360,17 @@ class PlaybackController(PlaybackMixerSupportMixin):
         playlist: PlaylistModel,
         *,
         current_item_id: str | None,
+        sequence: bool = False,
     ) -> PlaylistItem | None:
+        if sequence:
+            # Automiks odtwarza kolejność z zawijaniem, również pozycje PLAYED.
+            items = playlist.items
+            start_index = playlist.index_of(current_item_id) if current_item_id else -1
+            for offset in range(1, len(items) + 1):
+                candidate = items[(start_index + offset) % len(items)]
+                if candidate.id != current_item_id and candidate.status is not PlaylistItemStatus.PLAYING:
+                    return candidate
+            return None
         selected_id = playlist.next_selected_item_id()
         if selected_id and selected_id != current_item_id:
             item = playlist.get_item(selected_id)

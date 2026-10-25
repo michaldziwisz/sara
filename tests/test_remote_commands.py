@@ -44,7 +44,8 @@ class Frame:
         self._layout = SimpleNamespace(state=SimpleNamespace(order=["music"]))
         self._last_started_item_id = {}
         self._auto_mix_tracker = AutoMixTracker()
-        self._playback = SimpleNamespace(contexts={}, auto_mix_state={})
+        self._playback = SimpleNamespace(contexts={}, auto_mix_state={},
+                                         close_preloads=Mock(), schedule_next_preload=Mock())
         self._action_by_id = {10: "pause", 11: "stop", 12: "fade"}
         self._on_global_play_next = Mock()
         self._start_next_from_playlist = Mock(return_value=True)

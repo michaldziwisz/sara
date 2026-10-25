@@ -105,7 +105,9 @@ def ensure_player(controller, playlist: PlaylistModel) -> tuple[Player, str, int
                     logger.warning("Mixer unavailable for %s, falling back to direct player: %s", device_id, exc)
                     effective_use_mixer = False
             if not effective_use_mixer:
-                player = controller._audio_engine.create_player(device_id)
+                take_preloaded = getattr(controller, "_take_preloaded_player", None)
+                prepared = take_preloaded(playlist.id, device_id) if take_preloaded else None
+                player = prepared if prepared is not None else controller._audio_engine.create_player(device_id)
             return player, device_id, slot_index
         except ValueError:
             attempts += 1

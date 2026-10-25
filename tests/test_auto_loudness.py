@@ -131,7 +131,7 @@ def test_foreign_gain_is_replaced_and_duplicate_paths_propagate(harness, tmp_pat
     assert len(calls) == 1
 
 
-@pytest.mark.parametrize('busy', ['playing', 'paused', 'preloaded', 'preview', 'stream_without_context'])
+@pytest.mark.parametrize('busy', ['playing', 'paused', 'preloaded', 'prepared_controller', 'preview', 'stream_without_context'])
 def test_playing_gain_unchanged_and_save_deferred(harness, tmp_path, busy):
     frame, service, calls, drain = harness
     item = add_tracks(frame, tmp_path).items[0]
@@ -141,6 +141,8 @@ def test_playing_gain_unchanged_and_save_deferred(harness, tmp_path, busy):
         frame._playback.contexts[('list', item.id)] = SimpleNamespace(path=item.path, player=player)
     elif busy == 'preloaded':
         player._preloaded_path = item.path
+    elif busy == 'prepared_controller':
+        frame._playback.preloaded_paths = lambda: [item.path]
     elif busy == 'stream_without_context':
         player._stream = 1  # BASS może nadal wygaszać po usunięciu kontekstu.
     else:
@@ -152,6 +154,7 @@ def test_playing_gain_unchanged_and_save_deferred(harness, tmp_path, busy):
     assert not extract_metadata(item.path).sara_loudness
     frame._playback.contexts.clear()
     frame._playback.preview_context = None
+    frame._playback.preloaded_paths = lambda: []
     player._preloaded_path = None
     player._stream = 0
     service.poll()

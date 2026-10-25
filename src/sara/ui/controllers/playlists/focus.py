@@ -127,6 +127,9 @@ def on_toggle_selection(frame, playlist_id: str, item_id: str) -> None:
     if not playlist:
         return
     selected = playlist.toggle_selection(item_id)
+    context = frame._get_playback_context(playlist_id)
+    if context is not None:
+        frame._playback.schedule_next_preload(playlist, current_item_id=context[0][1])
     panel = frame._playlists.get(playlist_id)
     if isinstance(panel, PlaylistPanel):
         try:
