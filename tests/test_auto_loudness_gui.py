@@ -35,13 +35,26 @@ def app():
 
 
 def pump(predicate, timeout=4):
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        wx.Yield()
-        if predicate():
-            return
-        time.sleep(0.005)
-    assert predicate(), 'Nie otrzymano wyniku w pętli wx'
+    # Prawdziwa MainLoop jak w działającej SARZE. Na Windows wx.Timer nie
+    # dostarcza zdarzeń przez samo wx.Yield poza pętlą główną (pomiar
+    # 25.10.2026: 0 tyknięć w 1 s przez Yield, 10 w MainLoop).
+    app = wx.GetApp()
+    state = {'ok': predicate()}
+    if not state['ok']:
+        deadline = time.monotonic() + timeout
+
+        def check():
+            if predicate():
+                state['ok'] = True
+                app.ExitMainLoop()
+            elif time.monotonic() >= deadline:
+                app.ExitMainLoop()
+            else:
+                wx.CallLater(10, check)
+
+        wx.CallLater(10, check)
+        app.MainLoop()
+    assert state['ok'] or predicate(), 'Nie otrzymano wyniku w pętli wx'
 
 
 @pytest.fixture
