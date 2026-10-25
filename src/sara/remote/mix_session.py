@@ -11,7 +11,9 @@ from sara.core.mix_editing import (
 class MixSession:
     def __init__(self, *, duration: float, values: dict[str, float | None], loop_auto_enabled: bool = False):
         self.duration = max(0.0, duration)
-        self.values = {key: values.get(key) for key in POINT_ORDER}
+        # Tylko sesja stołu: okno nadal dopuszcza czasy do co najmniej 24 h.
+        self.values = {key: self._bounded_value(key, value) if (value := values.get(key)) is not None else None
+                       for key in POINT_ORDER}
         self.cue_base = self.values["cue"] or 0.0
         # Wyłączone pola zachowują wartość tak jak SpinCtrl okna.
         self._stored = {key: value or 0.0 for key, value in self.values.items()}
@@ -20,6 +22,7 @@ class MixSession:
         self.loop_auto_enabled = loop_auto_enabled
         self.point = "cue"
         self._edge = 0
+        self._last_shift = None
         self.position = min(self.duration, max(0.0, self.cue_base))
         self._initial = self.values.copy()
         self._undo = []
@@ -45,34 +48,46 @@ class MixSession:
         else:
             self.point = point
 
-    EDGE_WINDOW = 1.0
+    # Ciągły obrót stoi na brzegu. Osobny gest po pół sekundy zawija,
+    # a pięć sekund zapasu przed końcem pozwala usłyszeć utwór po przeskoku.
+    WRAP_PAUSE = 0.5
+    WRAP_LEAD = 5.0
+    LOOP_STEP = 0.01
 
     def move(self, position: float) -> None:
-        position = max(0.0, min(self.duration, position))
-        if position != self.position:  # play_from po shift() podaje tę samą pozycję
-            self._edge = 0
-        self.position = position
+        # Jawne @, Nudge i Undo kasują gest, także przy tej samej liczbie.
+        self._edge = 0
+        self._last_shift = None
+        self.position = max(0.0, min(self.duration, position))
 
-    def shift(self, current: float, delta: float) -> None:
-        """Ruch względny kółkiem: najpierw zatrzymanie na brzegu utworu, a dalszy
-        ruch w tę samą stronę przeskakuje na drugi koniec (decyzja Michała
-        z 25.10.2026: z początku szybko na koniec, np. do ustawienia miksu)."""
+    def shift(self, current: float, delta: float, now: float) -> None:
+        """Zatrzymanie na brzegu; przeskok tylko po przerwie od ostatniego ząbka.
+
+        Zegar dostarcza adapter. Dryf odsłuchu nie jest nowym gestem operatora
+        i nie kasuje brzegu, nawet gdy pozycja oddaliła się od niego o sekundy.
+        """
         current = max(0.0, min(self.duration, current))
+        direction = -1 if delta < 0 else 1 if delta > 0 else 0
+        same_edge = direction != 0 and self._edge == direction  # MIX_BRZEG_ODSLUCH
+        paused = self._last_shift is not None and now - self._last_shift >= self.WRAP_PAUSE
         target = current + delta
-        # Przy trwającym odsłuchu pozycja zdąży urosnąć o czas między ząbkami
-        # (u Michała ok. 50 ms), więc „jestem na początku” to: poprzedni ruch
-        # uderzył w brzeg i od tego czasu minęło mniej niż EDGE_WINDOW.
-        at_start = current <= 0.0 or (self._edge == -1 and current < self.EDGE_WINDOW)
-        at_end = current >= self.duration or (self._edge == 1 and current > self.duration - self.EDGE_WINDOW)
-        if delta < 0 and at_start and target < 0.0:  # MIX_ZAWIJANIE
-            target = self.duration + delta
+        if same_edge and paused:  # MIX_ZAWIJANIE
+            target = max(0.0, self.duration - self.WRAP_LEAD) if direction < 0 else 0.0
             self._edge = 0
-        elif delta > 0 and at_end and target > self.duration:
-            target = delta
-            self._edge = 0
+        elif same_edge:
+            target = 0.0 if direction < 0 else self.duration
         else:
-            self._edge = -1 if target < 0.0 else 1 if target > self.duration else 0
+            self._edge = -1 if delta < 0 and target <= 0 else 1 if delta > 0 and target >= self.duration else 0
+        self._last_shift = now
         self.position = max(0.0, min(self.duration, target))
+
+    def _bounded_value(self, key: str, value: float) -> float:
+        # Zostaw miejsce na consistent_loop_end, bez zmiany wspólnej funkcji
+        # ani SpinCtrl okna. Krótszy plik ma pętlę od 0 do swojej długości.
+        upper = max(0.0, self.duration - self.LOOP_STEP) if key == "loop_start" else self.duration
+        # Przycinamy PO zaokrągleniu: round(s, 3) potrafi przekroczyć długość
+        # i round(s * 1000) z MixOpen, zwłaszcza przy połówkach milisekund.
+        return max(0.0, min(upper, round(value, 3)))  # MIX_GRANICA_PUNKTU
 
     def maximum_overlap(self) -> float:
         cue = self.values["cue"]
@@ -93,26 +108,26 @@ class MixSession:
         if start is None:
             self.values["loop_end"] = None
         elif end is not None:
-            end = consistent_loop_end(start, end)
+            end = min(self.duration, consistent_loop_end(start, end, self.LOOP_STEP))
             self.values["loop_end"] = end
             self._stored["loop_end"] = end
 
     def _enable(self, key: str) -> None:
         if self.values[key] is not None:
             return
-        self.values[key] = self._stored[key]
+        self.values[key] = self._bounded_value(key, self._stored[key])
         if key == "loop_end":
             if self.values["loop_start"] is None:
-                self.values["loop_start"] = self._stored["loop_start"]
+                self.values["loop_start"] = self._bounded_value("loop_start", self._stored["loop_start"])
         if key in {"loop_start", "loop_end"}:
             self._ensure_loop_consistency()
 
     def _assign(self, position: float) -> None:
         key = self.point
         value = assigned_value(key, position, self.duration, self.maximum_overlap())
-        # Takie same granice i precyzja jak SpinCtrlDouble (3 cyfry).
-        upper = self.duration if key in {"overlap", "segue_fade"} else max(self.duration, 86400.0)
-        self._stored[key] = round(max(0.0, min(upper, value)), 3)
+        self._stored[key] = self._bounded_value(key, value)
+        if key in {"overlap", "segue_fade"}:
+            self._stored[key] = min(self._stored[key], self.maximum_overlap())
         was_enabled = self.values[key] is not None
         if was_enabled:
             self.values[key] = self._stored[key]
@@ -145,6 +160,7 @@ class MixSession:
     def undo(self) -> None:
         if self._undo:
             self.values, self._stored, self.position = self._undo.pop()
+        self.move(self.position)
 
     def validation_error(self) -> str | None:
         # Punkty w tym samym miejscu są dozwolone jak w oknie (np. Cue 0 i Intro 0);

@@ -91,15 +91,33 @@ MUTATIONS = (
     ),
     (
         "mix-bez-zawijania", "sara.remote.mix_session",
-        "if delta < 0 and at_start and target < 0.0:  # MIX_ZAWIJANIE",
+        "if same_edge and paused:  # MIX_ZAWIJANIE",
         "if False:  # mutant: kółko staje na początku",
         "tests/test_remote_mix.py::test_navigation_clamp_set_clear_and_undo",
     ),
     (
         "mix-zawijanie-bez-odsluchu", "sara.remote.mix_session",
-        "at_start = current <= 0.0 or (self._edge == -1 and current < self.EDGE_WINDOW)",
-        "at_start = current <= 0.0  # mutant: odsłuch przesuwa pozycję",
+        "same_edge = direction != 0 and self._edge == direction  # MIX_BRZEG_ODSLUCH",
+        "same_edge = direction != 0 and self._edge == direction and current in (0.0, self.duration)",
         "tests/test_remote_mix.py::test_wrap_left_while_preview_is_playing",
+    ),
+    (
+        "mix-przeskok-bez-przerwy", "sara.remote.mix_session",
+        "if same_edge and paused:  # MIX_ZAWIJANIE",
+        "if same_edge:  # mutant: ciągły obrót przeskakuje",
+        "tests/test_remote_mix.py::test_navigation_clamp_set_clear_and_undo",
+    ),
+    (
+        "mix-bez-wznowienia-po-eof", "sara.remote.mix_control",
+        "self._resume_preview = natural_end  # MIX_WZNOWIENIE_EOF",
+        "self._resume_preview = False  # mutant: kółko milczy po EOF",
+        "tests/test_remote_mix.py::test_natural_preview_end_resumes_on_wheel",
+    ),
+    (
+        "mix-punkt-poza-utworem", "sara.remote.mix_session",
+        "return max(0.0, min(upper, round(value, 3)))  # MIX_GRANICA_PUNKTU",
+        "return max(0.0, round(value, 3))  # mutant: brak granicy długości",
+        "tests/test_remote_mix.py::test_log_sequence_loop_start_at_eof_then_nudge",
     ),
     (
         "mix-rowne-punkty-odrzucone", "sara.remote.mix_session",

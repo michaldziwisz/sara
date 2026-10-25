@@ -21,14 +21,29 @@ class MixControl:
         self._deadline = None
         self._anchor_started = None
         self._preview_context = None
+        self._resume_preview = False
 
     def tick(self) -> None:
-        if self.preview == "brak":
-            return
         playback = self.frame._playback
-        if hasattr(playback, "_preview_context") and playback._preview_context is not self._preview_context:
-            # Odsłuch skończył się albo użytkownik uruchomił inny z klawiatury.
+        context = getattr(playback, "_preview_context", self._preview_context)
+        if self.preview == "brak":
+            # Także po EOF klawiatura może przejąć PFL. Nie odzyskuj go kółkiem.
+            if context is not None:
+                self._resume_preview = False
+            return
+        if context is not self._preview_context:
+            position = self.current_position()
+            # Callback EOF usuwa nasz kontekst (None), klawiatura zastępuje go
+            # innym. MixStop/MixPlay/MixUndo/Cancel przechodzą przez stop(),
+            # który ZAWSZE kasuje zamiar wznowienia. Nie zgadujemy końca z zegara:
+            # callback może wyprzedzić estymatę pozycji. Sam upływ czasu bez
+            # utraty kontekstu nie wystarcza; koniec okna przejścia też nie jest EOF.
+            natural_end = (context is None and self._preview_context is not None
+                           and self._anchor_started is not None)
+            # Dryf ani koniec odsłuchu nie są nowym gestem operatora.
+            self.state.position = self.state.duration if natural_end else position
             self._forget_preview()
+            self._resume_preview = natural_end  # MIX_WZNOWIENIE_EOF
         elif self._deadline is not None and time.perf_counter() >= self._deadline:
             self.stop()
 
@@ -37,6 +52,7 @@ class MixControl:
         self._anchor_started = None
         self._deadline = None
         self._preview_context = None
+        self._resume_preview = False
 
     def stop(self) -> None:
         self.tick_if_replaced()
@@ -69,7 +85,9 @@ class MixControl:
 
     def play_from(self, position: float, mode: str, loop_range=None) -> bool:
         self.stop()
-        self.state.move(position)
+        # Restart po MixPos nie jest osobnym ruchem operatora.
+        if position != self.state.position:
+            self.state.move(position)
         ok = self.frame._playback.start_preview(self.item, self.state.position, loop_range=loop_range)
         if ok:
             self._started(mode)
@@ -135,11 +153,11 @@ class MixControl:
             if not math.isfinite(amount):
                 return "ERR syntax"
             if name == "mixpos":
-                active = self.preview != "brak"
+                active = self.preview != "brak" or self._resume_preview
                 if value.startswith("@"):
                     self.state.move(amount)
                 else:
-                    self.state.shift(self.current_position(), amount)
+                    self.state.shift(self.current_position(), amount, time.perf_counter())
                 if active and not self.play_from(self.state.position, "pozycja"):
                     return "ERR pfl"
             else:

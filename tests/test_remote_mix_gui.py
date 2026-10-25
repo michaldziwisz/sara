@@ -158,3 +158,22 @@ def test_remote_session_prevents_second_editor_and_shutdown_cancels(app, mix_fra
     assert request(session, "MixInfo") == "ERR nosession"
     assert item.intro_seconds is None
     frame._stop_preview.assert_called()
+
+
+def test_dialog_keeps_its_existing_bounds_and_loop_consistency(app, mix_frame):
+    _, item, _ = mix_frame
+    dialog = make_dialog(item)
+    try:
+        dialog._suppress_auto_preview = True
+        for key in ("cue", "intro", "outro", "segue", "loop_start", "loop_end"):
+            assert dialog._rows[key].spin.GetMax() == 86400.0
+        for key in ("loop_start", "loop_end"):
+            row = dialog._rows[key]
+            row.checkbox.SetValue(True)
+            row.spin.SetValue(item.duration_seconds)
+        dialog._ensure_loop_consistency()
+        # Granica sesji stołu NIE zmieniła zachowania okna ani wspólnej funkcji.
+        assert dialog._rows["loop_end"].spin.GetValue() == pytest.approx(item.duration_seconds + 0.01)
+    finally:
+        dialog.Destroy()
+        wx.Yield()

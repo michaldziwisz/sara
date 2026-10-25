@@ -108,19 +108,26 @@ def test_busy_empty_and_sanitized_title(mix_frame):
     assert request(session, "MixOpen") == "ERR empty"
 
 
-def test_navigation_clamp_set_clear_and_undo(mix_frame):
+def test_navigation_clamp_set_clear_and_undo(mix_frame, monkeypatch):
     frame, _, _ = mix_frame
+    clock = [1000.0]
+    monkeypatch.setattr("sara.remote.mix_control.time.perf_counter", lambda: clock[0])
     session = open_mix(frame)
     assert request(session, "MixPoint=prev") == "5000|loop_end|-|0|brak"
     assert request(session, "MixPoint=next") == "5000|cue|5000|0|brak"
     assert request(session, "MixPos=-99") == "0|cue|5000|0|brak"
     assert request(session, "MixPos=+999") == "125000|cue|5000|0|brak"
-    # Na brzegu dalszy ruch w tę samą stronę przeskakuje na drugi koniec.
-    assert request(session, "MixPos=+0.1") == "100|cue|5000|0|brak"
+    # Ciągły obrót stoi, dopiero przerwa co najmniej 0,5 s pozwala przeskoczyć.
+    assert request(session, "MixPos=+0.1") == "125000|cue|5000|0|brak"
+    clock[0] += 0.5
+    assert request(session, "MixPos=+0.1") == "0|cue|5000|0|brak"
     assert request(session, "MixPos=-0.1") == "0|cue|5000|0|brak"
-    assert request(session, "MixPos=-0.1") == "124900|cue|5000|0|brak"
-    assert request(session, "MixPos=-1") == "123900|cue|5000|0|brak"
+    clock[0] += 0.5
+    assert request(session, "MixPos=-0.1") == "120000|cue|5000|0|brak"
+    assert request(session, "MixPos=-1") == "119000|cue|5000|0|brak"
     assert request(session, "MixPos=@0") == "0|cue|5000|0|brak"
+    assert request(session, "MixPos=-5") == "0|cue|5000|0|brak"
+    clock[0] += 0.5
     assert request(session, "MixPos=-5") == "120000|cue|5000|0|brak"
     assert request(session, "MixPos=@3") == "3000|cue|5000|0|brak"
     assert request(session, "MixPos=-5") == "0|cue|5000|0|brak"  # najpierw stop na początku
@@ -242,14 +249,19 @@ def test_wrap_left_while_preview_is_playing(mix_frame, monkeypatch):
     clock[0] += 0.05
     assert request(session, "MixPos=-0.1").startswith("0|")  # najpierw stop na początku
     clock[0] += 0.05  # odsłuch zdążył przesunąć pozycję na 0,05 s
-    assert request(session, "MixPos=-0.1").startswith("124900|")
-    # W prawo z końca przy odsłuchu: wraca na początek.
+    assert request(session, "MixPos=-0.1").startswith("0|")
+    clock[0] += 2.0  # dryf większy od dawnego EDGE_WINDOW nie kasuje brzegu
+    assert request(session, "MixPos=-0.1").startswith("120000|")
+    frame._playback.start_preview.assert_called_with(session.mix.item, 120.0, loop_range=None)
+    # W prawo też najpierw brzeg, potem przerwa i przeskok na początek.
     request(session, "MixPos=@125")
     clock[0] += 0.05
-    request(session, "MixPos=+0.1")
+    assert request(session, "MixPos=+0.1").startswith("125000|")
     clock[0] += 0.05
-    request(session, "MixPos=+0.1")
-    assert session.mix.state.position < 1.0
+    assert request(session, "MixPos=+0.1").startswith("125000|")
+    clock[0] += 0.5
+    assert request(session, "MixPos=+0.1").startswith("0|")
+    frame._playback.start_preview.assert_called_with(session.mix.item, 0.0, loop_range=None)
 
 
 def test_preview_calls_existing_paths_without_touching_air(mix_frame):
@@ -440,3 +452,213 @@ def test_negative_point_from_old_item_is_unset():
     session = MixSession.from_item(fake)
     assert session.values["intro"] is None and session.values["outro"] is None
     assert all(v is None or v >= 0 for v in session.values.values())
+
+
+@pytest.fixture
+def preview_clock(mix_frame, monkeypatch):
+    frame, _, _ = mix_frame
+    clock = [1000.0]
+    monkeypatch.setattr("sara.remote.mix_control.time.perf_counter", lambda: clock[0])
+    frame._playback._preview_context = None
+    def start(*args, **kwargs):
+        frame._playback._preview_context = object()
+        return True
+    frame._playback.start_preview.side_effect = start
+    frame._stop_preview.side_effect = lambda: setattr(frame._playback, "_preview_context", None)
+    return clock
+
+
+@pytest.mark.parametrize("direction, start, edge", [("-", 0.2, 0.0), ("+", 124.8, 125.0)])
+def test_continuous_wheel_stays_at_edge(mix_frame, preview_clock, direction, start, edge):
+    frame, _, _ = mix_frame
+    session = open_mix(frame)
+    request(session, f"MixPos=@{start}")
+    request(session, "MixPlay")
+    positions = []
+    for _ in range(30):
+        preview_clock[0] += 0.05
+        request(session, f"MixPos={direction}0.1")
+        positions.append(session.mix.state.position)
+    assert positions[-1] == edge
+    assert all(0 <= p <= start if direction == "-" else start <= p <= edge for p in positions)
+    assert frame._playback.start_preview.call_count == 31
+
+
+@pytest.mark.parametrize("direction, start, target", [("-", 0, 120), ("+", 125, 0)])
+@pytest.mark.parametrize("pause", [0.499, 0.5, 2.0])
+@pytest.mark.parametrize("step", [0.1, 5])
+def test_wrap_requires_pause_since_last_impulse(mix_frame, preview_clock, direction, start, target, pause, step):
+    frame, _, _ = mix_frame
+    session = open_mix(frame)
+    request(session, f"MixPos=@{start}")
+    request(session, "MixPlay")
+    request(session, f"MixPos={direction}{step}")
+    # Każdy ząbek odnawia czas, nie tylko pierwsze uderzenie w brzeg.
+    for _ in range(12):
+        preview_clock[0] += 0.05
+        assert int(request(session, f"MixPos={direction}{step}").split("|")[0]) == start * 1000
+    preview_clock[0] += pause
+    response = request(session, f"MixPos={direction}{step}")
+    assert int(response.split("|")[0]) == (target if pause >= 0.5 else start) * 1000
+
+
+@pytest.mark.parametrize("command", ["MixPos=+0.1", "MixPos=@0", "MixNudge=+0.1", "MixUndo"])
+def test_explicit_position_change_clears_edge(mix_frame, preview_clock, command):
+    frame, _, _ = mix_frame
+    session = open_mix(frame)
+    request(session, "MixPos=@0")
+    request(session, "MixPos=-0.1")
+    request(session, command)
+    preview_clock[0] += 2
+    # Nawet @0 (bez zmiany liczby) oznacza nowy, jawny wybór pozycji.
+    assert int(request(session, "MixPos=-99").split("|")[0]) == 0
+
+
+@pytest.mark.parametrize("duration", [0, 0.005, 3.0, 5.0])
+def test_wrap_short_track_lands_at_zero(mix_frame, preview_clock, duration):
+    frame, item, _ = mix_frame
+    item.duration_seconds = duration
+    session = CommandSession(frame)
+    request(session, "MixOpen")
+    request(session, "MixPos=-99")
+    preview_clock[0] += 0.5
+    assert request(session, "MixPos=-0.1").startswith("0|")
+
+
+def test_natural_preview_end_resumes_on_wheel(mix_frame, preview_clock):
+    frame, item, _ = mix_frame
+    session = open_mix(frame)
+    request(session, "MixPos=@124.9")
+    request(session, "MixPlay")
+    preview_clock[0] += 0.2
+    frame._playback._preview_context = None  # callback końca pliku
+    assert request(session, "MixInfo").endswith("|brak")
+    preview_clock[0] += 10  # polling nie gubi zamiaru odsłuchu
+    response = request(session, "MixPos=-0.1")
+    assert response.startswith("124900|") and response.endswith("|pozycja")
+    frame._playback.start_preview.assert_called_with(item, 124.9, loop_range=None)
+
+
+@pytest.mark.parametrize("command", ["MixStop", "MixPlay", "MixUndo"])
+def test_operator_stop_does_not_resume_on_wheel(mix_frame, preview_clock, command):
+    frame, _, _ = mix_frame
+    session = open_mix(frame)
+    request(session, "MixPlay")
+    request(session, command)
+    calls = frame._playback.start_preview.call_count
+    preview_clock[0] += 200
+    assert request(session, "MixPos=-0.1").endswith("|brak")
+    assert frame._playback.start_preview.call_count == calls
+
+
+@pytest.mark.parametrize("after_eof", [False, True])
+def test_keyboard_preview_takeover_revokes_resume(mix_frame, preview_clock, after_eof):
+    frame, _, _ = mix_frame
+    session = open_mix(frame)
+    request(session, "MixPos=@124.9")
+    request(session, "MixPlay")
+    if after_eof:
+        preview_clock[0] += 0.2
+        frame._playback._preview_context = None
+        request(session, "MixInfo")
+    foreign = object()
+    frame._playback._preview_context = foreign
+    calls = frame._playback.start_preview.call_count
+    stops = frame._stop_preview.call_count
+    assert request(session, "MixPos=-0.1").endswith("|brak")
+    assert frame._playback._preview_context is foreign
+    frame._playback._preview_context = None
+    assert request(session, "MixPos=-0.1").endswith("|brak")
+    assert frame._playback.start_preview.call_count == calls
+    assert frame._stop_preview.call_count == stops
+
+
+def assert_mix_within_duration(response, duration_ms):
+    position, point, value, changed, preview = response.split("|")
+    assert 0 <= int(position) <= duration_ms
+    assert value == "-" or 0 <= int(value) <= duration_ms
+
+
+def test_log_sequence_loop_start_at_eof_then_nudge(mix_frame, preview_clock):
+    frame, item, _ = mix_frame
+    item.duration_seconds = 272.613
+    session = CommandSession(frame)
+    duration_ms = int(request(session, "MixOpen").split("|")[3])
+    request(session, "MixPos=@272.513")
+    request(session, "MixPlay")
+    request(session, "MixPos=@272.613")
+    preview_clock[0] += 0.2
+    frame._playback._preview_context = None
+    for command in ("MixPoint=loop_start", "MixSet", "MixNudge=+0.1", "MixPoint=loop_end", "MixSet"):
+        assert_mix_within_duration(request(session, command), duration_ms)
+    assert session.mix.state.values["loop_start"] <= item.duration_seconds - 0.01
+    assert session.mix.state.values["loop_start"] < session.mix.state.values["loop_end"] <= item.duration_seconds
+
+
+@pytest.mark.parametrize("point", ["cue", "intro", "outro", "segue", "segue_fade", "overlap", "loop_start", "loop_end"])
+@pytest.mark.parametrize("duration", [272.613, 272.6135, 272.6145, 0.005, 0.0])
+def test_set_and_nudge_never_exceed_duration(mix_frame, preview_clock, point, duration):
+    frame, item, _ = mix_frame
+    item.duration_seconds = duration
+    item.cue_in_seconds = 0
+    item.segue_seconds = None
+    session = CommandSession(frame)
+    duration_ms = int(request(session, "MixOpen").split("|")[3])
+    # Także bezpośrednie _assign i przywrócenie wartości przez Undo.
+    session.mix.state.select(point)
+    session.mix.state._assign(duration + 100)
+    assert_mix_within_duration(request(session, "MixInfo"), duration_ms)
+    for command in ("MixPos=@999", "MixSet", "MixNudge=+0.1", "MixNudge=+999", "MixNudge=-999", "MixUndo"):
+        assert_mix_within_duration(request(session, command), duration_ms)
+        assert all(v is None or 0 <= v <= duration for v in session.mix.state.values.values())
+
+
+def test_loaded_points_already_outside_track_are_bounded():
+    from sara.remote.mix_session import MixSession
+    from sara.core.mix_editing import POINT_ORDER
+    state = MixSession(duration=0.005, values=dict.fromkeys(POINT_ORDER, 100))
+    assert all(v is None or 0 <= v <= state.duration for v in state.values.values())
+    assert state.values["loop_start"] < state.values["loop_end"]
+
+
+def test_real_preview_eof_callback_before_estimated_end(mix_frame, preview_clock):
+    from types import SimpleNamespace
+    frame, item, _ = mix_frame
+    playback = frame._playback
+    playback._pfl_device_id = "pfl-device"
+    playback._settings = SimpleNamespace(get_pfl_device=lambda: "pfl-device")
+    playback._announce = frame._announce_event
+    playback.get_busy_device_ids = lambda: set()
+    playback._audio_engine = Mock()
+    playback._audio_engine.get_devices.return_value = [SimpleNamespace(id="pfl-device")]
+    player = Mock()
+    player.play.return_value = None
+    playback._audio_engine.create_player_instance.return_value = player
+    playback.start_preview = MethodType(start_preview, playback)
+    frame._stop_preview = lambda: stop_preview(playback)
+    session = open_mix(frame)
+    request(session, "MixPos=@124.9")
+    request(session, "MixPlay")
+    preview_clock[0] += 0.01
+    # Prawdziwy callback kontrolera PFL, nie zmiana pola przez test.
+    player.set_finished_callback.call_args.args[0](item.id + ":preview")
+    assert playback._preview_context is None
+    assert request(session, "MixPos=-0.1").endswith("|pozycja")
+    assert player.play.call_count == 2
+    assert player.play.call_args.kwargs["start_seconds"] == 124.9
+
+
+@pytest.mark.parametrize("command", ["MixStop", "MixUndo", "MixCancel"])
+def test_stop_after_eof_revokes_pending_resume(mix_frame, preview_clock, command):
+    frame, _, _ = mix_frame
+    session = open_mix(frame)
+    request(session, "MixPos=@124.9")
+    request(session, "MixPlay")
+    preview_clock[0] += 0.2
+    frame._playback._preview_context = None
+    request(session, "MixInfo")
+    request(session, command)
+    calls = frame._playback.start_preview.call_count
+    response = request(session, "MixPos=-0.1")
+    assert response == "ERR nosession" if command == "MixCancel" else response.endswith("|brak")
+    assert frame._playback.start_preview.call_count == calls
