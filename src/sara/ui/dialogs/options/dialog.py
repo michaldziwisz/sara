@@ -164,6 +164,7 @@ class OptionsDialog(wx.Dialog):
         self._settings.set_alternate_play_next(self._alternate_checkbox.GetValue())
         self._settings.set_swap_play_select(self._swap_play_select_checkbox.GetValue())
         self._settings.set_auto_remove_played(self._auto_remove_checkbox.GetValue())
+        self._settings.set_auto_loudness(self._auto_loudness_checkbox.GetValue())
         self._settings.set_focus_playing_track(self._focus_playing_checkbox.GetValue())
         self._settings.set_intro_alert_seconds(self._intro_alert_ctrl.GetValue())
         self._settings.set_track_end_alert_seconds(self._track_end_alert_ctrl.GetValue())

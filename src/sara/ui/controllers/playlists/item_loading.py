@@ -65,6 +65,7 @@ def build_playlist_item(
         artist=artist,
         duration_seconds=duration,
         replay_gain_db=metadata.replay_gain_db,
+        sara_loudness=metadata.sara_loudness,
         cue_in_seconds=metadata.cue_in_seconds,
         segue_seconds=metadata.segue_seconds,
         segue_fade_seconds=metadata.segue_fade_seconds,

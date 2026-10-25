@@ -61,6 +61,7 @@ class PlaylistFactory:
         loop_end_seconds: float | None = None,
         loop_auto_enabled: bool = False,
         loop_enabled: bool = False,
+        sara_loudness: str | None = None,
     ) -> PlaylistItem:
         item_id = uuid.uuid4().hex
         return PlaylistItem(
@@ -70,6 +71,7 @@ class PlaylistFactory:
             duration_seconds=duration_seconds,
             artist=artist,
             replay_gain_db=replay_gain_db,
+            sara_loudness=sara_loudness,
             cue_in_seconds=cue_in_seconds,
             segue_seconds=segue_seconds,
             segue_fade_seconds=segue_fade_seconds,

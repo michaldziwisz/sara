@@ -50,7 +50,7 @@ def _configure_mix_points(frame, playlist_id: str, item_id: str) -> None:
         on_stop_preview=frame._stop_preview,
         track_path=item.path,
         initial_replay_gain=item.replay_gain_db,
-        on_replay_gain_update=lambda gain, item=item: frame._apply_replay_gain(item, gain),
+        on_replay_gain_update=lambda gain, marker, item=item: frame._apply_replay_gain(item, gain, marker),
         loop_start_seconds=item.loop_start_seconds,
         loop_end_seconds=item.loop_end_seconds,
         loop_enabled=item.loop_enabled,

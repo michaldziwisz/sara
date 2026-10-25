@@ -19,6 +19,7 @@ def on_options(frame, _event: wx.CommandEvent) -> None:
     if dialog.ShowModal() == wx.ID_OK:
         frame._settings.save()
         configure_remote_control(frame)
+        frame._auto_loudness.poll()
         frame._fade_duration = max(frame._settings.get_playback_fade_seconds(), 0.0)
         for panel in frame._playlists.values():
             refresh = getattr(panel, "refresh", None)

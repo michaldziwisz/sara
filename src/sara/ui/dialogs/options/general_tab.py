@@ -50,6 +50,14 @@ def build_general_tab(
     apply_accessible_label(dialog._auto_remove_checkbox, dialog._auto_remove_checkbox.GetLabel())
     playback_box.Add(dialog._auto_remove_checkbox, 0, wx.ALL, 5)
 
+    dialog._auto_loudness_checkbox = wx.CheckBox(
+        general_panel,
+        label=_("Automatically normalize new tracks to EBU R128 (-23 LUFS)"),
+    )
+    dialog._auto_loudness_checkbox.SetValue(dialog._settings.get_auto_loudness())
+    apply_accessible_label(dialog._auto_loudness_checkbox, dialog._auto_loudness_checkbox.GetLabel())
+    playback_box.Add(dialog._auto_loudness_checkbox, 0, wx.ALL, 5)
+
     intro_row = wx.BoxSizer(wx.HORIZONTAL)
     intro_label = wx.StaticText(general_panel, label=_("Intro alert (s):"))
     dialog._intro_alert_ctrl = wx.SpinCtrlDouble(general_panel, min=0.0, max=60.0, inc=0.5)

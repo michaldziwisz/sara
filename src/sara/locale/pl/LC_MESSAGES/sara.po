@@ -14,6 +14,10 @@ msgstr ""
 "Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 "Generated-By: Babel 2.17.0\n"
 
+#: src/sara/ui/dialogs/options/general_tab.py
+msgid "Automatically normalize new tracks to EBU R128 (-23 LUFS)"
+msgstr "Automatycznie wyrównuj głośność nowych utworów do EBU R128 (-23 LUFS)"
+
 #: src/sara/ui/dialogs/options/remote_tab.py
 msgid "Enable local TCP control (127.0.0.1)"
 msgstr "Włącz lokalne sterowanie TCP (127.0.0.1)"

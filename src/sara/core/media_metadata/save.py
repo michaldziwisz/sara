@@ -180,7 +180,7 @@ def save_mix_metadata(
         return False
 
 
-def save_replay_gain_metadata(path: Path, gain_db: Optional[float]) -> bool:
+def save_replay_gain_metadata(path: Path, gain_db: Optional[float], *, sara_loudness: str | None = None) -> bool:
     """Persist ReplayGain track gain (compatible with SPL) in APE tags."""
 
     file_path = str(path)
@@ -223,6 +223,12 @@ def save_replay_gain_metadata(path: Path, gain_db: Optional[float]) -> bool:
                 modified = True
         else:
             tags[REPLAYGAIN_TRACK_GAIN_TAG] = f"{gain_db:+.2f} dB"
+            modified = True
+        if sara_loudness is not None and gain_db is not None:
+            tags["SARA_LOUDNESS"] = sara_loudness
+            modified = True
+        elif "SARA_LOUDNESS" in tags:
+            tags.pop("SARA_LOUDNESS")
             modified = True
         if modified or existing:
             tags.save(file_path)

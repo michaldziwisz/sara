@@ -15,6 +15,34 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 MUTATIONS = (
     (
+        "loudness-bez-ogranicznika-tp", "sara.core.loudness",
+        "gain = min(target - integrated, -1.0 - peak)  # LOUDNESS_TRUE_PEAK",
+        "gain = target - integrated  # mutant: brak ogranicznika TP",
+        "tests/test_loudness_peak.py::test_gain_is_true_peak_limited[-30--2-1]",
+    ),
+    (
+        "loudness-zmienia-grajacego", "sara.ui.services.auto_loudness",
+        "        self._pending[key] = (path, gain, marker)",
+        "        for context in self.frame._playback.contexts.values():\n            context.player.set_gain_db(gain)\n        self._pending[key] = (path, gain, marker)",
+        "tests/test_auto_loudness.py::test_playing_gain_unchanged_and_save_deferred[playing]",
+    ),
+    (
+        "loudness-pomija-znacznik", "sara.ui.services.auto_loudness",
+        "if item.sara_loudness:  # LOUDNESS_MARKER", "if False:  # mutant: ponowny pomiar",
+        "tests/test_auto_loudness.py::test_marker_skips_measurement_including_m3u_reload",
+    ),
+    (
+        "loudness-pomiar-w-gui", "sara.ui.services.auto_loudness",
+        "                result = loudness.measure_normalization(path, standard=loudness.LoudnessStandard.EBU)",
+        "                self._call_after(lambda key=key, path=path: self._finished(key, path, loudness.measure_normalization(path, standard=loudness.LoudnessStandard.EBU)))\n                continue",
+        "tests/test_auto_loudness.py::test_three_files_are_measured_off_gui_and_persisted",
+    ),
+    (
+        "loudness-zapisuje-otwarty-plik", "sara.ui.services.auto_loudness",
+        "if self._path_in_use(key):", "if False:  # mutant: zapis mimo kontekstu",
+        "tests/test_auto_loudness.py::test_playing_gain_unchanged_and_save_deferred[paused]",
+    ),
+    (
         "mix-zapis-bez-propagacji", "sara.ui.controllers.mix.points",
         "        frame._propagate_mix_points_for_path(\n",
         "        (lambda **kwargs: None)(\n",

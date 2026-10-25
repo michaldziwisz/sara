@@ -22,4 +22,5 @@ class AudioMetadata:
     loop_end_seconds: Optional[float] = None
     loop_auto_enabled: bool = False
     loop_enabled: bool = False
+    sara_loudness: str | None = None
 

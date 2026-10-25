@@ -49,6 +49,7 @@ class PlaylistItem:
     loop_enabled: bool = False
     break_after: bool = False
     is_selected: bool = False
+    sara_loudness: str | None = None
 
     @property
     def duration_display(self) -> str:

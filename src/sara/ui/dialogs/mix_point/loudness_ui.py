@@ -7,8 +7,7 @@ import logging
 import wx
 
 from sara.core.i18n import gettext as _
-from sara.core.loudness import LoudnessStandard, find_bs1770gain
-from .loudness import compute_normalization_gain
+from sara.core.loudness import LoudnessStandard, NormalizationResult, find_bs1770gain, measure_normalization
 from sara.ui.speech import speak_text
 
 
@@ -40,6 +39,7 @@ class MixPointLoudnessMixin:
                 parent=self,
             )
             return
+        self._normalization_standard = self._selected_standard()
         self._normalizing = True
         self._normalize_button.Enable(False)
         self._set_loudness_status(_("Analyzing loudness…"))
@@ -49,14 +49,16 @@ class MixPointLoudnessMixin:
 
     def _normalization_worker(self) -> None:
         try:
-            standard = self._selected_standard()
-            gain, measured_lufs = compute_normalization_gain(self._track_path, standard=standard)
+            result = measure_normalization(self._track_path, standard=self._normalization_standard)
         except Exception as exc:  # pylint: disable=broad-except
             wx.CallAfter(self._on_normalize_error, str(exc))
         else:
-            wx.CallAfter(self._on_normalize_success, gain, measured_lufs)
+            wx.CallAfter(self._on_normalize_success, result)
 
-    def _on_normalize_success(self, gain_db: float, measured_lufs: float) -> None:
+    def _on_normalize_success(self, result: NormalizationResult) -> None:
+        if not self:
+            return
+        gain_db, measured_lufs = result.gain_db, result.measured_lufs
         self._normalizing = False
         self._normalize_button.Enable(True)
         self._current_replay_gain = gain_db
@@ -69,9 +71,11 @@ class MixPointLoudnessMixin:
             speak=True,
         )
         if self._on_replay_gain_update:
-            self._on_replay_gain_update(gain_db)
+            self._on_replay_gain_update(gain_db, result.marker)
 
     def _on_normalize_error(self, message: str) -> None:
+        if not self:
+            return
         self._normalizing = False
         self._normalize_button.Enable(True)
         self._set_loudness_status(message, speak=True)

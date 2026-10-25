@@ -10,7 +10,7 @@ from sara.ui.dialogs import mix_point_loudness
 def test_compute_normalization_gain_ebu(monkeypatch, tmp_path):
     def fake_analyze(_path: Path, *, standard: LoudnessStandard):
         assert standard is LoudnessStandard.EBU
-        return SimpleNamespace(integrated_lufs=-18.0)
+        return SimpleNamespace(integrated_lufs=-18.0, true_peak_dbtp=-1.0)
 
     monkeypatch.setattr(mix_point_loudness, "analyze_loudness", fake_analyze)
     gain, lufs = mix_point_loudness.compute_normalization_gain(tmp_path / "track.wav", standard=LoudnessStandard.EBU)
@@ -21,7 +21,7 @@ def test_compute_normalization_gain_ebu(monkeypatch, tmp_path):
 def test_compute_normalization_gain_atsc(monkeypatch, tmp_path):
     def fake_analyze(_path: Path, *, standard: LoudnessStandard):
         assert standard is LoudnessStandard.ATSC
-        return SimpleNamespace(integrated_lufs=-23.5)
+        return SimpleNamespace(integrated_lufs=-23.5, true_peak_dbtp=-1.0)
 
     monkeypatch.setattr(mix_point_loudness, "analyze_loudness", fake_analyze)
     gain, lufs = mix_point_loudness.compute_normalization_gain(tmp_path / "track.wav", standard=LoudnessStandard.ATSC)

@@ -10,8 +10,15 @@ from sara.core.loudness import LoudnessStandard, analyze_loudness, find_bs1770ga
 
 @pytest.mark.skipif(find_bs1770gain() is None, reason="bs1770gain not available")
 def test_analyze_loudness_returns_value() -> None:
-    measurement = analyze_loudness(Path("src/sara/audio/media/beep.wav"), standard=LoudnessStandard.EBU)
-    assert isinstance(measurement.integrated_lufs, float)
+    try:
+        measurement = analyze_loudness(Path("src/sara/audio/media/beep.wav"), standard=LoudnessStandard.EBU)
+    except RuntimeError as exc:
+        # bs1770gain 0.8.8 + FFmpeg 6 zwraca fałszywy XML po błędzie upsamplera.
+        # Regresja wymaga jawnej odmowy, a nie użycia pozornego wyniku -70 LUFS.
+        assert "ff_resampler.c" in str(exc) and "Input changed" in str(exc)
+    else:
+        assert isinstance(measurement.integrated_lufs, float)
+        assert isinstance(measurement.true_peak_dbtp, float)
 
 
 def test_analyze_loudness_retries_with_temp_copy(tmp_path, monkeypatch) -> None:

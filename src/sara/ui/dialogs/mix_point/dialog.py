@@ -56,7 +56,7 @@ class MixPointEditorDialog(
         on_stop_preview: Callable[[], None],
         track_path: Path,
         initial_replay_gain: float | None,
-        on_replay_gain_update: Callable[[float | None], None] | None = None,
+        on_replay_gain_update: Callable[[float | None, str | None], None] | None = None,
         loop_start_seconds: float | None = None,
         loop_end_seconds: float | None = None,
         loop_enabled: bool = False,

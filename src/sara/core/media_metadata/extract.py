@@ -146,8 +146,12 @@ def extract_metadata(path: Path) -> AudioMetadata:
         if probed is not None and probed > 0:
             duration = probed
 
-    if replay_gain is None:
-        replay_gain = _scan_ape_replay_gain(path)
+    sara_loudness = _scan_ape_value(path, "SARA_LOUDNESS")
+    if sara_loudness or replay_gain is None:
+        # Znacznik SARY oznacza, że APE jest nowsze od obcego ID3/Vorbis RG.
+        ape_gain = _scan_ape_replay_gain(path)
+        if ape_gain is not None:
+            replay_gain = ape_gain
 
     cue = None
     segue = None
@@ -280,6 +284,7 @@ def extract_metadata(path: Path) -> AudioMetadata:
         duration_seconds=duration,
         artist=artist,
         replay_gain_db=replay_gain,
+        sara_loudness=sara_loudness,
         cue_in_seconds=cue,
         segue_seconds=segue,
         segue_fade_seconds=segue_fade,

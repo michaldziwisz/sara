@@ -8,7 +8,7 @@ from sara.core.app_state import AppState
 from sara.core.config import SettingsManager
 from sara.core.i18n import gettext as _
 from sara.core.hotkeys import HotkeyAction
-from sara.core.media_metadata import save_replay_gain_metadata
+from sara.ui.services.auto_loudness import start_auto_loudness, stop_auto_loudness
 from sara.core.mix_planner import (
     clear_mix_plan as _clear_mix_plan_impl,
     mark_mix_triggered as _mark_mix_triggered_impl,
@@ -209,6 +209,7 @@ class MainFrame(wx.Frame):
         self._ensure_legacy_hooks()
         self._init_ui()
         configure_remote_control(self)
+        start_auto_loudness(self)
 
     def _ensure_legacy_hooks(self) -> None:
         if not hasattr(self, "_on_new_playlist"):
@@ -269,6 +270,7 @@ class MainFrame(wx.Frame):
 
     def _on_close(self, event: wx.CloseEvent) -> None:
         stop_remote_control(self)
+        stop_auto_loudness(self)
         try:
             self._jingles.stop_all()
         except Exception:
@@ -278,12 +280,8 @@ class MainFrame(wx.Frame):
     def _on_toggle_auto_mix(self, event: wx.CommandEvent) -> None:
         self._set_auto_mix_enabled(not self._auto_mix_enabled)
 
-    def _apply_replay_gain(self, item: PlaylistItem, gain_db: float | None) -> None:
-        item.replay_gain_db = gain_db
-        if not save_replay_gain_metadata(item.path, gain_db):
-            self._announce_event("pfl", _("Failed to update ReplayGain metadata"))
-        else:
-            self._announce_event("pfl", _("Updated ReplayGain for %s") % item.title)
+    def _apply_replay_gain(self, item: PlaylistItem, gain_db: float | None, marker: str | None = None) -> None:
+        self._auto_loudness.apply(item.path, gain_db, marker)
 
 
     def _apply_mix_trigger_to_playback(self, *, playlist_id: str, item: PlaylistItem, panel: PlaylistPanel) -> None:

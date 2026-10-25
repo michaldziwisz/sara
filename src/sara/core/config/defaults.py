@@ -60,6 +60,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "fade_out_seconds": 0.0,
         "alternate_play_next": False,
         "auto_remove_played": False,
+        "auto_loudness": True,
         "intro_alert_seconds": 5.0,
         "track_end_alert_seconds": 10.0,
         "swap_play_select": False,

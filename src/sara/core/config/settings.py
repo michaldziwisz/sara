@@ -149,6 +149,14 @@ class SettingsManager:
         playback = self._data.setdefault("playback", {})
         playback["auto_remove_played"] = bool(enabled)
 
+    def get_auto_loudness(self) -> bool:
+        playback = self._data.get("playback", {})
+        value = playback.get("auto_loudness", True) if isinstance(playback, dict) else True
+        return value if isinstance(value, bool) else True
+
+    def set_auto_loudness(self, enabled: bool) -> None:
+        self._data.setdefault("playback", {})["auto_loudness"] = bool(enabled)
+
     def get_swap_play_select(self) -> bool:
         playback = self._data.get("playback", {})
         return bool(playback.get("swap_play_select", DEFAULT_CONFIG["playback"]["swap_play_select"]))
