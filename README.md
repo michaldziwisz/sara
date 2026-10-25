@@ -126,6 +126,10 @@ Wersja rozwojowa – odtwarzanie, wielokrotne sloty odtwarzaczy i narzędzia pę
 
 Konfiguracja trafia do `config/settings.yaml`, ale wygodniej edytować ją z poziomu okna „Opcje…”. Pamiętaj o licencjach BASS przy użyciu komercyjnym.
 
+### Automatyczne wyrównywanie głośności
+
+Nowe utwory na playlistach muzycznych są domyślnie mierzone w tle do EBU R128 (-23 LUFS), z ograniczeniem podbicia według true peak. Ustawienie można wyłączyć w Opcjach. [Opis działania, znacznika i ochrony grających utworów](docs/wyrownywanie-glosnosci.md).
+
 ### Lokalne sterowanie TCP
 
 Serwer `127.0.0.1:51443` pozwala sterować emisją z mostka MR18/X-TOUCH bez aktywowania okna SARY. Jest domyślnie włączony. Wyłączenie i zmianę portu udostępnia zakładka „Zdalne sterowanie” w Opcjach. [Opis protokołu i ustawień](docs/sterowanie-tcp.md) obejmuje również różnice względem StationPlaylist, w tym Pause, które tylko wstrzymuje odtwarzanie.
