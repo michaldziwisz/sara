@@ -57,7 +57,9 @@ Skróty klawiaturowe w SARZE pozostają bez zmian: działają na aktywnym panelu
 | `AutoOn`, `AutoOff`, `Auto` | Włączenie, wyłączenie lub przełączenie automiksu przez istniejący kontroler. Włączenie może rozpocząć odtwarzanie jak skrót w SARZE. Odpowiedź: stan. |
 | `This` | `artist - title` bieżącego utworu muzycznego, sam tytuł bez wykonawcy, pusta linia bez odtwarzania. Podczas pauzy nadal zwraca tytuł. |
 | `Next` | Kandydat do następnego uruchomienia, z uwzględnieniem kolejki, automiksu i naprzemiennych playlist. Zapytanie nie konsumuje kolejki. Nie sprawdza dostępności pliku ani urządzenia audio. |
-| `Rem`, `Elap` | Pozostały i upłynięty czas bieżącego utworu w milisekundach, `0` bez odtwarzania. Wartości z postępu odtwarzania, względem cue, do końca efektywnej długości utworu, a nie do punktu miksu. Nie odliczają czasu zegarowego podczas pauzy. |
+| `Rem` | Czas do przejścia bieżącego utworu głównej playlisty w milisekundach, liczony tą samą funkcją co Ctrl+Alt+T. Przy przerwie po utworze (także Hold) lub aktywnej pętli: do końca efektywnej długości utworu. `0` bez odtwarzania albo po przekroczeniu punktu. |
+| `Elap` | Upłynięty czas bieżącego utworu głównej playlisty w milisekundach, względem cue, `0` bez odtwarzania. Jak Rem korzysta z postępu odtwarzania i nie odlicza czasu zegarowego podczas pauzy. |
+| `Players` | Rozszerzenie SARY: numery odtwarzaczy głównej playlisty, od 1, rosnąco, bez powtórzeń, rozdzielone przecinkiem, np. `2` albo `1,2`. Brak kontekstów: `-`. Obejmuje pauzę, pomija PFL i inne playlisty. |
 | `SelectIndex` | Indeks podświetlonego wiersza albo `-1`. Nie jest to znacznik „do emisji”. |
 | `SelectIndex=n` | Podświetlenie wiersza o indeksie n; odpowiedź: wybrany indeks. Nie rozpoczyna odtwarzania. |
 | `SelectIndex=+`, `SelectIndex=-` | Przejście o jeden wiersz, bez zawijania na granicach. Bez wcześniejszego wskazania wybiera pierwszy wiersz. Zmienia fokus wiersza, nie aktywuje okna SARY. |
@@ -71,6 +73,28 @@ Skróty klawiaturowe w SARZE pozostają bez zmian: działają na aktywnym panelu
 Indeksy zaczynają się od 0, oznaczającego pierwszy element głównej playlisty muzycznej. Nie obejmują folderów muzycznych ani serwisów informacyjnych. Wybór głównej nie zależy od fokusu ani aktywnego panelu.
 
 `This` oraz czasy dotyczą bieżącego utworu wyłącznie z głównej playlisty. Klucz NowPlaying jest uwzględniany tylko wtedy, gdy należy do niej; w przeciwnym razie wybierany jest jej najnowszy kontekst. Nie wymaga to włączenia zapisu pliku NowPlaying. Odtwarzanie z innej playlisty nie zmienia This, CurrIndex ani czasów głównej.
+
+## Rem: czas do przejścia jak Ctrl+Alt+T
+
+`Rem` używa istniejącego obliczenia czasu antenowego skrótu Ctrl+Alt+T, ale dla bieżącego utworu głównej playlisty. Od długości antenowej odejmowana jest pozycja względem cue; wynik nie jest ujemny i jest zaokrąglany dopiero do milisekund. Skrót głosowy zaokrągla go do pełnych sekund. Wybór utworu, `Elap`, odtwarzanie i wyzwalanie miksu pozostają bez zmian.
+
+Jeżeli istnieje plan miksu, końcem odliczania jest jego punkt przejścia pomniejszony o cue. Punkt oddalony od końca o najwyżej 0,05 s jest traktowany jak koniec efektywnej długości; plan bez punktu również podaje czas do końca. Bez planu działa dotychczasowe wyliczenie na podstawie Segue, Overlap lub domyślnego fade. Ręczna przerwa po utworze, przerwa założona przez Hold i włączona, zdefiniowana pętla oznaczają czas do końca efektywnej długości, tak samo jak w skrócie. Przy pętli nie jest to przewidywany czas jej wyłączenia.
+
+Przykład: plik 125 s, cue 5 s, punkt przejścia 90,25 s od początku pliku i postęp 12,5 s od cue. `Rem` zwraca `72750`, nie `107500`; `Elap` nadal zwraca `12500`. Po włączeniu Hold `Rem` zwraca `107500`.
+
+## Players: numery odtwarzaczy głównej playlisty
+
+`Players` jest rozszerzeniem SARY, nie poleceniem SPL. Przed użyciem klient powinien rozpoznać prefiks `SARA` przez `Helo`. Jest to tylko odczyt, wykonywany w wątku GUI, bez uruchamiania odtwarzania, zmiany fokusu ani dodatkowej mowy SARY.
+
+Odpowiedź to jedna linia: numery odtwarzaczy od 1, rosnąco, bez powtórzeń, oddzielone przecinkiem bez spacji. Numer odpowiada pozycji odtwarzacza w oknie konfiguracji urządzeń playlisty (`PlaybackContext.slot_index + 1`), nie indeksowi utworu ani identyfikatorowi urządzenia audio.
+
+* `2`: aktywny jest drugi odtwarzacz.
+* `1,2`: podczas miksu istnieją konteksty pierwszego i drugiego odtwarzacza.
+* `-`: główna playlista nie ma kontekstów odtwarzania albo nie istnieje.
+
+Pauza nadal zajmuje odtwarzacz i jest liczona. PFL oraz konteksty innych playlist nie są liczone. `Players` nie zależy od wskazanego wiersza, aktywnego panelu ani klucza NowPlaying. Przecinek w odpowiedzi nie rozdziela linii: `Players,Rem` daje dwie linie, np. `1,2` i `72750`.
+
+Polecenie nie przyjmuje argumentu: `Players=` i `Players=1` zwracają `ERR unknown`, a `Players=1,Stat` daje `ERR syntax`, zgodnie z ogólnymi zasadami serwera.
 
 ## Stat
 
@@ -235,7 +259,8 @@ Ważne różnice:
 * Automatyka oznacza automiks SARY, mikrofon i line-in nie są sterowane.
 * Indeks 0 oznacza pierwszy utwór, nie znacznik godziny SPL.
 * TrackInfo obsługuje zakres liczbowy, nie warianty `this`, `next` i `all`.
-* TrackInfoEx i Hold są rozszerzeniami SARY. Klient powinien wykryć prefiks `SARA` przez Helo przed ich użyciem.
+* `Rem` w SARZE podaje czas do przejścia, nie do końca pliku jak w SPL. Używa tego samego obliczenia co Ctrl+Alt+T, aby stół nie doliczał ogona po punkcie miksu. Wyjątki (przerwa, aktywna pętla, punkt tuż przy końcu) są takie same jak w skrócie.
+* TrackInfoEx, Hold i Players są rozszerzeniami SARY. Klient powinien wykryć prefiks `SARA` przez Helo przed ich użyciem.
 * Nieznane polecenia nie są interpretowane jako nazwy skryptów. Klient SPL powinien wysyłać wyłącznie rozpoznane polecenia.
 
 ## Sprawdzenie połączenia
