@@ -239,12 +239,14 @@ def extract_metadata(path: Path) -> AudioMetadata:
                 cue = _parse_numeric_tokens([text])
                 if cue is not None:
                     break
+    segue_from_station_playlist = False
     if segue is None:
         for candidate in ("Segue", "SegueDB"):
             text = _scan_ape_value(path, candidate)
             if text:
                 segue = _parse_numeric_tokens([text])
                 if segue is not None:
+                    segue_from_station_playlist = True
                     break
     if segue_fade is None:
         for candidate in ("SegueFade", "SegueFadeDuration"):
@@ -280,6 +282,9 @@ def extract_metadata(path: Path) -> AudioMetadata:
         None if value is not None and value < 0 else value
         for value in (cue, segue, segue_fade, overlap, intro, outro)
     )
+    # StationPlaylist liczy Segue od początku pliku, a SARA od Cue (mix_at = cue + segue).
+    if segue_from_station_playlist and segue is not None:
+        segue = max(0.0, segue - (cue or 0.0))
 
     loop_start, loop_end, loop_enabled, loop_auto_enabled = _scan_loop_values(path)
     # Jeśli flaga automatyczna jest włączona, traktuj pętlę jako aktywną przy wczytaniu.

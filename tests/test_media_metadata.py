@@ -110,5 +110,37 @@ def test_spl_unset_mix_points_are_none(tmp_path) -> None:
     assert metadata.intro_seconds is None
     assert metadata.outro_seconds is None
     assert metadata.cue_in_seconds == approx(2.9)
-    assert metadata.segue_seconds == approx(190.5)
+    assert metadata.segue_seconds == approx(187.6)  # Segue SPL 190,5 s od początku pliku minus Cue 2,9 s
     assert metadata.overlap_seconds == 0.0
+
+
+def test_spl_segue_is_absolute_and_sara_segue_is_relative(tmp_path) -> None:
+    # Loona - Rhythm Of The Night: Cue 3200, Segue 222600, CueOut 222980 (ms od początku pliku).
+    from mutagen.apev2 import APEv2
+
+    spl = tmp_path / "spl.mp3"
+    spl.write_bytes(b"\x00")
+    tags = APEv2()
+    for key, value in {"Cue": "3200", "Segue": "222600", "CueOut": "222980", "SegueDB": "1"}.items():
+        tags[key] = value
+    tags.save(spl)
+    metadata = extract_metadata(spl)
+    assert metadata.cue_in_seconds == approx(3.2)
+    assert metadata.segue_seconds == approx(219.4)  # 3,2 + 219,4 = 222,6 jak w StationPlaylist
+
+    own = tmp_path / "sara.flac"
+    own.write_bytes(b"\x00")
+    assert save_mix_metadata(own, cue_in=3.2, intro=None, outro=None, segue=219.4, segue_fade=None, overlap=None)
+    assert extract_metadata(own).segue_seconds == approx(219.4)
+
+
+def test_spl_segue_before_cue_clamps_to_cue(tmp_path) -> None:
+    from mutagen.apev2 import APEv2
+
+    spl = tmp_path / "early.mp3"
+    spl.write_bytes(b"\x00")
+    tags = APEv2()
+    tags["Cue"] = "5000"
+    tags["Segue"] = "4000"
+    tags.save(spl)
+    assert extract_metadata(spl).segue_seconds == 0.0
