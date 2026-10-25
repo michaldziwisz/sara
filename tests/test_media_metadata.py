@@ -144,3 +144,35 @@ def test_spl_segue_before_cue_clamps_to_cue(tmp_path) -> None:
     tags["Segue"] = "4000"
     tags.save(spl)
     assert extract_metadata(spl).segue_seconds == 0.0
+
+
+def test_spl_id3_txxx_segue_is_absolute_and_sara_tags_win(tmp_path) -> None:
+    # Giulia - Karolina: StationPlaylist zapisał punkty także w ID3 TXXX (Cue 4400, Segue 179400).
+    from mutagen.apev2 import APEv2
+    from mutagen.id3 import ID3, TXXX
+
+    target = tmp_path / "txxx.mp3"
+    # Prawdziwe ramki MPEG-1 Layer III (128 kb/s, 44,1 kHz), żeby mutagen odczytał ID3.
+    frame = b"\xff\xfb\x90\x00" + b"\x00" * 413
+    target.write_bytes(frame * 40)
+    id3 = ID3()
+    id3.add(TXXX(encoding=3, desc="CUE", text=["4400"]))
+    id3.add(TXXX(encoding=3, desc="SEGUE", text=["179400"]))
+    id3.add(TXXX(encoding=3, desc="INTRO", text=["16900"]))
+    id3.save(target)
+    tags = APEv2()
+    tags["Cue"] = "4400"
+    tags["Segue"] = "179400"
+    tags.save(target)
+
+    metadata = extract_metadata(target)
+    assert metadata.cue_in_seconds == approx(4.4)
+    assert metadata.segue_seconds == approx(175.0)  # 4,4 + 175,0 = 179,4 jak w StationPlaylist
+    assert metadata.intro_seconds == approx(16.9)
+
+    # Po edycji w SARZE jej znaczniki wygrywają z TXXX i APE ze StationPlaylist.
+    assert save_mix_metadata(target, cue_in=5.0, intro=20.0, outro=None, segue=170.0, segue_fade=None, overlap=None)
+    metadata = extract_metadata(target)
+    assert metadata.cue_in_seconds == approx(5.0)
+    assert metadata.segue_seconds == approx(170.0)
+    assert metadata.intro_seconds == approx(20.0)

@@ -155,6 +155,7 @@ def extract_metadata(path: Path) -> AudioMetadata:
 
     cue = None
     segue = None
+    segue_from_station_playlist = False
     segue_fade = None
     overlap = None
     intro = None
@@ -204,6 +205,7 @@ def extract_metadata(path: Path) -> AudioMetadata:
                             cue = value
                         elif target == "segue":
                             segue = value
+                            segue_from_station_playlist = True
                         elif target == "segue_fade":
                             segue_fade = value
                         elif target == "overlap":
@@ -219,18 +221,29 @@ def extract_metadata(path: Path) -> AudioMetadata:
             return _parse_numeric_tokens([text], assume_ms=False)
         return None
 
-    if cue is None:
-        cue = _read_sara_tag(CUE_IN_TAG)
-    if segue is None:
-        segue = _read_sara_tag(SEGUE_TAG)
-    if segue_fade is None:
-        segue_fade = _read_sara_tag(SEGUE_FADE_TAG)
-    if overlap is None:
-        overlap = _read_sara_tag(OVERLAP_TAG)
-    if intro is None:
-        intro = _read_sara_tag(INTRO_TAG)
-    if outro is None:
-        outro = _read_sara_tag(OUTRO_TAG)
+    # Własny zapis SARY wygrywa z obcymi znacznikami (TXXX i APE ze StationPlaylist),
+    # inaczej zmiany zrobione w SARZE znikałyby po ponownym wczytaniu pliku.
+    sara_values = {
+        "cue": _read_sara_tag(CUE_IN_TAG),
+        "segue": _read_sara_tag(SEGUE_TAG),
+        "segue_fade": _read_sara_tag(SEGUE_FADE_TAG),
+        "overlap": _read_sara_tag(OVERLAP_TAG),
+        "intro": _read_sara_tag(INTRO_TAG),
+        "outro": _read_sara_tag(OUTRO_TAG),
+    }
+    if sara_values["cue"] is not None:
+        cue = sara_values["cue"]
+    if sara_values["segue"] is not None:
+        segue = sara_values["segue"]  # SARA zapisuje Segue względem Cue
+        segue_from_station_playlist = False
+    if sara_values["segue_fade"] is not None:
+        segue_fade = sara_values["segue_fade"]
+    if sara_values["overlap"] is not None:
+        overlap = sara_values["overlap"]
+    if sara_values["intro"] is not None:
+        intro = sara_values["intro"]
+    if sara_values["outro"] is not None:
+        outro = sara_values["outro"]
 
     if cue is None:
         for candidate in ("Cue", "CueDB", "CueIn"):
@@ -239,7 +252,6 @@ def extract_metadata(path: Path) -> AudioMetadata:
                 cue = _parse_numeric_tokens([text])
                 if cue is not None:
                     break
-    segue_from_station_playlist = False
     if segue is None:
         for candidate in ("Segue", "SegueDB"):
             text = _scan_ape_value(path, candidate)
