@@ -140,7 +140,7 @@ pozycja_ms|punkt|wartosc_ms albo -|zmiany 0 lub 1|odsluch
 | --- | --- |
 | `MixOpen` | `OK\|indeks\|gra\|dlugosc_ms\|artysta\|tytul`. Pełna długość pliku, indeks od 0, `gra` równe 0 lub 1. Pozycja początkowa to cue albo 0; wybrany punkt to cue. Znaki separatorów i końca linii w metadanych zastępują spacje. |
 | `MixInfo` | STAN. |
-| `MixPos=+0.1`, `MixPos=-5`, `MixPos=@83.4` | Ruch względny lub pozycja bezwzględna, przycięta do długości pliku. Ruch względny najpierw zatrzymuje się na brzegu utworu, a dalszy ruch w tę samą stronę przeskakuje na drugi koniec: z początku `MixPos=-0.1` daje koniec minus 0,1 s, z końca `MixPos=+0.1` daje 0,1 s. Pozycja bezwzględna `@` nie zawija. Trwający odsłuch jest uruchamiany od nowej pozycji. STAN. |
+| `MixPos=+0.1`, `MixPos=-5`, `MixPos=@83.4` | Ruch względny lub pozycja bezwzględna, przycięta do długości pliku. Ruch względny zatrzymuje się na brzegu. Przeskok wymaga przerwy co najmniej 0,5 s od poprzedniego ruchu na ten sam brzeg: w lewo na 5 s przed końcem, w prawo na 0. Ciągły obrót nie przeskakuje. Pozycja bezwzględna `@` nie zawija. Odsłuch trwający lub zakończony samoczynnie na końcu pliku jest uruchamiany od nowej pozycji. STAN. |
 | `MixPoint=next`, `MixPoint=prev`, `MixPoint=intro` | Wybór kolejnego, poprzedniego lub nazwanego punktu; next/prev zawijają listę. Nazwy punktów nie rozróżniają wielkości liter. STAN. |
 | `MixSet` | Ustawienie punktu na bieżącej pozycji. Overlap to długość pliku minus pozycja, segue_fade to sama pozycja ograniczona do dostępnej końcówki. Jak w oknie zachowywana jest spójność pętli. STAN. |
 | `MixNudge=+0.1`, `MixNudge=-0.1` | Korekta wybranego punktu, także nieustawionego. Kursor idzie za punktem. Jak Z/C w oknie: trwający odsłuch startuje od poprawionej pozycji, a dla segue i segue_fade uruchamiane jest krótkie okno przejścia. STAN. |
@@ -152,6 +152,18 @@ pozycja_ms|punkt|wartosc_ms albo -|zmiany 0 lub 1|odsluch
 | `MixUndo` | Cofnięcie ostatniej zmiany punktów, łącznie z jej skutkami dla pętli i długości. Pusty stos niczego nie zmienia. STAN. |
 | `MixSave` | Walidacja i wspólny zapis okna punktów: model, tagi APEv2, propagacja punktów miksu do innych wystąpień pliku, odświeżenie i przeliczenie wyzwalacza. Po powodzeniu kończy sesję i zwraca skutek opisany poniżej. |
 | `MixCancel` | Porzucenie zmian bez zapisu, zakończenie sesji. `OK`. |
+
+### Brzeg, przerwa i wznawianie odsłuchu
+
+Ciągły obrót kółka zatrzymuje pozycję na 0 lub na końcu utworu, niezależnie od liczby ząbków. Każdy ząbek odnawia czas ostatniego ruchu. Dopiero przerwa 0,5 s lub dłuższa i kolejny ruch w tę samą stronę pozwalają przeskoczyć, jeśli poprzedni ruch uderzył w ten sam brzeg. W lewo następuje przeskok 5 s przed końcem, a w prawo na sam początek. Dla utworu krótszego niż 5 s celem przeskoku w lewo jest 0. REWIND i FFWD, czyli `MixPos=-5` i `MixPos=+5`, podlegają tej samej regule. Wybór pozycji przez `@` nie zawija i rozpoczyna nowy gest.
+
+Ruch w przeciwną stronę lub inne przestawienie pozycji kasuje zapamiętany brzeg. Sam postęp trwającego odsłuchu go nie kasuje: po przerwie nadal można przeskoczyć w lewo, choć w słuchawkach minęło już kilka sekund od początku. Odsłuch po przeskoku gra od nowej pozycji. Wznawianie odsłuchu działa też po samoczynnym końcu pliku: następny `MixPos` uruchamia go ponownie. `MixStop`, wyłączenie przez `MixPlay`, `MixUndo` i anulowanie sesji nie pozostawiają takiego zamiaru. Inny odsłuch uruchomiony z klawiatury przejmuje PFL i nie jest zatrzymywany ani zastępowany samym ruchem kółka tej sesji.
+
+### Przycięcie punktów do długości pliku
+
+Przycięcie punktów dotyczy sesji stołu, także `MixSet`, `MixNudge`, przywracania wyłączonego pola i punktów odczytanych przy otwarciu. Wartości pozostają w przedziale od 0 do pełnej długości utworu; overlap i segue_fade dodatkowo podlegają dotychczasowemu maksimum dostępnej końcówki. Początek pętli nie przekracza długości minus 0,01 s, a skorygowany koniec pętli nie przekracza długości pliku. Dla dodatniej długości mniejszej od 0,01 s początek wynosi 0, a koniec może wynosić długość pliku. Plik zerowej długości nie pozwala utworzyć poprawnej pętli.
+
+Przycinanie następuje również po zaokrągleniu wartości do trzech miejsc. Dzięki temu `round(wartość * 1000)` nie przekracza `round(długość * 1000)` z `MixOpen`, także przy długościach na granicy połowy milisekundy. Mostek bierze limit bezpośrednio z pola `dlugosc_ms` odpowiedzi `MixOpen`, nie z efektywnej długości pomniejszonej o cue. Granice kontrolek i zachowanie zwykłego okna punktów miksu pozostają bez zmian.
 
 Edycja grającego utworu jest dozwolona. Zapis działa od razu tak jak OK w oknie punktów; nie opóźnia przejścia, nie zdejmuje Hold i nie zmienia zasad wyzwalania. Odpowiedź obliczana jest z planu pozostałego po zapisie i bieżącej pozycji odtwarzacza:
 
