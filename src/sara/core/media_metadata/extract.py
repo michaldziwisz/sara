@@ -275,6 +275,12 @@ def extract_metadata(path: Path) -> AudioMetadata:
                 if outro is not None:
                     break
 
+    # StationPlaylist zapisuje nieustawiony punkt jako -1; ujemny czas nie jest pozycją w utworze.
+    cue, segue, segue_fade, overlap, intro, outro = (
+        None if value is not None and value < 0 else value
+        for value in (cue, segue, segue_fade, overlap, intro, outro)
+    )
+
     loop_start, loop_end, loop_enabled, loop_auto_enabled = _scan_loop_values(path)
     # Jeśli flaga automatyczna jest włączona, traktuj pętlę jako aktywną przy wczytaniu.
     loop_enabled = (loop_enabled or loop_auto_enabled)

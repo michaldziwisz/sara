@@ -28,6 +28,8 @@ class MixSession:
     def from_item(cls, item):
         values = {key: getattr(item, key + "_seconds") for key in POINT_ORDER if key != "cue"}
         values["cue"] = item.cue_in_seconds
+        # Ujemny czas to "nieustawione" (StationPlaylist zapisuje -1), nie pozycja w utworze.
+        values = {key: None if value is not None and value < 0 else value for key, value in values.items()}
         if values["segue"] is not None:
             values["segue"] += item.cue_in_seconds or 0.0
         return cls(duration=item.duration_seconds, values=values, loop_auto_enabled=item.loop_auto_enabled)

@@ -92,3 +92,23 @@ def test_clear_replay_gain_metadata(tmp_path) -> None:
     assert save_replay_gain_metadata(target, None)
     metadata = extract_metadata(target)
     assert metadata.replay_gain_db is None
+
+
+def test_spl_unset_mix_points_are_none(tmp_path) -> None:
+    # StationPlaylist zapisuje nieustawiony punkt jako -1 (np. Intro=-1, Outro=-1).
+    from mutagen.apev2 import APEv2
+
+    target = tmp_path / "spl.mp3"
+    target.write_bytes(b"\x00")
+    tags = APEv2()
+    for key, value in {"Intro": "-1", "Outro": "-1", "Cue": "2900", "Segue": "190500",
+                       "CueOverlap": "0", "FadeOut": "-1"}.items():
+        tags[key] = value
+    tags.save(target)
+
+    metadata = extract_metadata(target)
+    assert metadata.intro_seconds is None
+    assert metadata.outro_seconds is None
+    assert metadata.cue_in_seconds == approx(2.9)
+    assert metadata.segue_seconds == approx(190.5)
+    assert metadata.overlap_seconds == 0.0

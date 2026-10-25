@@ -409,3 +409,17 @@ def test_pure_session_validation():
     assert state.validation_error() == "petla"
     state.values["intro"] = 0
     assert state.validation_error() == "kolejnosc"
+
+
+def test_negative_point_from_old_item_is_unset():
+    # Ujemny punkt (np. Intro=-1 ze StationPlaylist) nie może trafić do stołu jako wartość.
+    from types import SimpleNamespace
+
+    from sara.remote.mix_session import MixSession
+
+    fake = SimpleNamespace(duration_seconds=195.7, cue_in_seconds=2.9, intro_seconds=-1.0, outro_seconds=-1.0,
+                           segue_seconds=187.6, segue_fade_seconds=None, overlap_seconds=0.0,
+                           loop_start_seconds=None, loop_end_seconds=None, loop_auto_enabled=False)
+    session = MixSession.from_item(fake)
+    assert session.values["intro"] is None and session.values["outro"] is None
+    assert all(v is None or v >= 0 for v in session.values.values())
