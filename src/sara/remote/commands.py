@@ -265,6 +265,14 @@ class CommandSession:
             enabled = not self.frame._auto_mix_enabled if name == "auto" else name == "autoon"
             self.frame._set_auto_mix_enabled(enabled, panel=self._main_panel())
             return [self._status()]
+        if name == "players":
+            panel = self._main_panel()
+            if panel is None:
+                return ["-"]
+            slots = {context.slot_index + 1
+                     for (playlist_id, _item_id), context in self.frame._playback.contexts.items()
+                     if playlist_id == panel.model.id}
+            return [",".join(str(slot) for slot in sorted(slots)) or "-"]
         if name in {"this", "rem", "elap", "currindex"}:
             current = self._current()
             if name == "this":
@@ -274,8 +282,12 @@ class CommandSession:
                 return [str(panel.model.index_of(current[1].id)) if current and panel and panel.model.id == current[0].id else "-1"]
             if not current:
                 return ["0"]
-            item = current[1]
-            seconds = item.current_position if name == "elap" else item.effective_duration_seconds - item.current_position
+            playlist, item = current
+            seconds = item.current_position
+            if name == "rem":
+                # Ta sama oś czasu co Ctrl+Alt+T, ale bez zaokrąglania do sekund.
+                from sara.ui.controllers.playback.loop import _resolve_on_air_total_seconds
+                seconds = _resolve_on_air_total_seconds(self.frame, playlist, item) - item.current_position
             return [milliseconds(seconds)]
         if name == "next":
             return [self._name(self._next())]

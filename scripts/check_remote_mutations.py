@@ -15,6 +15,28 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 MUTATIONS = (
     (
+        "rem-do-konca-pliku", "sara.remote.commands",
+        "seconds = _resolve_on_air_total_seconds(self.frame, playlist, item) - item.current_position",
+        "seconds = item.effective_duration_seconds - item.current_position",
+        "tests/test_remote_rem_players.py::test_rem_matches_shortcut_resolver[segue]",
+    ),
+    (
+        "players-od-zera", "sara.remote.commands",
+        "slots = {context.slot_index + 1", "slots = {context.slot_index",
+        "tests/test_remote_rem_players.py::test_players_one_based_including_pause[PlaylistItemStatus.PLAYING]",
+    ),
+    (
+        "players-obca-playlista", "sara.remote.commands",
+        "if playlist_id == panel.model.id}", "if True}",
+        "tests/test_remote_rem_players.py::test_players_ignore_other_playlist_and_pfl",
+    ),
+    (
+        "players-liczy-pfl", "sara.remote.commands",
+        '            return [",".join(str(slot) for slot in sorted(slots)) or "-"]',
+        '            if getattr(self.frame._playback, "preview_context", None):\n                slots.add(3)\n            return [",".join(str(slot) for slot in sorted(slots)) or "-"]',
+        "tests/test_remote_rem_players.py::test_players_ignore_other_playlist_and_pfl",
+    ),
+    (
         "preload-nie-wraca-do-kolejki", "sara.ui.controllers.playback.automix",
         'sequence=enabled',
         'sequence=True',
