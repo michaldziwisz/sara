@@ -6,12 +6,36 @@ SARA ma mechanizm **preloadingu**, który próbuje przygotować „następny” 
 
 ## Jak to działa
 
-Gdy automix jest włączony i startuje utwór, `PlaybackController` planuje preload kolejnego kandydata:
+Gdy startuje utwór z playlisty muzycznej, `PlaybackController` planuje preload kolejnego kandydata. Dotyczy to zarówno automiksu, jak i ręcznej kolejki zaznaczonych utworów. Zmiana zaznaczeń podczas odtwarzania przelicza kandydata bez zatrzymywania grającego utworu. Automiks uwzględnia także zawinięcie do pozycji już zagranych.
 
-- **BASS backend**: tworzony jest strumień BASS dla następnego utworu (`BassPlayer.preload`) i trzymany w obiekcie playera (bez odtwarzania). Przy właściwym `play()` player próbuje użyć przygotowanego strumienia zamiast otwierać plik od zera.
+- **BASS backend**: tworzony jest osobny player i strumień BASS dla następnego utworu (`BassPlayer.preload`), bez odtwarzania. `PlaybackController` przechowuje tę instancję i przekazuje ją do startu na wybranym urządzeniu. Jest to istotne: `AudioEngine.create_player()` jest fabryką NOWEGO playera, a nie odczytem cache. Ponowne wywołanie fabryki przy miksie gubiło wcześniej wykonany preload.
 - **Fallback (inne backendy / brak wsparcia)**: wykonywany jest „warm-up” systemowego cache pliku (`sara.core.file_prefetch.warm_file`) przez odczyt fragmentu danych.
 
-Preloading jest best-effort: jeśli kolejny utwór się zmieni (np. ręczny wybór), przygotowany preload zostanie porzucony.
+Preloading jest best-effort. Powtórne zlecenie tej samej ścieżki, Cue, flagi pętli i urządzenia zachowuje już przygotowany strumień. Start używa go tylko po zakończeniu przygotowania. Zmiana pliku, Cue lub flagi pętli nadal przechodzi przez kontrolę zgodności w `BassPlayer._consume_preloaded`; zmiana urządzenia porzuca przygotowanego playera. Nie przesuwamy Cue i nie wyłączamy PRESCAN.
+
+Nie ma oczekiwania na worker w ścieżce przekazania gotowego playera. Gdy przygotowanie nie zdążyło, nie udało się lub kandydat się zmienił, pozostaje dotychczasowe synchroniczne otwarcie. Nie jest to bezwarunkowa gwarancja startu poniżej 100 ms dla dowolnie wolnego nośnika ani wyboru zmienionego tuż przed miksem. Dla krótkiego intro potrzebny jest czas na wcześniejsze otwarcie następnego pliku.
+
+## Własność zasobów i głośność
+
+Kontroler przechowuje najwyżej jednego kandydata na playlistę. Osobny player przygotowania nie zastępuje grającego ani PFL w cache silnika. Porzucone zlecenie jest anulowane, jeśli jeszcze nie wystartowało; zwolnienie strumienia odbywa się w tym samym pojedynczym executorze po ewentualnym trwającym otwarciu. Stop, usunięcie playlisty i zamknięcie okna zwalniają przygotowanie bez czekania w GUI.
+
+Automat EBU chroni także ścieżki przechowywane przez kontroler, zanim i po tym jak backend opublikuje gotowy uchwyt. Bariera zadań obejmuje sprzątanie. Wzmocnienie grającego lub przygotowanego strumienia nie jest zmieniane przez wynik pomiaru. Przy właściwym starcie pozostaje dotychczasowe ustawienie ReplayGain. Kod silnika BASS, punkty pętli, wyzwalacze, PFL i fade nie zostały zmienione.
+
+## Diagnostyka przygotowania
+
+Dziennik DEBUG rozróżnia `Preload scheduled`, `Preload finished` (wynik i czas), `Preload handed off`, `Preload miss`, `Preload discarded` i fallback `Preload file warmup`. Brak wpisów w starszej wersji nie dowodził braku pracy: udany preload w ogóle nie był logowany.
+
+Regresje integracyjne są w `tests/test_playback_preload_handoff.py`: rzeczywista fabryka `AudioEngine`, rzeczywisty `BassPlayer` i atrapa wolnego otwarcia (120 ms). Sprawdzają ręczną kolejkę, automiks, zawijanie, przekazanie tej samej instancji, zmianę kandydata, niegotowe zlecenie, zatrzymanie i zamknięcie oraz zachowanie Cue, pętli i gainu. `scripts/check_remote_mutations.py` zawiera mutanty gubienia playera, pomijania ręcznej kolejki i zapisu EBU do przygotowanego pliku.
+
+### Pomiar Windows, 25.10.2026
+
+Dla MP3 95 661 947 bajtów zmierzono na BASS w trybie `STREAM_DECODE`, z urządzeniem 0 i priorytetem BELOW_NORMAL:
+
+- `StreamCreateFile` z PRESCAN: pierwsze otwarcie 173,87 ms (stan cache nieznany), kolejne 207,53 i 222,74 ms. Bez PRESCAN: 0,34 i 1,45 ms. Nie usuwamy PRESCAN, bo szybkie otwarcie nie jest gwarancją dokładnego pozycjonowania wszystkich plików.
+- Kontrola z odczytem pliku przez `FILE_FLAG_NO_BUFFERING` i `StreamCreateFileUser`: PRESCAN 4493,11 ms; bez niego 16,76 ms. To ominięcie cache plikowego Windows, nie dowód zimnego cache sprzętowego dysku. Nie czyszczono pamięci systemu ani nie restartowano komputera.
+- Natywny wyzwalacz intro → wpis `playback started`: przed zmianą 158,13–167,76 ms przy zwykłym odczycie i 4326,68–4483,65 ms w kontroli niebuforowanej; po zmianie odpowiednio 0,45–0,46 ms oraz 0,51–0,68 ms. Dwie próby każdej kombinacji, przygotowanie w tle przed wyzwalaczem. Pętla 0..3413,235 s nadal ma koniec 602 094 652 bajty PCM. Skróty porównanych próbek przy Cue, pozycji 9,111 s i 100,125 s oraz po natywnym zawinięciu są zgodne przed i po zmianie.
+
+Pomiar korzysta z rzeczywistych funkcji startu UI i kontrolera, ale nie otwiera urządzeń wyjściowych: `ChannelPlay` zastępuje pobranie pierwszego bloku PCM. Callback natywny wywołuje start bez kolejki zdarzeń wx. Wynik nie obejmuje opóźnień sterownika, akustyki ani zajętego GUI. Odsłuch antenowy i PFL na żywym stanowisku pozostają osobnym odbiorem. Skrypty i surowe wyniki: `.venv/tmp/sara-lag/` (nie są częścią aplikacji).
 
 ## PFL / podsłuch miksu
 
