@@ -391,3 +391,33 @@ def test_stop_normal_path_does_not_resurrect_monitor_signal():
     player._monitor_stop.set()
     player.stop()
     assert player._monitor_stop.is_set() is True
+
+
+def test_stop_during_fade_does_not_wait_for_fade_to_finish():
+    """Regresja 25.10.2026: stop() w trakcie wyciszania blokował wątek GUI na 0,5 s.
+
+    stop() czekał na wątek fade, zanim zatrzymał strumień, a fade kończy się dopiero,
+    gdy zmieni się strumień albo minie cały czas wyciszenia. Na stole kółko w trakcie
+    odsłuchu przejścia przekraczało przez to limit odpowiedzi mostka (0,5 s).
+    """
+    import time as _time
+
+    player, manager = _player_with_stream(0.0)
+    player._gain_factor = 1.0
+    manager.channel_get_seconds = lambda _stream: 10.0  # pozycja stoi: fade sam się nie skończy
+    volumes: list[float] = []
+    manager.channel_set_volume = lambda _stream, vol: volumes.append(vol)
+
+    player.fade_out(5.0)
+    _time.sleep(0.05)
+    assert player._fade_thread is not None and player._fade_thread.is_alive()
+    fade_thread = player._fade_thread
+
+    started = _time.perf_counter()
+    player.stop()
+    elapsed = _time.perf_counter() - started
+
+    assert elapsed < 0.2, elapsed
+    fade_thread.join(timeout=1.0)
+    assert not fade_thread.is_alive()
+    assert player._stream == 0

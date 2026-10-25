@@ -63,8 +63,10 @@ def pause(player) -> None:
 
 def stop(player, *, _from_fade: bool = False) -> None:
     player._monitor_stop.set()
-    if player._fade_thread and player._fade_thread.is_alive() and not _from_fade:
-        player._fade_thread.join(timeout=0.5)
+    # Wątek fade kończy się sam, gdy zmieni się player._stream, więc NIE czekamy na niego
+    # przed zatrzymaniem strumienia: wcześniejszy join(0.5) blokował wątek wywołujący
+    # (zwykle GUI) na pełne 0,5 s przy każdym stop() w trakcie wyciszania.
+    fade_thread = player._fade_thread if not _from_fade else None
     if not _from_fade:
         player._fade_thread = None
     if player._stream:
@@ -108,6 +110,9 @@ def stop(player, *, _from_fade: bool = False) -> None:
     player._current_item_id = None
     player._loop_active = False
     player._start_offset = 0.0
+    if fade_thread is not None and fade_thread.is_alive() and fade_thread is not threading.current_thread():
+        # Strumień już zatrzymany, więc fade wychodzi w ciągu jednego taktu (10 ms).
+        fade_thread.join(timeout=0.1)
     if player._monitor_thread and player._monitor_thread.is_alive() and not _from_fade:
         player._monitor_thread.join(timeout=0.5)
     player._monitor_thread = None
