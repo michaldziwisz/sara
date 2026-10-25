@@ -407,8 +407,25 @@ def test_pure_session_validation():
     state = MixSession(duration=100, values={"cue": 0, "intro": 1, "outro": 2,
         "loop_start": 10, "loop_end": 9})
     assert state.validation_error() == "petla"
+    state.values["loop_end"] = 11
+    # Decyzja Michała z 25.10.2026: punkty w tym samym miejscu są dozwolone, jak w oknie
+    # (intro.wav: Cue 0 i Intro 0 zapisane przez SARĘ). Odrzucana jest tylko odwrotna kolejność.
     state.values["intro"] = 0
+    assert state.validation_error() is None
+    state.values["outro"] = 0
+    assert state.validation_error() is None
+    state.values.update(cue=5, intro=3, outro=8)
     assert state.validation_error() == "kolejnosc"
+    state.values.update(cue=0, intro=9, outro=8)
+    assert state.validation_error() == "kolejnosc"
+
+
+def test_equal_cue_and_intro_saves_from_table(mix_frame):
+    frame, item, _ = mix_frame
+    session = open_mix(frame)
+    set_point(session, "cue", 0)
+    set_point(session, "intro", 0)
+    assert not request(session, "MixSave").startswith("ERR")
 
 
 def test_negative_point_from_old_item_is_unset():

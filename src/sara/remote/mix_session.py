@@ -147,8 +147,10 @@ class MixSession:
             self.values, self._stored, self.position = self._undo.pop()
 
     def validation_error(self) -> str | None:
+        # Punkty w tym samym miejscu są dozwolone jak w oknie (np. Cue 0 i Intro 0);
+        # błędem jest tylko odwrotna kolejność. Decyzja Michała z 25.10.2026.
         ordered = [value for key in ("cue", "intro", "outro") if (value := self.values[key]) is not None]
-        if any(left >= right for left, right in zip(ordered, ordered[1:])):
+        if any(left > right for left, right in zip(ordered, ordered[1:])):  # MIX_KOLEJNOSC
             return "kolejnosc"
         start, end = self.values["loop_start"], self.values["loop_end"]
         if start is not None and end is not None and start >= end:

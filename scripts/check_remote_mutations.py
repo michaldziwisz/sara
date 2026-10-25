@@ -102,6 +102,12 @@ MUTATIONS = (
         "tests/test_remote_mix.py::test_wrap_left_while_preview_is_playing",
     ),
     (
+        "mix-rowne-punkty-odrzucone", "sara.remote.mix_session",
+        "if any(left > right for left, right in zip(ordered, ordered[1:])):  # MIX_KOLEJNOSC",
+        "if any(left >= right for left, right in zip(ordered, ordered[1:])):  # mutant: Cue = Intro to błąd",
+        "tests/test_remote_mix.py::test_equal_cue_and_intro_saves_from_table",
+    ),
+    (
         "bind-wszystkie-interfejsy", "sara.remote.server",
         'super().__init__(("127.0.0.1", port), _ClientHandler)',
         'super().__init__(("0.0.0.0", port), _ClientHandler)',
