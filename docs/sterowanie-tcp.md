@@ -165,7 +165,7 @@ Błędy sesji:
 * `ERR session`: sesja jest już otwarta; `ERR busy`: otwarte jest okno punktów.
 * `ERR empty`: brak głównej playlisty lub utworu pod jej kursorem przy otwieraniu.
 * `ERR nosession`: polecenie inne niż MixOpen bez sesji należącej do tego klienta.
-* `ERR invalid|kolejnosc`: ustawione cue, intro, outro nie zachowują ścisłej kolejności. `ERR invalid|petla`: początek pętli nie jest wcześniejszy od końca. Sesja pozostaje otwarta, model i plik są nietknięte. Zbyt długi overlap jest przycinany jak w oknie, a nie odrzucany.
+* `ERR invalid|kolejnosc`: ustawione cue, intro, outro idą w odwrotnej kolejności (np. intro przed cue). Punkty w tym samym miejscu są dozwolone, tak jak w oknie punktów miksu (np. cue i intro na 0:00). `ERR invalid|petla`: początek pętli nie jest wcześniejszy od końca. Sesja pozostaje otwarta, model i plik są nietknięte. Zbyt długi overlap jest przycinany jak w oknie, a nie odrzucany.
 * `ERR pfl`: nie udało się uruchomić odsłuchu. SARA podaje dotychczasowy komunikat, np. „Configure a PFL device in Options” przy braku urządzenia PFL. Zmiana punktu wykonana przez Nudge pozostaje robocza nawet wtedy, gdy jego odsłuch się nie udał.
 * `ERR syntax`: niewłaściwy argument. Nie są przyjmowane NaN, nieskończoność ani zapis wykładniczy.
 
