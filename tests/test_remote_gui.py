@@ -202,7 +202,7 @@ def test_main_frame_starts_and_closes_server(app, tmp_path, monkeypatch):
             while not future.done() and time.monotonic() < deadline:
                 wx.Yield()
                 time.sleep(0.005)
-            assert future.result(timeout=1) == [b"SARA v0.0.37\r\n", b"0000001\r\n", b"-1\r\n"]
+            assert future.result(timeout=1) == [b"SARA v0.0.38\r\n", b"0000001\r\n", b"-1\r\n"]
         frame.Close()
         wx.Yield()
         with pytest.raises(OSError):

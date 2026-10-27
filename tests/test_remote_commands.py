@@ -78,7 +78,7 @@ def test_version_fallback_matches_project(monkeypatch):
 
     with (Path(__file__).parents[1] / "pyproject.toml").open("rb") as stream:
         assert __version__ == tomllib.load(stream)["project"]["version"]
-    # Przestarzałe metadane instalacji (tak było na głównej: 0.0.11) nie
+    # Przestarzałe metadane instalacji (tak było na stanowisku: 0.0.11) nie
     # mogą zmienić wersji podawanej w Helo.
     monkeypatch.setattr(importlib.metadata, "version", Mock(return_value="0.0.11"))
     assert commands.app_version() == __version__
@@ -87,7 +87,7 @@ def test_version_fallback_matches_project(monkeypatch):
 def test_helo_and_batch_case_insensitive():
     session = CommandSession(Frame(), program_version="1.2.3")
     assert session.execute_line("hELo, STAT,LastIndex") == ["SARA v1.2.3", "0000001", "1"]
-    assert app_version() == "0.0.37"
+    assert app_version() == "0.0.38"
 
 
 @pytest.mark.parametrize("command,action", [("Stop", "fade"), ("Instant Stop", "stop"), ("Pause", "pause")])

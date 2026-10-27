@@ -128,7 +128,7 @@ Skrypt `scripts/check_remote_mutations.py` najpierw uruchamia kontrolę dodatni�
 ### Odtworzenie
 
 ```sh
-cd /home/ubuntu/emisja
+cd sara   # katalog repozytorium
 source .venv/bin/activate
 export LD_LIBRARY_PATH="$PWD/.venv/system/root/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export TMPDIR="$PWD/.venv/tmp"
@@ -175,7 +175,7 @@ Dodatkowy eksperyment z `WX_RUN_GUI_TESTS=1` dla całego repozytorium został pr
 Środowisko `.venv` korzysta z Pythona 3.12 i systemowego wxPython. PortAudio rozpakowano lokalnie w repozytorium; nie instalowano pakietów systemowych.
 
 ```sh
-cd /home/ubuntu/emisja
+cd sara   # katalog repozytorium
 source .venv/bin/activate
 export LD_LIBRARY_PATH="$PWD/.venv/system/root/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 export TMPDIR="$PWD/.venv/tmp"

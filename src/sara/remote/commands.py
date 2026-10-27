@@ -18,7 +18,7 @@ from sara.remote.mix_control import MIX_COMMANDS, execute_mix
 
 def app_version() -> str:
     # Wersja zawsze z kodu: metadane instalacji bywają przestarzałe
-    # (na głównej `pip show sara` podawał 0.0.11 przy kodzie 0.0.37),
+    # (na stanowisku `pip show sara` podawał 0.0.11 przy kodzie 0.0.37),
     # a zamrożony program może ich nie mieć wcale.
     return __version__
 
